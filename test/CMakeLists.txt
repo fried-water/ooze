@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.15)
+
+project(ooze_test)
+
+find_package(Boost REQUIRED COMPONENTS unit_test_framework system)
+
+add_executable(ooze_test
+  test_main.cpp
+  lexer_test.cpp
+  parser_test.cpp
+  ooze_test.cpp
+  )
+
+target_link_libraries(ooze_test PRIVATE ooze ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+target_include_directories(ooze_test PRIVATE test)
+
+set_target_properties(ooze_test PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME OozeUnitTests COMMAND ooze_tests)
