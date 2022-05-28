@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.15)
 
 project(ooze)
 
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "Setting build type to Release as none was specified.")
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
 find_package(fmt REQUIRED)
 
 add_subdirectory(ext/AnyFunction)

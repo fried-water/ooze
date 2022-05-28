@@ -39,27 +39,21 @@ auto ident() {
     [](Token t) { return t.type == TokenType::Ident ? std::optional(std::string(t.sv)) : std::nullopt; });
 }
 
-auto literal() { return pc::transform_if(to_literal); }
-
-auto type() {
-  return pc::transform(pc::seq(pc::maybe(symbol("&")), ident()),
-                       [](std::optional<std::tuple<>> opt, std::string_view name) {
-                         return ast::Type{std::string(name), opt.has_value()};
+auto parameter() {
+  return pc::transform(pc::seq(ident(), symbol(":"), pc::maybe(symbol("&")), ident()),
+                       [](std::string name, std::optional<std::tuple<>> opt, std::string type) {
+                         return ast::Parameter{std::move(name), std::move(type), opt.has_value()};
                        });
 }
 
-auto binding() { return pc::construct<ast::Binding>(seq(ident(), pc::maybe(seq(symbol(":"), type())))); }
+auto binding() { return pc::construct<ast::Binding>(seq(ident(), pc::maybe(seq(symbol(":"), ident())))); }
 
 std::optional<std::pair<Span<Token>, ast::Expr>> expr(Span<Token>);
 
-auto call() { return pc::construct<ast::Call>(pc::seq(ident(), list(expr))); }
+auto call() { return pc::construct<Indirect<ast::Call>>(pc::construct<ast::Call>(pc::seq(ident(), list(expr)))); }
 
 std::optional<std::pair<Span<Token>, ast::Expr>> expr(Span<Token> s) {
-  return pc::construct<ast::Expr>(
-    pc::choose(list(expr),
-               transform(call(), [](ast::Call c) { return std::make_unique<ast::Call>(std::move(c)); }),
-               ident(),
-               literal()))(s);
+  return pc::construct<ast::Expr>(pc::choose(call(), ident(), pc::transform_if(to_literal)))(s);
 }
 
 auto assignment() {
@@ -69,12 +63,12 @@ auto assignment() {
 auto function() {
   return pc::construct<ast::Function>(pc::seq(keyword("fn"),
                                               ident(),
-                                              list(binding()),
+                                              list(parameter()),
                                               symbol("->"),
-                                              list_or_one(type()),
+                                              list_or_one(ident()),
                                               symbol("{"),
                                               pc::n(assignment()),
-                                              expr,
+                                              list_or_one(expr),
                                               symbol("}")));
 }
 

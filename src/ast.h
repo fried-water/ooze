@@ -1,5 +1,6 @@
 #pragma once
 
+#include "indirect.h"
 #include "literal.h"
 
 namespace ooze {
@@ -9,21 +10,22 @@ namespace ast {
 struct Call;
 
 struct Expr {
-  std::variant<std::vector<Expr>, std::unique_ptr<Call>, std::string, Literal> v;
+  std::variant<Indirect<Call>, std::string, Literal> v;
 
   KNOT_COMPAREABLE(Expr);
 };
 
-struct Type {
+struct Parameter {
   std::string name;
+  std::string type;
   bool borrow = false;
 
-  KNOT_COMPAREABLE(Type);
+  KNOT_COMPAREABLE(Parameter);
 };
 
 struct Binding {
   std::string name;
-  std::optional<Type> type;
+  std::optional<std::string> type;
 
   KNOT_COMPAREABLE(Binding);
 };
@@ -44,17 +46,13 @@ struct Assignment {
 
 struct Function {
   std::string name;
-  std::vector<Binding> parameters;
-  std::vector<Type> result;
+  std::vector<Parameter> parameters;
+  std::vector<std::string> result;
   std::vector<Assignment> assignments;
-  Expr ret;
+  std::vector<Expr> ret;
 
   KNOT_COMPAREABLE(Function);
 };
-
-inline bool operator==(const std::unique_ptr<Call>& lhs, const std::unique_ptr<Call>& rhs) { return *lhs == *rhs; }
-
-inline bool operator!=(const std::unique_ptr<Call>& lhs, const std::unique_ptr<Call>& rhs) { return !(lhs == rhs); }
 
 } // namespace ast
 

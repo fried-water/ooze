@@ -15,17 +15,9 @@ std::vector<Term> add_expr(anyf::ConstructingGraph& cg,
                            const Env& e,
                            const Map<std::string, Term> bindings,
                            const Map<std::string, FunctionGraph>& graphs) {
+
   return std::visit(
-    Overloaded{[&](const std::vector<Expr>& exprs) {
-                 std::vector<Term> results;
-                 for(const Expr& expr : exprs) {
-                   const auto terms = add_expr(cg, expr, e, bindings, graphs);
-                   check(terms.size() == 1, "cannot have nested tuples");
-                   results.push_back(terms.front());
-                 }
-                 return results;
-               },
-               [&](const std::unique_ptr<Call>& call) {
+    Overloaded{[&](const Indirect<Call>& call) {
                  std::vector<Term> inputs;
                  for(const Expr& expr : call->parameters) {
                    const auto terms = add_expr(cg, expr, e, bindings, graphs);
@@ -55,11 +47,9 @@ std::vector<Term> add_expr(anyf::ConstructingGraph& cg,
 FunctionGraph create_graph(const Function& f, const Env& e, const Map<std::string, FunctionGraph>& graphs) {
   std::vector<anyf::Type> input_types;
 
-  for(const Binding& binding : f.parameters) {
-    anyf::check(binding.type.has_value(), "parameter {} does not have a type", binding.name);
-    anyf::check(e.contains_type(binding.type->name), "type {} not found", binding.type->name);
-    input_types.push_back(binding.type->borrow ? e.type(binding.type->name).borrowed_type
-                                               : e.type(binding.type->name).type);
+  for(const Parameter& p : f.parameters) {
+    anyf::check(e.contains_type(p.type), "type {} not found", p.type);
+    input_types.push_back(p.borrow ? e.type(p.type).borrowed_type : e.type(p.type).type);
   }
 
   auto [cg, iterms] = anyf::make_graph(input_types);
@@ -78,7 +68,17 @@ FunctionGraph create_graph(const Function& f, const Env& e, const Map<std::strin
     }
   }
 
-  std::vector<Term> outputs = add_expr(cg, f.ret, e, bindings, graphs);
+  std::vector<Term> outputs;
+
+  if(f.ret.size() == 1) {
+    outputs = add_expr(cg, f.ret.front(), e, bindings, graphs);
+  } else {
+    for(const Expr& expr : f.ret) {
+      std::vector<Term> single_output = add_expr(cg, f.ret.front(), e, bindings, graphs);
+      check(single_output.size() == 1, "cannot have nested tuples");
+      outputs.push_back(single_output.front());
+    }
+  }
   return anyf::finalize(std::move(cg), outputs);
 }
 

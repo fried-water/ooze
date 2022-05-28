@@ -11,19 +11,22 @@ namespace {
 template <typename T>
 void pretty_print(std::ostream&, const std::vector<T>&, bool allow_short = false);
 
-void pretty_print(std::ostream& os, const Type& t) {
+void pretty_print(std::ostream& os, const std::string& s) { os << s; }
+
+void pretty_print(std::ostream& os, const Parameter& t) {
+  os << t.name << ": ";
+
   if(t.borrow) {
     os << '&';
   }
-  os << t.name;
+  os << t.type;
 }
 
 void pretty_print(std::ostream& os, const Binding& b) {
   os << b.name;
 
   if(b.type) {
-    os << ": ";
-    pretty_print(os, *b.type);
+    os << ": " << *b.type;
   }
 }
 
