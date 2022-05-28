@@ -1,23 +1,26 @@
 #pragma once
 
 #include <any_function.h>
+#include <knot.h>
 #include <traits.h>
+
+#include <algorithm>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace ooze {
 
 using anyf::Any;
-using anyf::any_cast;
 using anyf::AnyFunction;
+using anyf::Span;
 using anyf::type_id;
 using anyf::TypeID;
-
-using anyf::TL;
-using anyf::Ty;
 
 namespace details {
 
 template <typename T, typename... Ts>
-auto generate_constructor(TL<Ts...>) {
+auto generate_constructor(anyf::TL<Ts...>) {
   return [](Ts... ts) { return T{std::move(ts)...}; };
 }
 
@@ -28,34 +31,33 @@ struct TypeEntry {
   anyf::Type borrowed_type;
 
   std::function<std::vector<std::byte>(const Any&, std::vector<std::byte>)> serialize;
-  std::function<Any(const Span<std::byte>&)> deserialize;
+  std::function<std::optional<Any>(const Span<std::byte>&)> deserialize;
   std::function<std::size_t(const Any&)> hash;
   std::function<std::string(const Any&)> to_string;
 };
 
 class Env {
-  Map<std::string, TypeEntry> _types;
-  Map<TypeID, std::string> _type_names;
-  Map<std::string, AnyFunction> _functions;
+  std::unordered_map<std::string, TypeEntry> _types;
+  std::unordered_map<TypeID, std::string> _type_names;
+  std::unordered_map<std::string, AnyFunction> _functions;
 
 public:
   template <typename T>
   void add(const std::string& name) {
-    anyf::check(anyf::is_decayed(Ty<T>{}), "Can only add decayed types");
+    static_assert(anyf::is_decayed(anyf::Ty<T>{}), "Can only add decayed types");
     _types.emplace(name,
                    TypeEntry{anyf::Type(anyf::Ty<T>{}),
                              anyf::Type(anyf::Ty<const T&>{}),
                              [](const Any& t, std::vector<std::byte> bytes) {
-                               knot::serialize(any_cast<T>(t), std::back_inserter(bytes));
+                               knot::serialize(anyf::any_cast<T>(t), std::back_inserter(bytes));
                                return bytes;
                              },
                              [=](const Span<std::byte>& bytes) {
                                std::optional<T> opt = knot::deserialize<T>(bytes.begin(), bytes.end());
-                               check(opt.has_value(), "Error: deserializing: {}\n", name);
-                               return Any(std::move(*opt));
+                               return opt ? std::optional(Any(std::move(*opt))) : std::nullopt;
                              },
-                             [](const Any& t) { return knot::hash_value(any_cast<T>(t)); },
-                             [](const Any& t) { return knot::debug(any_cast<T>(t)); }});
+                             [](const Any& t) { return knot::hash_value(anyf::any_cast<T>(t)); },
+                             [](const Any& t) { return knot::debug(anyf::any_cast<T>(t)); }});
 
     _type_names.emplace(type_id<T>(), name);
 
@@ -65,9 +67,9 @@ public:
 
       using knot::as_tie;
 
-      const auto types = anyf::decay(as_tl(Ty<decltype(as_tie(std::declval<T>()))>{}));
+      const auto types = anyf::decay(as_tl(anyf::Ty<decltype(as_tie(std::declval<T>()))>{}));
 
-      add(fmt::format("create_{}", lower_name), details::generate_constructor<T>(types));
+      add("create_" + lower_name, details::generate_constructor<T>(types));
     }
   }
 

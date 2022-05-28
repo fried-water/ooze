@@ -1,6 +1,4 @@
-#include "pch.h"
-
-#include "ooze.h"
+#include "ooze/core.h"
 
 #include <chrono>
 #include <thread>

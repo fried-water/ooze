@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ast.h"
-#include "env.h"
+#include "ooze/env.h"
 
 #include <graph.h>
 

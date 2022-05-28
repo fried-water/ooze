@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "ooze.h"
+#include "ooze/core.h"
 
 #include <boost/test/unit_test.hpp>
 

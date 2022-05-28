@@ -17,13 +17,13 @@ add_library(ooze
   src/ooze.cpp)
 
 target_compile_features(ooze PUBLIC cxx_std_17)
-target_include_directories(ooze PUBLIC src)
+target_include_directories(ooze PRIVATE src PUBLIC include)
 target_precompile_headers(ooze PRIVATE src/pch.h)
 target_link_libraries(ooze
   PUBLIC
-    any_function knot fmt
+    any_function knot
   PRIVATE
-    ctre)
+    ctre fmt)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_subdirectory(example)

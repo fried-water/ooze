@@ -1,10 +1,13 @@
 #pragma once
 
-#include "env.h"
+#include "ooze/env.h"
+
+#include <string>
+#include <vector>
 
 namespace ooze {
 
-Any load(const Env&, Span<std::byte>);
+std::optional<Any> load(const Env&, Span<std::byte>);
 std::vector<std::byte> save(const Env&, const Any&);
 
 std::vector<Any> run(const Env&, const std::string& fn, std::vector<Any>);

@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "graph_construction.h"
-#include "ooze.h"
+#include "ooze/core.h"
 #include "parser.h"
 #include "parser_combinators.h"
 
@@ -62,7 +62,7 @@ std::vector<Any> gather_args(const Env& e, const std::vector<Literal>& args) {
 
   std::transform(args.begin(), args.end(), std::back_inserter(inputs), [&](const Literal& l) {
     return std::visit(
-      Overloaded{[&](const FileLiteral& f) { return load(e, read_binary(f.name)); }, [&](auto v) { return Any{v}; }},
+      Overloaded{[&](const FileLiteral& f) { return *load(e, read_binary(f.name)); }, [&](auto v) { return Any{v}; }},
       l);
   });
 
@@ -204,13 +204,15 @@ auto cmd_parser() {
 }
 
 void run(const DumpComand& cmd, const Env& e) {
-  const Any any = load(e, read_binary(cmd.name));
+  const std::optional<Any> any = load(e, read_binary(cmd.name));
 
-  const std::string& type_name = e.type_name(any.type());
+  check(any.has_value(), "reading file {}", cmd.name);
+
+  const std::string& type_name = e.type_name(any->type());
   const TypeEntry& t = e.type(type_name);
 
-  fmt::print("{} hash({})\n", type_name, t.hash(any));
-  fmt::print("{}\n", t.to_string(any));
+  fmt::print("{} hash({})\n", type_name, t.hash(*any));
+  fmt::print("{}\n", t.to_string(*any));
 }
 
 void run(const ScriptCommand& cmd, const Env& e) {
@@ -284,7 +286,7 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 
 } // namespace
 
-Any load(const Env& e, Span<std::byte> bytes) {
+std::optional<Any> load(const Env& e, Span<std::byte> bytes) {
   auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
 
   check(opt_type.has_value(), "deserializing");
