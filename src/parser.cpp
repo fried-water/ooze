@@ -87,7 +87,7 @@ std::optional<AST> parse(std::string_view script) {
     fmt::print("Lexer failed: {}\n", remaining);
     return std::nullopt;
   } else {
-    return parse(n(function()), Span<Token>{tokens});
+    return pc::parse(pc::n(function()), Span<Token>{tokens});
   }
 }
 

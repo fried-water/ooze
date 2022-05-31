@@ -82,10 +82,6 @@ void pretty_print(std::ostream& os, const std::vector<T>& v, bool allow_short) {
 
 } // namespace
 
-bool validate(const AST&) { return true; }
-
-std::vector<std::string> typecheck(const AST&) { return {}; }
-
 std::string pretty_print(const AST& ast) {
   std::stringstream ss;
 

@@ -10,7 +10,6 @@ endif()
 find_package(fmt REQUIRED)
 
 add_subdirectory(ext/AnyFunction)
-add_subdirectory(ext/knot)
 add_subdirectory(ext/ctre)
 
 add_library(ooze
@@ -26,7 +25,7 @@ target_include_directories(ooze PRIVATE src PUBLIC include)
 target_precompile_headers(ooze PRIVATE src/pch.h)
 target_link_libraries(ooze
   PUBLIC
-    any_function knot
+    any_function
   PRIVATE
     ctre fmt)
 

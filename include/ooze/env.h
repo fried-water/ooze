@@ -1,8 +1,9 @@
 #pragma once
 
 #include <any_function.h>
-#include <knot.h>
+#include <knot/core.h>
 #include <traits.h>
+#include <type.h>
 
 #include <algorithm>
 #include <string>
@@ -16,19 +17,22 @@ using anyf::AnyFunction;
 using anyf::Span;
 using anyf::type_id;
 using anyf::TypeID;
+using anyf::TypeProperties;
+using knot::Type;
+using knot::TypeList;
 
 namespace details {
 
 template <typename T, typename... Ts>
-auto generate_constructor(anyf::TL<Ts...>) {
+auto generate_constructor(TypeList<Ts...>) {
   return [](Ts... ts) { return T{std::move(ts)...}; };
 }
 
 } // namespace details
 
 struct TypeEntry {
-  anyf::Type type;
-  anyf::Type borrowed_type;
+  TypeProperties type;
+  TypeProperties borrowed_type;
 
   std::function<std::vector<std::byte>(const Any&, std::vector<std::byte>)> serialize;
   std::function<std::optional<Any>(const Span<std::byte>&)> deserialize;
@@ -44,10 +48,10 @@ class Env {
 public:
   template <typename T>
   void add(const std::string& name) {
-    static_assert(anyf::is_decayed(anyf::Ty<T>{}), "Can only add decayed types");
+    static_assert(is_decayed(Type<T>{}), "Can only add decayed types");
     _types.emplace(name,
-                   TypeEntry{anyf::Type(anyf::Ty<T>{}),
-                             anyf::Type(anyf::Ty<const T&>{}),
+                   TypeEntry{TypeProperties(Type<T>{}),
+                             TypeProperties(Type<const T&>{}),
                              [](const Any& t, std::vector<std::byte> bytes) {
                                knot::serialize(anyf::any_cast<T>(t), std::back_inserter(bytes));
                                return bytes;
@@ -59,7 +63,7 @@ public:
                              [](const Any& t) { return knot::hash_value(anyf::any_cast<T>(t)); },
                              [](const Any& t) { return knot::debug(anyf::any_cast<T>(t)); }});
 
-    _type_names.emplace(type_id<T>(), name);
+    _type_names.emplace(type_id(Type<T>{}), name);
 
     if constexpr(std::is_aggregate_v<T>) {
       std::string lower_name = name;
@@ -67,9 +71,7 @@ public:
 
       using knot::as_tie;
 
-      const auto types = anyf::decay(as_tl(anyf::Ty<decltype(as_tie(std::declval<T>()))>{}));
-
-      add("create_" + lower_name, details::generate_constructor<T>(types));
+      add("create_" + lower_name, details::generate_constructor<T>(as_typelist(tie_type(Type<T>{}))));
     }
   }
 

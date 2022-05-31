@@ -58,10 +58,6 @@ struct Function {
 
 using AST = std::vector<ast::Function>;
 
-bool validate(const AST&);
-
-std::vector<std::string> typecheck(const AST&);
-
 std::string pretty_print(const AST&);
 
 } // namespace ooze

@@ -45,7 +45,7 @@ std::vector<Term> add_expr(anyf::ConstructingGraph& cg,
 }
 
 FunctionGraph create_graph(const Function& f, const Env& e, const Map<std::string, FunctionGraph>& graphs) {
-  std::vector<anyf::Type> input_types;
+  std::vector<TypeProperties> input_types;
 
   for(const Parameter& p : f.parameters) {
     anyf::check(e.contains_type(p.type), "type {} not found", p.type);

@@ -251,7 +251,7 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
   for(const std::string& fn_name : e.functions()) {
     const AnyFunction& f = e.function(fn_name);
 
-    const auto doesnt_have = [&](const std::vector<anyf::Type>& types, const std::string& type) {
+    const auto doesnt_have = [&](const std::vector<TypeProperties>& types, const std::string& type) {
       check(e.contains_type(type), "type {} not found", type);
       const TypeID type_id = e.type(type).type.type_id();
       return std::none_of(types.begin(), types.end(), [&](auto t) { return t.type_id() == type_id; });
@@ -324,17 +324,6 @@ std::vector<Any> run(const Env& e, std::string_view script, std::vector<Any> inp
   const std::optional<AST> ast = parse(script);
 
   check(ast.has_value(), "parsing failed");
-  check(validate(*ast), "AST validation failed");
-
-  const std::vector<std::string> type_errors = typecheck(*ast);
-
-  if(!type_errors.empty()) {
-    fmt::print("Error: type checking failed:\n");
-    for(const std::string& error : type_errors) {
-      fmt::print("  {}\n", error);
-    }
-    exit(1);
-  }
 
   const Map<std::string, FunctionGraph> graphs = create_graphs(e, *ast);
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <fmt/core.h>
-#include <knot.h>
+#include <knot/core.h>
 #include <span.h>
 
 #include <cstdint>
