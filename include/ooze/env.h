@@ -1,9 +1,9 @@
 #pragma once
 
-#include <any_function.h>
+#include <anyf/any_function.h>
+#include <anyf/traits.h>
+#include <anyf/type.h>
 #include <knot/core.h>
-#include <traits.h>
-#include <type.h>
 
 #include <algorithm>
 #include <string>

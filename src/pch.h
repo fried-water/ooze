@@ -1,8 +1,8 @@
 #pragma once
 
+#include <anyf/span.h>
 #include <fmt/core.h>
 #include <knot/core.h>
-#include <span.h>
 
 #include <cstdint>
 #include <cstdlib>
