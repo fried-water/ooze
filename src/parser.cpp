@@ -80,14 +80,16 @@ std::optional<Literal> parse_literal(std::string_view sv) {
   return token.type == TokenType::Ident && sv == token.sv ? Literal{std::string(token.sv)} : to_literal(token);
 }
 
-std::optional<AST> parse(std::string_view script) {
+Result<AST> parse(std::string_view script) {
   const auto [tokens, remaining] = lex(script);
 
   if(!remaining.empty()) {
-    fmt::print("Lexer failed: {}\n", remaining);
-    return std::nullopt;
+    return tl::unexpected{std::vector<std::string>{remaining.size() > 10
+                                                     ? fmt::format("Lexer failed: {}...", remaining.substr(0, 10))
+                                                     : fmt::format("Lexer failed: {}", remaining)}};
   } else {
-    return pc::parse(pc::n(function()), Span<Token>{tokens});
+    std::optional<AST> ast = pc::parse(pc::n(function()), Span<Token>{tokens});
+    return ast ? Result<AST>{std::move(*ast)} : tl::unexpected{std::vector<std::string>{"Parsing failed"}};
   }
 }
 

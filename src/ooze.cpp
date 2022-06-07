@@ -68,6 +68,27 @@ std::vector<Any> gather_args(const Env& e, const std::vector<Literal>& args) {
   return inputs;
 }
 
+Result<void> type_check(const Env& e,
+                        const std::string& fn,
+                        const std::vector<TypeProperties>& expected,
+                        const std::vector<Any>& args) {
+  if(expected.size() != args.size()) {
+    return tl::unexpected{
+      std::vector<std::string>{fmt::format("{} expects {} arg(s), given {}", fn, expected.size(), args.size())}};
+  }
+
+  std::vector<std::string> errors;
+
+  for(size_t i = 0; i < args.size(); i++) {
+    if(expected[i].type_id() != args[i].type()) {
+      errors.push_back(fmt::format(
+        "{} expects {} for arg {}, given {}", fn, e.type_name(expected[i].type_id()), i, e.type_name(args[i].type())));
+    }
+  }
+
+  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
+}
+
 void dump_values(const Env& e, const std::string& output_prefix, const std::vector<Any>& values) {
   for(size_t i = 0; i < values.size(); i++) {
     write_binary(values.size() == 1 ? fmt::format("{}", output_prefix) : fmt::format("{}_{}", output_prefix, i),
@@ -225,21 +246,25 @@ void run(const ScriptCommand& cmd, const Env& e) {
     }
   }
 
-  auto outputs = run(e, load_file(cmd.script), std::move(inputs), cmd.function);
+  run(e, load_file(cmd.script), std::move(inputs), cmd.function)
+    .map([&](std::vector<Any> outputs) {
+      dump_values(e, cmd.output_prefix, outputs);
 
-  dump_values(e, cmd.output_prefix, outputs);
-
-  if(cmd.verbosity != 0) {
-    int i = 0;
-    for(const Any& any : outputs) {
-      const std::string& type_name = e.type_name(any.type());
-      fmt::print("Output {}: {} {}\n", i++, type_name, e.type(type_name).to_string(any));
-    }
-  }
+      if(cmd.verbosity != 0) {
+        int i = 0;
+        for(const Any& any : outputs) {
+          const std::string& type_name = e.type_name(any.type());
+          fmt::print("Output {}: {} {}\n", i++, type_name, e.type(type_name).to_string(any));
+        }
+      }
+    })
+    .or_else(dump_errors);
 }
 
 void run(const FunctionCommand& cmd, const Env& e) {
-  dump_values(e, cmd.output_prefix, run(e, cmd.function, gather_args(e, cmd.args)));
+  run(e, cmd.function, gather_args(e, cmd.args)).map([&](std::vector<Any> outputs) {
+    dump_values(e, cmd.output_prefix, outputs);
+  });
 }
 
 void run(const FunctionQueryCommand& cmd, const Env& e) {
@@ -300,35 +325,27 @@ std::vector<std::byte> save(const Env& e, const Any& v) {
   return e.type(v.type()).serialize(v, knot::serialize(e.type_name(v.type())));
 }
 
-std::vector<Any> run(const Env& e, const std::string& fn, std::vector<Any> args) {
-  check(e.contains_function(fn), "No function named {}", fn);
-
-  const auto& function = e.function(fn);
-  const auto& expected_types = function.input_types();
-
-  check(expected_types.size() == args.size(), "expected {} args, given {}\n", expected_types.size(), args.size());
-
-  for(size_t i = 0; i < args.size(); i++) {
-    check(expected_types[i].type_id() == args[i].type(),
-          "expected {}, given {} for arg {}",
-          e.type_name(expected_types[i].type_id()),
-          e.type_name(args[i].type()),
-          i);
+Result<std::vector<Any>> run(const Env& e, const std::string& fn, std::vector<Any> args) {
+  if(!e.contains_function(fn)) {
+    return tl::unexpected{std::vector<std::string>{fmt::format("No function named {}", fn)}};
   }
 
-  return function(anyf::any_ptrs(args));
+  const auto& function = e.function(fn);
+
+  return type_check(e, fn, function.input_types(), args).map([&]() { return function(anyf::any_ptrs(args)); });
 }
 
-std::vector<Any> run(const Env& e, std::string_view script, std::vector<Any> inputs, const std::string& fn) {
-  const std::optional<AST> ast = parse(script);
+Result<std::vector<Any>> run(const Env& e, std::string_view script, std::vector<Any> inputs, const std::string& fn) {
+  return parse(script)
+    .and_then([&](AST ast) { return create_graphs(e, ast); })
+    .and_then([&](Map<std::string, FunctionGraph> graphs) {
+      const auto it = graphs.find(fn);
 
-  check(ast.has_value(), "parsing failed");
-
-  const Map<std::string, FunctionGraph> graphs = create_graphs(e, *ast);
-
-  check(graphs.find(fn) != graphs.end(), "cannot find {}()", fn);
-
-  return anyf::execute_graph(graphs.at(fn), anyf::TaskExecutor{}, std::move(inputs));
+      return it != graphs.end() ? type_check(e, fn, input_types(it->second), inputs).map([&]() {
+        return anyf::execute_graph(it->second, anyf::TaskExecutor{}, std::move(inputs));
+      })
+                                : tl::unexpected{std::vector<std::string>{fmt::format("cannot find function {}", fn)}};
+    });
 }
 
 int main(int argc, char* argv[], const Env& e) {

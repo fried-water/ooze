@@ -23,17 +23,17 @@ BOOST_AUTO_TEST_CASE(parser_simple) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_fail) {
-  BOOST_CHECK(std::nullopt == parse("fn f() -> T {}"));
-  BOOST_CHECK(std::nullopt == parse("fn f() -> { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn f() { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn f -> T { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn () -> T { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn 1() -> T { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("f() -> T { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn f() -> T"));
-  BOOST_CHECK(std::nullopt == parse("fn f( -> T { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn f) -> T { 1 }"));
-  BOOST_CHECK(std::nullopt == parse("fn f(a) -> T { 1 }"));
+  BOOST_CHECK(!parse("fn f() -> T {}"));
+  BOOST_CHECK(!parse("fn f() -> { 1 }"));
+  BOOST_CHECK(!parse("fn f() { 1 }"));
+  BOOST_CHECK(!parse("fn f -> T { 1 }"));
+  BOOST_CHECK(!parse("fn () -> T { 1 }"));
+  BOOST_CHECK(!parse("fn 1() -> T { 1 }"));
+  BOOST_CHECK(!parse("f() -> T { 1 }"));
+  BOOST_CHECK(!parse("fn f() -> T"));
+  BOOST_CHECK(!parse("fn f( -> T { 1 }"));
+  BOOST_CHECK(!parse("fn f) -> T { 1 }"));
+  BOOST_CHECK(!parse("fn f(a) -> T { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_one_arg) {
@@ -99,6 +99,12 @@ BOOST_AUTO_TEST_CASE(parser_multi_binding) {
 BOOST_AUTO_TEST_CASE(parser_two_bindings) {
   const std::string_view script = "fn f() -> T { let a = f() let b = abc 1 }";
   const AST expected{{"f", {}, {{"T"}}, {{{{"a"}}, call("f")}, {{{"b"}}, ident("abc")}}, {One}}};
+  BOOST_CHECK(expected == parse(script));
+}
+
+BOOST_AUTO_TEST_CASE(parser_empty_binding) {
+  const std::string_view script = "fn f() -> T { let () = abc 1 }";
+  const AST expected{{"f", {}, {{"T"}}, {{{}, ident("abc")}}, {One}}};
   BOOST_CHECK(expected == parse(script));
 }
 

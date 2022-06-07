@@ -4,6 +4,8 @@
 #include <fmt/core.h>
 #include <knot/core.h>
 
+#include <tl/expected.hpp>
+
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -11,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -18,6 +21,9 @@ namespace ooze {
 
 template <typename Key, typename Value>
 using Map = std::unordered_map<Key, Value, knot::Hash>;
+
+template <typename T>
+using Set = std::unordered_set<T, knot::Hash>;
 
 using i8 = int8_t;
 using i16 = int16_t;
@@ -52,6 +58,27 @@ template <typename... Ts>
 void check(bool b, const char* fmt_string, const Ts&... ts) {
   if(!b) {
     error(fmt_string, ts...);
+  }
+}
+
+template <typename T, typename Range, typename F>
+T accumulate(Range&& range, F f, T acc = {}) {
+  for(auto&& value : range) {
+    if constexpr(std::is_reference_v<Range>) {
+      acc = f(std::move(acc), value);
+    } else {
+      acc = f(std::move(acc), std::move(value));
+    }
+  }
+  return acc;
+}
+
+template <typename T>
+using Result = tl::expected<T, std::vector<std::string>>;
+
+inline void dump_errors(const std::vector<std::string>& errors) {
+  for(const std::string& e : errors) {
+    fmt::print("{}\n", e);
   }
 }
 

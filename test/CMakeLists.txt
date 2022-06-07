@@ -10,6 +10,9 @@ add_executable(ooze_test
   parser_test.cpp
   ooze_test.cpp)
 
+target_compile_options(ooze_test PRIVATE -Og -fsanitize=address)
+target_link_options(ooze_test PRIVATE -Og -fsanitize=address)
+
 target_link_libraries(ooze_test PRIVATE ooze ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 target_include_directories(ooze_test PRIVATE ../src)
 target_precompile_headers(ooze_test PRIVATE ../src/pch.h)

@@ -9,6 +9,6 @@ namespace ooze {
 
 using anyf::FunctionGraph;
 
-Map<std::string, FunctionGraph> create_graphs(const Env&, const AST&);
+Result<Map<std::string, FunctionGraph>> create_graphs(const Env&, const AST&);
 
 } // namespace ooze
