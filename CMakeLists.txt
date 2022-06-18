@@ -4,7 +4,7 @@ project(ooze)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Setting build type to Release as none was specified.")
-  set(CMAKE_BUILD_TYPE Release)
+  set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 find_package(fmt REQUIRED)

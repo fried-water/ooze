@@ -78,15 +78,9 @@ auto function() {
                                               symbol("}")));
 }
 
-} // namespace
-
-std::optional<Literal> parse_literal(std::string_view sv) {
-  const auto token = lex_one(sv);
-
-  return token.type == TokenType::Ident && sv == token.sv ? Literal{std::string(token.sv)} : to_literal(token);
-}
-
-Result<AST> parse(std::string_view script) {
+template <typename Parser>
+Result<pc::parser_result_t<Token, Parser>>
+parse_with_error(Parser p, std::string_view src_name, std::string_view script) {
   const auto [tokens, remaining] = lex(script);
 
   if(!remaining.empty()) {
@@ -95,7 +89,7 @@ Result<AST> parse(std::string_view script) {
                                                      : fmt::format("Lexer failed: {}", remaining)}};
   } else {
     Span<Token> token_span{tokens};
-    auto res = parse(pc::n(function()), token_span);
+    auto res = parse(p, token_span);
 
     if(res) {
       return std::move(*res);
@@ -104,9 +98,6 @@ Result<AST> parse(std::string_view script) {
       std::reverse(errors.begin(), errors.end());
 
       const Token* error_tok = errors.front().second;
-
-      const auto errors_end =
-        std::find_if(errors.begin() + 1, errors.end(), [&](const auto& p) { return p.second != error_tok; });
 
       const std::string_view error_tok_sv =
         error_tok == token_span.end() ? script.substr(script.size()) : error_tok->sv;
@@ -130,12 +121,22 @@ Result<AST> parse(std::string_view script) {
       std::string highlight = "";
       for(int i = 0; i < preamble_distance; i++) highlight += " ";
       highlight += '^';
-      for(int i = 0; i < error_tok_sv.size() - 1; i++) highlight += "~";
+      for(int i = 0; i < static_cast<int>(error_tok_sv.size()) - 1; i++) highlight += "~";
 
-      return tl::unexpected{std::vector<std::string>{fmt::format(
-        "Parsing error at line {}: expected {}\n  {}\n  {}", line, errors.front().first, context, highlight)}};
+      return tl::unexpected{std::vector<std::string>{fmt::format("Error parsing {} at line {}: expected {}\n  {}\n  {}",
+                                                                 src_name,
+                                                                 line,
+                                                                 errors.front().first,
+                                                                 context,
+                                                                 highlight)}};
     }
   }
 }
+
+} // namespace
+
+Result<ast::Expr> parse_expr(std::string_view expr_src) { return parse_with_error(expr, "expr", expr_src); }
+
+Result<AST> parse(std::string_view script) { return parse_with_error(pc::n(function()), "script", script); }
 
 } // namespace ooze

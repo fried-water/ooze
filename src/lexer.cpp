@@ -21,7 +21,7 @@ constexpr auto int_re = ctll::fixed_string{"^-?\\d+(i8|i16|i32|i64|u8|u16|u32|u6
 constexpr auto float_re = ctll::fixed_string{"^-?\\d+?\\.\\d+f?"};
 constexpr auto bool_re = ctll::fixed_string{"^true|^false"};
 constexpr auto string_re = ctll::fixed_string{"^\".*\""};
-constexpr auto file_re = ctll::fixed_string{"^@[^\\s]+"};
+constexpr auto file_re = ctll::fixed_string{"^\\|[^\\|]+\\|"};
 
 template <auto& T>
 using matcher = ctre::regex_search_t<typename ctre::regex_builder<T>::type>;
@@ -86,7 +86,7 @@ std::optional<Literal> to_literal(Token token) {
              : Literal{atof(std::string(token.sv.begin(), token.sv.end()).c_str())};
   case TokenType::LiteralBool: return Literal{token.sv[0] == 't'};
   case TokenType::LiteralString: return Literal{std::string(token.sv.begin() + 1, token.sv.end() - 1)};
-  case TokenType::LiteralFile: return Literal{FileLiteral{std::string(token.sv.begin() + 1, token.sv.end())}};
+  case TokenType::LiteralFile: return Literal{FileLiteral{std::string(token.sv.begin() + 1, token.sv.end() - 1)}};
   }
 }
 

@@ -14,7 +14,7 @@ BOOST_AUTO_TEST_CASE(ooze_basic) {
   Env env = create_primative_env();
   env.add("sum", [](int x, int y) { return x + y; });
 
-  const auto results = run(env, script, std::vector<Any>{Any{5}, Any{6}}, "f");
+  const auto results = run(env, script, "f(5, 6)");
 
   BOOST_REQUIRE(results.has_value());
   BOOST_CHECK_EQUAL(1, results->size());
@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
   env.add<Point>("Point");
   env.add("sum", [](Point p1, Point p2) { return Point{p1.x + p2.x, p1.y + p2.y}; });
 
-  const auto results = run(env, script, std::vector<Any>{Any{Point{1, 2}}, Any{Point{9, 7}}}, "f");
+  const auto results = run(env, script, "f(create_point(1, 2), create_point(9, 7))");
 
   BOOST_REQUIRE(results.has_value());
   BOOST_CHECK_EQUAL(1, results->size());
@@ -53,10 +53,10 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_count) {
   Env env = create_primative_env();
   env.add("identity", [](u32 u) { return u; });
 
-  BOOST_CHECK(err("identity expects 1 arg(s), given 0") == run(env, wrong_arg, std::vector<Any>{}, "f"));
-  BOOST_CHECK(err("Assignment expects 0 value(s), given 1") == run(env, wrong_bind, std::vector<Any>{}, "f"));
-  BOOST_CHECK(err("f returns 0 value(s), given 1") == run(env, wrong_return, std::vector<Any>{}, "f"));
-  BOOST_CHECK(err("f expects 1 arg(s), given 0") == run(env, valid, std::vector<Any>{}, "f"));
+  BOOST_CHECK(err("identity expects 1 arg(s), given 0") == run(env, wrong_arg, "f()"));
+  BOOST_CHECK(err("Assignment expects 0 value(s), given 1") == run(env, wrong_bind, "f()"));
+  BOOST_CHECK(err("f returns 0 value(s), given 1") == run(env, wrong_return, "f()"));
+  BOOST_CHECK(err("f expects 1 arg(s), given 0") == run(env, valid, "f()"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
@@ -68,22 +68,20 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
   Env env = create_primative_env();
   env.add("identity", [](u32 u) { return u; });
 
-  BOOST_CHECK(err("identity expects u32 for arg 0, given i32") == run(env, wrong_arg, std::vector<Any>{}, "f"));
-  BOOST_CHECK(err("x expects i32, given u32") == run(env, wrong_bind, std::vector<Any>{}, "f"));
-  BOOST_CHECK(err("f return element 0 expects i32, given u32") == run(env, wrong_return, std::vector<Any>{}, "f"));
-  BOOST_CHECK(err("f expects u32 for arg 0, given i32") == run(env, valid, std::vector<Any>{0}, "f"));
+  BOOST_CHECK(err("identity expects u32 for arg 0, given i32") == run(env, wrong_arg, "f()"));
+  BOOST_CHECK(err("x expects i32, given u32") == run(env, wrong_bind, "f()"));
+  BOOST_CHECK(err("f return element 0 expects i32, given u32") == run(env, wrong_return, "f()"));
+  BOOST_CHECK(err("f expects u32 for arg 0, given i32") == run(env, valid, "f(0)"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_already_move) {
+
   const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }";
 
   Env env = create_primative_env();
   env.add<std::unique_ptr<int>>("unique_int");
-
-  std::vector<Any> inputs;
-  inputs.push_back(std::make_unique<int>(0));
-
-  BOOST_CHECK(err("f return value for arg 1 already moved") == run(env, script, std::move(inputs), "f"));
+  env.add("make_unique_int", [](int x) { return std::make_unique<int>(x); });
+  BOOST_CHECK(err("f return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
 }
 
 } // namespace ooze

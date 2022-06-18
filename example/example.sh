@@ -2,19 +2,19 @@
 
 OOZE=../build/ooze
 
-echo "-------- ./ooze functions --------"
+echo "./ooze functions"
 $OOZE functions
 
-echo "-------- ./ooze types --------"
+echo "./ooze types"
 $OOZE types
 
-echo "-------- ./ooze fn create_point 4 5 -o p1 --------"
-$OOZE fn create_point 4 5 -o p1
+echo "./ooze run \"create_point(4, 5)\" -o point"
+$OOZE run "create_point(4, 5)" -o point
 
-echo "-------- ./ooze dump p1 --------"
-$OOZE dump p1
+echo "./ooze run \"|point|\""
+$OOZE run "|point|"
 
-echo "-------- ./ooze run script.oz @p1 1 -v --------"
-$OOZE run script.oz @p1 1 -v
+echo "./ooze run -s script.oz \"main(|point|, 1)\""
+$OOZE run -s script.oz "main(|point|, 1)"
 
-rm p1 result_0 result_1
+rm point

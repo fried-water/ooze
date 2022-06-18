@@ -55,46 +55,6 @@ std::string load_file(const std::string& filename) {
   return std::move(sstr).str();
 }
 
-std::vector<Any> gather_args(const Env& e, const std::vector<Literal>& args) {
-  std::vector<Any> inputs;
-  inputs.reserve(args.size());
-
-  std::transform(args.begin(), args.end(), std::back_inserter(inputs), [&](const Literal& l) {
-    return std::visit(
-      Overloaded{[&](const FileLiteral& f) { return *load(e, read_binary(f.name)); }, [&](auto v) { return Any{v}; }},
-      l);
-  });
-
-  return inputs;
-}
-
-Result<void> type_check(const Env& e,
-                        const std::string& fn,
-                        const std::vector<TypeProperties>& expected,
-                        const std::vector<Any>& args) {
-  if(expected.size() != args.size()) {
-    return err(fmt::format("{} expects {} arg(s), given {}", fn, expected.size(), args.size()));
-  }
-
-  std::vector<std::string> errors;
-
-  for(size_t i = 0; i < args.size(); i++) {
-    if(expected[i].type_id() != args[i].type()) {
-      errors.push_back(fmt::format(
-        "{} expects {} for arg {}, given {}", fn, e.type_name(expected[i].type_id()), i, e.type_name(args[i].type())));
-    }
-  }
-
-  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
-}
-
-void dump_values(const Env& e, const std::string& output_prefix, const std::vector<Any>& values) {
-  for(size_t i = 0; i < values.size(); i++) {
-    write_binary(values.size() == 1 ? fmt::format("{}", output_prefix) : fmt::format("{}_{}", output_prefix, i),
-                 save(e, values[i]));
-  }
-}
-
 template <typename T>
 struct Option {
   std::string value;
@@ -102,29 +62,16 @@ struct Option {
 
 struct Verbose {};
 
-using FunctionOption = Option<struct FOpt>;
 using ScriptOption = Option<struct SOpt>;
 using OutputOption = Option<struct OOpt>;
 using TakeOption = Option<struct TOpt>;
 using ReturnOption = Option<struct ROpt>;
 using ContainOption = Option<struct COpt>;
 
-struct DumpComand {
-  std::string name;
-};
-
-struct ScriptCommand {
+struct RunCommand {
   std::string script;
-  std::string function = "main";
-  std::vector<Literal> args;
-  std::string output_prefix = "result";
-  int verbosity = 0;
-};
-
-struct FunctionCommand {
-  std::string function;
-  std::vector<Literal> args;
-  std::string output_prefix = "result";
+  std::string expr;
+  std::string output_prefix;
   int verbosity = 0;
 };
 
@@ -139,11 +86,8 @@ struct TypeQueryCommand {
   std::string regex = ".*";
 };
 
-auto literal_parser() { return pc::transform_if("literal", parse_literal); }
-
 auto o_opt_parser() { return pc::construct<OutputOption>(pc::seq(pc::constant("-o", "-o"), pc::any())); }
 auto s_opt_parser() { return pc::construct<ScriptOption>(pc::seq(pc::constant("-s", "-s"), pc::any())); }
-auto f_opt_parser() { return pc::construct<FunctionOption>(pc::seq(pc::constant("-f", "-f"), pc::any())); }
 auto t_opt_parser() { return pc::construct<TakeOption>(pc::seq(pc::constant("-t", "-t"), pc::any())); }
 auto r_opt_parser() { return pc::construct<ReturnOption>(pc::seq(pc::constant("-r", "-r"), pc::any())); }
 auto c_opt_parser() { return pc::construct<ContainOption>(pc::seq(pc::constant("-c", "-c"), pc::any())); }
@@ -152,15 +96,16 @@ auto v_parser() {
   return pc::transform(pc::constant("-v", "-v"), []() { return Verbose{}; });
 }
 
-auto fn_cmd_parser() {
+auto run_cmd_parser() {
   return pc::transform(
-    pc::seq(pc::constant("fn", "fn"), pc::any(), pc::n(choose(v_parser(), literal_parser(), o_opt_parser()))),
-    [](std::string fn, std::vector<std::variant<Verbose, Literal, OutputOption>> args) {
-      FunctionCommand cmd{std::move(fn)};
+    pc::seq(pc::constant("run", "run"), pc::n(pc::choose(v_parser(), s_opt_parser(), o_opt_parser(), pc::any()))),
+    [](std::vector<std::variant<Verbose, ScriptOption, OutputOption, std::string>> args) {
+      RunCommand cmd;
 
       for(auto&& arg : args) {
-        std::visit(Overloaded{[&](Literal l) { cmd.args.push_back(std::move(l)); },
-                              [&](OutputOption o) { cmd.output_prefix = o.value; },
+        std::visit(Overloaded{[&](ScriptOption o) { cmd.script = std::move(o.value); },
+                              [&](OutputOption o) { cmd.output_prefix = std::move(o.value); },
+                              [&](std::string expr) { cmd.expr = std::move(expr); },
                               [&](Verbose) { cmd.verbosity++; }},
                    std::move(arg));
       }
@@ -168,30 +113,6 @@ auto fn_cmd_parser() {
       return cmd;
     });
 }
-
-auto script_cmd_parser() {
-  return pc::transform(
-    pc::seq(pc::constant("run", "run"),
-            pc::any(),
-            pc::n(pc::choose(v_parser(), f_opt_parser(), s_opt_parser(), o_opt_parser(), literal_parser()))),
-    [](std::string script,
-       std::vector<std::variant<Verbose, FunctionOption, ScriptOption, OutputOption, Literal>> args) {
-      ScriptCommand cmd{std::move(script)};
-
-      for(auto&& arg : args) {
-        std::visit(Overloaded{[&](FunctionOption o) { cmd.function = std::move(o.value); },
-                              [&](ScriptOption o) { cmd.script = std::move(o.value); },
-                              [&](OutputOption o) { cmd.output_prefix = o.value; },
-                              [&](Literal l) { cmd.args.push_back(std::move(l)); },
-                              [&](Verbose) { cmd.verbosity++; }},
-                   std::move(arg));
-      }
-
-      return cmd;
-    });
-}
-
-auto dump_cmd_parser() { return pc::construct<DumpComand>(pc::seq(pc::constant("dump", "dump"), pc::any())); }
 
 auto function_query_cmd_parser() {
   return pc::transform(pc::seq(pc::constant("functions", "functions"),
@@ -217,53 +138,26 @@ auto type_query_cmd_parser() {
     [](std::optional<std::string> regex) { return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{}; });
 }
 
-auto cmd_parser() {
-  return pc::choose(
-    fn_cmd_parser(), script_cmd_parser(), dump_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser());
-}
+auto cmd_parser() { return pc::choose(run_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser()); }
 
-void run(const DumpComand& cmd, const Env& e) {
-  const std::optional<Any> any = load(e, read_binary(cmd.name));
-
-  check(any.has_value(), "reading file {}", cmd.name);
-
-  const std::string& type_name = e.type_name(any->type());
-  const TypeEntry& t = e.type(type_name);
-
-  fmt::print("{} hash({})\n", type_name, t.hash(*any));
-  fmt::print("{}\n", t.to_string(*any));
-}
-
-void run(const ScriptCommand& cmd, const Env& e) {
-  std::vector<Any> inputs = gather_args(e, cmd.args);
-
-  if(cmd.verbosity != 0) {
-    int i = 0;
-    for(const Any& any : inputs) {
-      const std::string& type_name = e.type_name(any.type());
-      fmt::print("Input {}: {} {}\n", i++, type_name, e.type(type_name).to_string(any));
-    }
-  }
-
-  run(e, load_file(cmd.script), std::move(inputs), cmd.function)
+void run(const RunCommand& cmd, const Env& e) {
+  run(e, load_file(cmd.script), cmd.expr, [&](const std::string& name) { return *load(e, read_binary(name)); })
     .map([&](std::vector<Any> outputs) {
-      dump_values(e, cmd.output_prefix, outputs);
+      if(cmd.output_prefix != "") {
+        for(size_t i = 0; i < outputs.size(); i++) {
+          write_binary(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
+                                           : fmt::format("{}_{}", cmd.output_prefix, i),
+                       save(e, outputs[i]));
+        }
+      }
 
-      if(cmd.verbosity != 0) {
-        int i = 0;
+      if(cmd.output_prefix == "" || cmd.verbosity != 0) {
         for(const Any& any : outputs) {
-          const std::string& type_name = e.type_name(any.type());
-          fmt::print("Output {}: {} {}\n", i++, type_name, e.type(type_name).to_string(any));
+          fmt::print("{}\n", e.type(any.type()).to_string(any));
         }
       }
     })
     .or_else(dump_errors);
-}
-
-void run(const FunctionCommand& cmd, const Env& e) {
-  run(e, cmd.function, gather_args(e, cmd.args)).map([&](std::vector<Any> outputs) {
-    dump_values(e, cmd.output_prefix, outputs);
-  });
 }
 
 void run(const FunctionQueryCommand& cmd, const Env& e) {
@@ -324,27 +218,19 @@ std::vector<std::byte> save(const Env& e, const Any& v) {
   return e.type(v.type()).serialize(v, knot::serialize(e.type_name(v.type())));
 }
 
-Result<std::vector<Any>> run(const Env& e, const std::string& fn, std::vector<Any> args) {
-  if(!e.contains_function(fn)) {
-    return err(fmt::format("No function named {}", fn));
-  }
-
-  const auto& function = e.function(fn);
-
-  return type_check(e, fn, function.input_types(), args).map([&]() { return function(anyf::any_ptrs(args)); });
+Result<std::vector<Any>>
+run(const Env& e, std::string_view script, std::string_view expr, std::function<Any(const std::string&)> load) {
+  return parse(script)
+    .and_then([&](AST ast) {
+      return parse_expr(expr).map([&](ast::Expr expr) { return std::pair(std::move(ast), std::move(expr)); });
+    })
+    .and_then([&](std::pair<AST, ast::Expr> p) { return create_graph(e, p.first, p.second, load); })
+    .map([&](FunctionGraph g) { return anyf::execute_graph(g, anyf::TaskExecutor{}, {}); });
 }
 
-Result<std::vector<Any>> run(const Env& e, std::string_view script, std::vector<Any> inputs, const std::string& fn) {
-  return parse(script)
-    .and_then([&](AST ast) { return create_graphs(e, ast); })
-    .and_then([&](Map<std::string, FunctionGraph> graphs) {
-      const auto it = graphs.find(fn);
-
-      return it != graphs.end() ? type_check(e, fn, input_types(it->second), inputs).map([&]() {
-        return anyf::execute_graph(it->second, anyf::TaskExecutor{}, std::move(inputs));
-      })
-                                : err(fmt::format("cannot find function {}", fn));
-    });
+tl::expected<std::vector<Any>, std::vector<std::string>>
+run(const Env& e, std::string_view script, std::string_view expr) {
+  return run(e, script, expr, [](const auto&) -> Any { error("Loader not specified"); });
 }
 
 int main(int argc, char* argv[], const Env& e) {
@@ -358,9 +244,7 @@ int main(int argc, char* argv[], const Env& e) {
 
   if(!opt_cmd) {
     const char* msg = "Usage:\n"
-                      "  dump file\n"
-                      "  run <script> [-f fn] [-v] args...\n"
-                      "  fn <fn> [-v] args...\n"
+                      "  run [-s script] expr\n"
                       "  types [regex]\n"
                       "  functions [-t takes] [-r returns] [-c contains] [regex]\n";
 
