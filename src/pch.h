@@ -82,4 +82,6 @@ inline void dump_errors(const std::vector<std::string>& errors) {
   }
 }
 
+inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string>{std::move(msg)}}; }
+
 } // namespace ooze

@@ -73,8 +73,7 @@ Result<void> type_check(const Env& e,
                         const std::vector<TypeProperties>& expected,
                         const std::vector<Any>& args) {
   if(expected.size() != args.size()) {
-    return tl::unexpected{
-      std::vector<std::string>{fmt::format("{} expects {} arg(s), given {}", fn, expected.size(), args.size())}};
+    return err(fmt::format("{} expects {} arg(s), given {}", fn, expected.size(), args.size()));
   }
 
   std::vector<std::string> errors;
@@ -140,22 +139,22 @@ struct TypeQueryCommand {
   std::string regex = ".*";
 };
 
-auto literal_parser() { return pc::transform_if(parse_literal); }
+auto literal_parser() { return pc::transform_if("literal", parse_literal); }
 
-auto o_opt_parser() { return pc::construct<OutputOption>(pc::seq(pc::constant("-o"), pc::any())); }
-auto s_opt_parser() { return pc::construct<ScriptOption>(pc::seq(pc::constant("-s"), pc::any())); }
-auto f_opt_parser() { return pc::construct<FunctionOption>(pc::seq(pc::constant("-f"), pc::any())); }
-auto t_opt_parser() { return pc::construct<TakeOption>(pc::seq(pc::constant("-t"), pc::any())); }
-auto r_opt_parser() { return pc::construct<ReturnOption>(pc::seq(pc::constant("-r"), pc::any())); }
-auto c_opt_parser() { return pc::construct<ContainOption>(pc::seq(pc::constant("-c"), pc::any())); }
+auto o_opt_parser() { return pc::construct<OutputOption>(pc::seq(pc::constant("-o", "-o"), pc::any())); }
+auto s_opt_parser() { return pc::construct<ScriptOption>(pc::seq(pc::constant("-s", "-s"), pc::any())); }
+auto f_opt_parser() { return pc::construct<FunctionOption>(pc::seq(pc::constant("-f", "-f"), pc::any())); }
+auto t_opt_parser() { return pc::construct<TakeOption>(pc::seq(pc::constant("-t", "-t"), pc::any())); }
+auto r_opt_parser() { return pc::construct<ReturnOption>(pc::seq(pc::constant("-r", "-r"), pc::any())); }
+auto c_opt_parser() { return pc::construct<ContainOption>(pc::seq(pc::constant("-c", "-c"), pc::any())); }
 
 auto v_parser() {
-  return pc::transform(pc::constant("-v"), []() { return Verbose{}; });
+  return pc::transform(pc::constant("-v", "-v"), []() { return Verbose{}; });
 }
 
 auto fn_cmd_parser() {
   return pc::transform(
-    pc::seq(pc::constant("fn"), pc::any(), pc::n(choose(v_parser(), literal_parser(), o_opt_parser()))),
+    pc::seq(pc::constant("fn", "fn"), pc::any(), pc::n(choose(v_parser(), literal_parser(), o_opt_parser()))),
     [](std::string fn, std::vector<std::variant<Verbose, Literal, OutputOption>> args) {
       FunctionCommand cmd{std::move(fn)};
 
@@ -172,7 +171,7 @@ auto fn_cmd_parser() {
 
 auto script_cmd_parser() {
   return pc::transform(
-    pc::seq(pc::constant("run"),
+    pc::seq(pc::constant("run", "run"),
             pc::any(),
             pc::n(pc::choose(v_parser(), f_opt_parser(), s_opt_parser(), o_opt_parser(), literal_parser()))),
     [](std::string script,
@@ -192,30 +191,30 @@ auto script_cmd_parser() {
     });
 }
 
-auto dump_cmd_parser() { return pc::construct<DumpComand>(pc::seq(pc::constant("dump"), pc::any())); }
+auto dump_cmd_parser() { return pc::construct<DumpComand>(pc::seq(pc::constant("dump", "dump"), pc::any())); }
 
 auto function_query_cmd_parser() {
-  return pc::transform(
-    pc::seq(pc::constant("functions"), pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
-    [](std::vector<std::variant<TakeOption, ReturnOption, ContainOption, std::string>> args) {
-      FunctionQueryCommand cmd;
+  return pc::transform(pc::seq(pc::constant("functions", "functions"),
+                               pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
+                       [](std::vector<std::variant<TakeOption, ReturnOption, ContainOption, std::string>> args) {
+                         FunctionQueryCommand cmd;
 
-      for(auto&& arg : args) {
-        std::visit(Overloaded{[&](TakeOption o) { cmd.takes.push_back(std::move(o.value)); },
-                              [&](ReturnOption o) { cmd.returns.push_back(std::move(o.value)); },
-                              [&](ContainOption o) { cmd.contains.push_back(std::move(o.value)); },
-                              [&](std::string r) { cmd.regex = std::move(r); }},
-                   std::move(arg));
-      }
+                         for(auto&& arg : args) {
+                           std::visit(Overloaded{[&](TakeOption o) { cmd.takes.push_back(std::move(o.value)); },
+                                                 [&](ReturnOption o) { cmd.returns.push_back(std::move(o.value)); },
+                                                 [&](ContainOption o) { cmd.contains.push_back(std::move(o.value)); },
+                                                 [&](std::string r) { cmd.regex = std::move(r); }},
+                                      std::move(arg));
+                         }
 
-      return cmd;
-    });
+                         return cmd;
+                       });
 }
 
 auto type_query_cmd_parser() {
-  return pc::transform(pc::seq(pc::constant("types"), pc::maybe(pc::any())), [](std::optional<std::string> regex) {
-    return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{};
-  });
+  return pc::transform(
+    pc::seq(pc::constant("types", "types"), pc::maybe(pc::any())),
+    [](std::optional<std::string> regex) { return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{}; });
 }
 
 auto cmd_parser() {
@@ -327,7 +326,7 @@ std::vector<std::byte> save(const Env& e, const Any& v) {
 
 Result<std::vector<Any>> run(const Env& e, const std::string& fn, std::vector<Any> args) {
   if(!e.contains_function(fn)) {
-    return tl::unexpected{std::vector<std::string>{fmt::format("No function named {}", fn)}};
+    return err(fmt::format("No function named {}", fn));
   }
 
   const auto& function = e.function(fn);
@@ -344,7 +343,7 @@ Result<std::vector<Any>> run(const Env& e, std::string_view script, std::vector<
       return it != graphs.end() ? type_check(e, fn, input_types(it->second), inputs).map([&]() {
         return anyf::execute_graph(it->second, anyf::TaskExecutor{}, std::move(inputs));
       })
-                                : tl::unexpected{std::vector<std::string>{fmt::format("cannot find function {}", fn)}};
+                                : err(fmt::format("cannot find function {}", fn));
     });
 }
 

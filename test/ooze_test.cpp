@@ -6,12 +6,6 @@
 
 namespace ooze {
 
-namespace {
-
-auto err(std::string err) { return tl::unexpected{std::vector<std::string>{std::move(err)}}; }
-
-} // namespace
-
 BOOST_AUTO_TEST_CASE(ooze_basic) {
   constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 {"
                                       "  sum(sum(x, y), y)"

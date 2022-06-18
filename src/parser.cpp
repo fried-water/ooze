@@ -9,14 +9,19 @@ namespace ooze {
 
 namespace {
 
-auto symbol(std::string_view sv) { return pc::constant(Token{TokenType::Symbol, sv}); }
-auto keyword(std::string_view sv) { return pc::constant(Token{TokenType::Keyword, sv}); }
+auto symbol(std::string_view sv) { return pc::constant(fmt::format("'{}'", sv), Token{TokenType::Symbol, sv}); }
+auto keyword(std::string_view sv) { return pc::constant(fmt::format("{}", sv), Token{TokenType::Keyword, sv}); }
+
+auto ident() {
+  return pc::transform_if(
+    "identifier", [](Token t) { return t.type == TokenType::Ident ? std::optional(std::string(t.sv)) : std::nullopt; });
+}
 
 template <typename P>
 auto list(P p) {
   return pc::transform(
     pc::seq(symbol("("), pc::choose(symbol(")"), pc::seq(pc::n(pc::seq(p, symbol(","))), p, symbol(")")))),
-    [](auto v) -> std::vector<pc::parser_result_t<Span<Token>, P>> {
+    [](auto v) -> std::vector<pc::parser_result_t<Token, P>> {
       if(v.index() == 0) {
         return {};
       } else {
@@ -34,11 +39,6 @@ auto list_or_one(P p) {
   });
 }
 
-auto ident() {
-  return pc::transform_if(
-    [](Token t) { return t.type == TokenType::Ident ? std::optional(std::string(t.sv)) : std::nullopt; });
-}
-
 auto parameter() {
   return pc::transform(pc::seq(ident(), symbol(":"), pc::maybe(symbol("&")), ident()),
                        [](std::string name, std::optional<std::tuple<>> opt, std::string type) {
@@ -48,12 +48,18 @@ auto parameter() {
 
 auto binding() { return pc::construct<ast::Binding>(seq(ident(), pc::maybe(seq(symbol(":"), ident())))); }
 
-std::optional<std::pair<Span<Token>, ast::Expr>> expr(Span<Token>);
-
-auto call() { return pc::construct<Indirect<ast::Call>>(pc::construct<ast::Call>(pc::seq(ident(), list(expr)))); }
-
-std::optional<std::pair<Span<Token>, ast::Expr>> expr(Span<Token> s) {
-  return pc::construct<ast::Expr>(pc::choose(call(), ident(), pc::transform_if(to_literal)))(s);
+pc::ParseResult<ast::Expr, Token> expr(Span<Token> s) {
+  return pc::transform(
+    pc::choose(pc::seq(ident(), maybe(list(expr))), pc::transform_if("literal", to_literal)), [](auto v) {
+      return std::visit(Overloaded{[](auto tuple) {
+                                     return std::get<1>(tuple)
+                                              ? ast::Expr{Indirect{ast::Call{std::move(std::get<0>(tuple)),
+                                                                             std::move(*std::get<1>(tuple))}}}
+                                              : ast::Expr{std::move(std::get<0>(tuple))};
+                                   },
+                                   [](Literal l) { return ast::Expr{std::move(l)}; }},
+                        std::move(v));
+    })(s);
 }
 
 auto assignment() {
@@ -88,8 +94,47 @@ Result<AST> parse(std::string_view script) {
                                                      ? fmt::format("Lexer failed: {}...", remaining.substr(0, 10))
                                                      : fmt::format("Lexer failed: {}", remaining)}};
   } else {
-    std::optional<AST> ast = pc::parse(pc::n(function()), Span<Token>{tokens});
-    return ast ? Result<AST>{std::move(*ast)} : tl::unexpected{std::vector<std::string>{"Parsing failed"}};
+    Span<Token> token_span{tokens};
+    auto res = parse(pc::n(function()), token_span);
+
+    if(res) {
+      return std::move(*res);
+    } else {
+      auto errors = std::move(res.error());
+      std::reverse(errors.begin(), errors.end());
+
+      const Token* error_tok = errors.front().second;
+
+      const auto errors_end =
+        std::find_if(errors.begin() + 1, errors.end(), [&](const auto& p) { return p.second != error_tok; });
+
+      const std::string_view error_tok_sv =
+        error_tok == token_span.end() ? script.substr(script.size()) : error_tok->sv;
+
+      const auto line = 1 + std::count_if(script.data(), error_tok_sv.data(), [](char c) { return c == '\n'; });
+
+      const auto context_begin =
+        std::find_if(std::make_reverse_iterator(error_tok_sv.data()),
+                     std::make_reverse_iterator(std::max(script.data(), error_tok_sv.data() - 10)),
+                     [](char c) { return c == '\n'; })
+          .base();
+
+      const auto context_end =
+        std::find_if(error_tok_sv.data() + error_tok_sv.size(),
+                     std::min(script.data() + script.size(), error_tok_sv.data() + error_tok_sv.size() + 10),
+                     [](char c) { return c == '\n'; });
+
+      const std::string_view context(context_begin, (context_end - context_begin));
+
+      const auto preamble_distance = std::distance(context_begin, error_tok_sv.data());
+      std::string highlight = "";
+      for(int i = 0; i < preamble_distance; i++) highlight += " ";
+      highlight += '^';
+      for(int i = 0; i < error_tok_sv.size() - 1; i++) highlight += "~";
+
+      return tl::unexpected{std::vector<std::string>{fmt::format(
+        "Parsing error at line {}: expected {}\n  {}\n  {}", line, errors.front().first, context, highlight)}};
+    }
   }
 }
 

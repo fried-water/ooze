@@ -76,9 +76,8 @@ add_expr(GraphContext& ctx, const Expr& expr, const Env& e, const Map<std::strin
       },
       [&](const std::string& identifier) {
         const auto it = ctx.bindings.find(identifier);
-        return it != ctx.bindings.end()
-                 ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
-                 : tl::unexpected(std::vector<std::string>{fmt::format("{} not found", identifier)});
+        return it != ctx.bindings.end() ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
+                                        : err(fmt::format("{} not found", identifier));
       },
       [&](const Literal& l) {
         error("TODO support function binding");
@@ -120,8 +119,8 @@ Result<FunctionGraph> create_graph(const Function& f, const Env& e, const Map<st
             return add_expr(ctx, assignment.expr, e, graphs)
               .and_then([&](std::vector<Term> terms) -> Result<GraphContext> {
                 if(terms.size() != assignment.variables.size()) {
-                  return tl::unexpected{std::vector<std::string>{fmt::format(
-                    "Assignment expects {} value(s), given {}", assignment.variables.size(), terms.size())}};
+                  return err(
+                    fmt::format("Assignment expects {} value(s), given {}", assignment.variables.size(), terms.size()));
                 }
 
                 std::vector<std::string> errors;
@@ -147,8 +146,7 @@ Result<FunctionGraph> create_graph(const Function& f, const Env& e, const Map<st
     .and_then([&](GraphContext ctx) {
       return accumulate_exprs(ctx, f.ret, e, graphs).and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
         if(terms.size() != f.result.size()) {
-          return tl::unexpected{std::vector<std::string>{
-            fmt::format("{} returns {} value(s), given {}", f.name, f.result.size(), terms.size())}};
+          return err(fmt::format("{} returns {} value(s), given {}", f.name, f.result.size(), terms.size()));
         }
 
         std::vector<std::string> errors;
