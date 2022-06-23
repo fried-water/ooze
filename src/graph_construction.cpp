@@ -193,6 +193,8 @@ Result<FunctionGraph> create_graph(const Function& f,
     });
 }
 
+} // namespace
+
 Result<Map<std::string, FunctionGraph>>
 create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&)> load) {
   Map<std::string, std::vector<std::string>> dependencies;
@@ -250,16 +252,14 @@ create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&
                         : tl::unexpected{std::move(errors)};
 }
 
-} // namespace
+Result<FunctionGraph> create_graph(const Env& e,
+                                   const ast::Expr& expr,
+                                   const Map<std::string, FunctionGraph>& graphs,
+                                   std::function<Any(const std::string&)> load) {
+  GraphContext ctx{std::get<0>(anyf::make_graph({}))};
 
-Result<FunctionGraph>
-create_graph(const Env& e, const AST& ast, const ast::Expr& expr, std::function<Any(const std::string&)> load) {
-  return create_graphs(e, ast, load).and_then([&](Map<std::string, FunctionGraph> graphs) {
-    GraphContext ctx{std::get<0>(anyf::make_graph({}))};
-
-    return add_expr(ctx, expr, e, graphs, load).and_then([&](std::vector<Term> terms) {
-      return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, "return"));
-    });
+  return add_expr(ctx, expr, e, graphs, load).and_then([&](std::vector<Term> terms) {
+    return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, "return"));
   });
 }
 

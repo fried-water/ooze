@@ -16,11 +16,6 @@ namespace ooze {
 
 namespace {
 
-template <typename T>
-T&& identity(T&& t) {
-  return std::forward<T>(t);
-}
-
 template <typename Range, typename F>
 std::string join(const Range& range, F f) {
   if(range.begin() == range.end()) {
@@ -53,6 +48,15 @@ std::string load_file(const std::string& filename) {
   std::stringstream sstr;
   sstr << file.rdbuf();
   return std::move(sstr).str();
+}
+
+std::string generate_error_msg(std::string_view src, const ParseError& error) {
+  std::string highlight = "";
+  for(int i = 0; i < error.pos; i++) highlight += " ";
+  highlight += '^';
+  for(int i = 0; i < static_cast<int>(error.error_token.size()) - 1; i++) highlight += "~";
+
+  return fmt::format("{}:{}:{} {}\n  {}\n  {}", src, error.line, error.pos, error.msg, error.error_line, highlight);
 }
 
 template <typename T>
@@ -140,6 +144,12 @@ auto type_query_cmd_parser() {
 
 auto cmd_parser() { return pc::choose(run_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser()); }
 
+auto parse_script_to_graphs(const Env& e, std::string_view script, std::function<Any(const std::string&)> load) {
+  return parse(script)
+    .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; })
+    .and_then([&](AST ast) { return create_graphs(e, ast, load); });
+}
+
 void run(const RunCommand& cmd, const Env& e) {
   run(e, load_file(cmd.script), cmd.expr, [&](const std::string& name) { return *load(e, read_binary(name)); })
     .map([&](std::vector<Any> outputs) {
@@ -220,11 +230,11 @@ std::vector<std::byte> save(const Env& e, const Any& v) {
 
 Result<std::vector<Any>>
 run(const Env& e, std::string_view script, std::string_view expr, std::function<Any(const std::string&)> load) {
-  return parse(script)
-    .and_then([&](AST ast) {
-      return parse_expr(expr).map([&](ast::Expr expr) { return std::pair(std::move(ast), std::move(expr)); });
-    })
-    .and_then([&](std::pair<AST, ast::Expr> p) { return create_graph(e, p.first, p.second, load); })
+  return merge(parse_expr(expr).map_error([&](const ParseError& error) {
+           return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)};
+         }),
+               parse_script_to_graphs(e, script, load),
+               [&](const auto& expr, const auto& graphs) { return create_graph(e, expr, graphs, load); })
     .map([&](FunctionGraph g) { return anyf::execute_graph(g, anyf::TaskExecutor{}, {}); });
 }
 

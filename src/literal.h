@@ -12,7 +12,7 @@ using Literal = std::variant<bool, std::string, FileLiteral, i8, i16, i32, i64, 
 inline std::string to_string(const Literal& v) {
   return std::visit(Overloaded{[](bool b) { return std::string(b ? "true" : "false"); },
                                [](const std::string& s) { return fmt::format("\"{}\"", s); },
-                               [](const FileLiteral& f) { return fmt::format("|{}|", f.name); },
+                               [](const FileLiteral& f) { return fmt::format("@{}", f.name); },
                                [](i8 i) { return fmt::format("'{}'", i); },
                                [](i16 i) { return fmt::format("{}i16", i); },
                                [](i32 i) { return fmt::format("{}i32", i); },

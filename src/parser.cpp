@@ -79,64 +79,43 @@ auto function() {
 }
 
 template <typename Parser>
-Result<pc::parser_result_t<Token, Parser>>
-parse_with_error(Parser p, std::string_view src_name, std::string_view script) {
-  const auto [tokens, remaining] = lex(script);
+ParseResult<pc::parser_result_t<Token, Parser>> parse_string(Parser p, const std::string_view src) {
+  const auto [tokens, remaining] = lex(src);
 
-  if(!remaining.empty()) {
-    return tl::unexpected{std::vector<std::string>{remaining.size() > 10
-                                                     ? fmt::format("Lexer failed: {}...", remaining.substr(0, 10))
-                                                     : fmt::format("Lexer failed: {}", remaining)}};
+  Span<Token> token_span{tokens};
+  auto res = p(token_span);
+
+  if(res.value && res.tokens.empty() && remaining.empty()) {
+    return std::move(*res.value);
   } else {
-    Span<Token> token_span{tokens};
-    auto res = parse(p, token_span);
+    std::sort(
+      res.errors.begin(), res.errors.end(), [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
 
-    if(res) {
-      return std::move(*res);
-    } else {
-      auto errors = std::move(res.error());
-      std::reverse(errors.begin(), errors.end());
+    const std::string_view error_sv = res.errors.empty() ? remaining.substr(0, 1)
+                                                         : (res.errors.front().second == token_span.end()
+                                                              ? remaining.substr(0, remaining.empty() ? 0 : 1)
+                                                              : res.errors.front().second->sv);
 
-      const Token* error_tok = errors.front().second;
+    const auto pos = src.begin() + (error_sv.data() - src.data());
 
-      const std::string_view error_tok_sv =
-        error_tok == token_span.end() ? script.substr(script.size()) : error_tok->sv;
+    const auto is_newline = [](char c) { return c == '\n'; };
 
-      const auto line = 1 + std::count_if(script.data(), error_tok_sv.data(), [](char c) { return c == '\n'; });
+    const auto line_begin =
+      std::find_if(std::make_reverse_iterator(pos), std::make_reverse_iterator(src.begin()), is_newline).base();
 
-      const auto context_begin =
-        std::find_if(std::make_reverse_iterator(error_tok_sv.data()),
-                     std::make_reverse_iterator(std::max(script.data(), error_tok_sv.data() - 10)),
-                     [](char c) { return c == '\n'; })
-          .base();
-
-      const auto context_end =
-        std::find_if(error_tok_sv.data() + error_tok_sv.size(),
-                     std::min(script.data() + script.size(), error_tok_sv.data() + error_tok_sv.size() + 10),
-                     [](char c) { return c == '\n'; });
-
-      const std::string_view context(context_begin, (context_end - context_begin));
-
-      const auto preamble_distance = std::distance(context_begin, error_tok_sv.data());
-      std::string highlight = "";
-      for(int i = 0; i < preamble_distance; i++) highlight += " ";
-      highlight += '^';
-      for(int i = 0; i < static_cast<int>(error_tok_sv.size()) - 1; i++) highlight += "~";
-
-      return tl::unexpected{std::vector<std::string>{fmt::format("Error parsing {} at line {}: expected {}\n  {}\n  {}",
-                                                                 src_name,
-                                                                 line,
-                                                                 errors.front().first,
-                                                                 context,
-                                                                 highlight)}};
-    }
+    return tl::unexpected{ParseError{res.errors.empty() ? fmt::format("Unknown token")
+                                                        : fmt::format("Error expected {}", res.errors.front().first),
+                                     std::string(error_sv.begin(), error_sv.end()),
+                                     std::string(line_begin, std::find_if(pos, src.end(), is_newline)),
+                                     static_cast<int>(std::count_if(src.begin(), line_begin, is_newline)) + 1,
+                                     static_cast<int>(std::distance(line_begin, pos))}};
   }
 }
 
 } // namespace
 
-Result<ast::Expr> parse_expr(std::string_view expr_src) { return parse_with_error(expr, "expr", expr_src); }
+ParseResult<ast::Expr> parse_expr(std::string_view src) { return parse_string(expr, src); }
 
-Result<AST> parse(std::string_view script) { return parse_with_error(pc::n(function()), "script", script); }
+ParseResult<AST> parse(std::string_view src) { return parse_string(pc::n(function()), src); }
 
 } // namespace ooze

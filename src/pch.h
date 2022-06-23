@@ -84,4 +84,20 @@ inline void dump_errors(const std::vector<std::string>& errors) {
 
 inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string>{std::move(msg)}}; }
 
+template <typename T1, typename T2, typename E, typename F>
+std::invoke_result_t<F, T1, T2> merge(tl::expected<T1, std::vector<E>> lhs, tl::expected<T2, std::vector<E>> rhs, F f) {
+  if(lhs && rhs) {
+    return f(std::move(lhs.value()), std::move(rhs.value()));
+  } else if(!lhs && !rhs) {
+    std::vector<E> errors = std::move(lhs.error());
+    errors.insert(
+      errors.end(), std::make_move_iterator(rhs.error().begin()), std::make_move_iterator(rhs.error().end()));
+    return tl::unexpected{std::move(errors)};
+  } else if(!lhs) {
+    return tl::unexpected{std::move(lhs.error())};
+  } else {
+    return tl::unexpected{std::move(rhs.error())};
+  }
+}
+
 } // namespace ooze
