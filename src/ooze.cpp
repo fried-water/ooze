@@ -50,6 +50,21 @@ std::string load_file(const std::string& filename) {
   return std::move(sstr).str();
 }
 
+std::optional<Any> load(const Env& e, Span<std::byte> bytes) {
+  auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
+
+  check(opt_type.has_value(), "deserializing");
+  check(e.contains_type(opt_type->first), "cannot find type {}", opt_type->first);
+
+  const TypeEntry& entry = e.type(opt_type->first);
+
+  return entry.deserialize(Span<std::byte>(opt_type->second, bytes.end()));
+}
+
+std::vector<std::byte> save(const Env& e, const Any& v) {
+  return e.type(v.type()).serialize(v, knot::serialize(e.type_name(v.type())));
+}
+
 std::string generate_error_msg(std::string_view src, const ParseError& error) {
   std::string highlight = "";
   for(int i = 0; i < error.pos; i++) highlight += " ";
@@ -213,21 +228,6 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 
 } // namespace
 
-std::optional<Any> load(const Env& e, Span<std::byte> bytes) {
-  auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
-
-  check(opt_type.has_value(), "deserializing");
-  check(e.contains_type(opt_type->first), "cannot find type {}", opt_type->first);
-
-  const TypeEntry& entry = e.type(opt_type->first);
-
-  return entry.deserialize(Span<std::byte>(opt_type->second, bytes.end()));
-}
-
-std::vector<std::byte> save(const Env& e, const Any& v) {
-  return e.type(v.type()).serialize(v, knot::serialize(e.type_name(v.type())));
-}
-
 Result<std::vector<Any>>
 run(const Env& e, std::string_view script, std::string_view expr, std::function<Any(const std::string&)> load) {
   return merge(parse_expr(expr).map_error([&](const ParseError& error) {
@@ -236,11 +236,6 @@ run(const Env& e, std::string_view script, std::string_view expr, std::function<
                parse_script_to_graphs(e, script, load),
                [&](const auto& expr, const auto& graphs) { return create_graph(e, expr, graphs, load); })
     .map([&](FunctionGraph g) { return anyf::execute_graph(g, anyf::TaskExecutor{}, {}); });
-}
-
-tl::expected<std::vector<Any>, std::vector<std::string>>
-run(const Env& e, std::string_view script, std::string_view expr) {
-  return run(e, script, expr, [](const auto&) -> Any { error("Loader not specified"); });
 }
 
 int main(int argc, char* argv[], const Env& e) {

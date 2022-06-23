@@ -15,6 +15,13 @@ struct Box {
   Point max;
 };
 
+struct Unspecified {
+  int x;
+};
+
+Unspecified create_u(int x) { return {x}; }
+int take_u(Unspecified u) { return u.x; }
+
 Point add(Point a, Point b) { return {a.x + b.x, a.y + b.y}; }
 Point scale(Point a, int s) { return {a.x * s, a.y * s}; }
 
@@ -32,6 +39,9 @@ ooze::Env create_env() {
   e.add("add", add);
   e.add("scale", scale);
   e.add("sleep", sleep);
+
+  e.add("create_u", create_u);
+  e.add("take_u", take_u);
 
   return e;
 }

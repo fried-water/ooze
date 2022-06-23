@@ -10,12 +10,6 @@
 
 namespace ooze {
 
-std::optional<Any> load(const Env&, Span<std::byte>);
-std::vector<std::byte> save(const Env&, const Any&);
-
-tl::expected<std::vector<Any>, std::vector<std::string>>
-run(const Env&, std::string_view script, std::string_view expr);
-
 tl::expected<std::vector<Any>, std::vector<std::string>>
 run(const Env&, std::string_view script, std::string_view expr, std::function<Any(const std::string&)>);
 

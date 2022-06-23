@@ -2,8 +2,10 @@
 add(Point, Point) -> Point
 create_box(Point, Point) -> Box
 create_point(i32, i32) -> Point
+create_u(i32) -> 0x10234facc
 scale(Point, i32) -> Point
 sleep(i32) -> i32
+take_u(0x10234facc) -> i32
 ./ooze types
 Box
 Point
@@ -20,8 +22,8 @@ u32
 u64
 u8
 ./ooze run "create_point(4, 5)" -o point
-./ooze run "|point|"
+./ooze run "@point"
 (4, 5)
-./ooze run -s script.oz "main(|point|, 1)"
+./ooze run -s script.oz "main(@point, 1)"
 ((8, 10), (12, 15))
 (1, 1)

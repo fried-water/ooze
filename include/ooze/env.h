@@ -83,7 +83,10 @@ public:
 
   const TypeEntry& type(const std::string& name) const { return _types.at(name); }
   const TypeEntry& type(TypeID id) const { return type(_type_names.at(id)); }
-  const std::string& type_name(TypeID id) const { return _type_names.at(id); }
+  std::string type_name(TypeID id) const {
+    const auto it = _type_names.find(id);
+    return it != _type_names.end() ? it->second : fmt::format("0x{:x}", id);
+  }
   const AnyFunction& function(const std::string& name) const { return _functions.at(name); }
 
   bool contains_function(const std::string& name) const { return _functions.find(name) != _functions.end(); }

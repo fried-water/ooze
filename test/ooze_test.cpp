@@ -6,6 +6,10 @@
 
 namespace ooze {
 
+Result<std::vector<Any>> run(const Env& e, std::string_view script, std::string_view expr) {
+  return run(e, script, expr, [](const auto&) -> Any { error("Loader not specified"); });
+}
+
 BOOST_AUTO_TEST_CASE(ooze_basic) {
   constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 {"
                                       "  sum(sum(x, y), y)"
