@@ -95,7 +95,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
           Overloaded{
             [&](const FileLiteral& file) {
               Any value = load(file.name);
-              const TypeProperties props = e.type(value.type()).type;
+              const TypeProperties props = e.type_properties(e.type_name(value.type()));
               return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, file.name));
             },
             [&](const std::string& value) {
@@ -121,7 +121,7 @@ Result<FunctionGraph> create_graph(const Function& f,
     if(!e.contains_type(p.type)) {
       errors.push_back(fmt::format("type {} not found", p.type));
     } else {
-      input_types.push_back(p.borrow ? e.type(p.type).borrowed_type : e.type(p.type).type);
+      input_types.push_back(p.borrow ? e.type_properties(p.type) : e.type_borrowed_properties(p.type));
     }
   }
 

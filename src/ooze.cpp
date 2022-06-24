@@ -50,19 +50,25 @@ std::string load_file(const std::string& filename) {
   return std::move(sstr).str();
 }
 
-std::optional<Any> load(const Env& e, Span<std::byte> bytes) {
+std::string type_name_or_id(const Env& e, TypeID type) {
+  return e.contains_type(type) ? e.type_name(type) : fmt::format("0x{}", type);
+}
+
+std::optional<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
   auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
 
-  check(opt_type.has_value(), "deserializing");
+  check(opt_type.has_value(), "deserializing @{}", name);
   check(e.contains_type(opt_type->first), "cannot find type {}", opt_type->first);
+  check(e.contains_serialize(e.type_id(opt_type->first)), "type {} is not serializable", opt_type->first);
 
-  const TypeEntry& entry = e.type(opt_type->first);
-
-  return entry.deserialize(Span<std::byte>(opt_type->second, bytes.end()));
+  return e.deserialize(opt_type->first, Span<std::byte>(opt_type->second, bytes.end()));
 }
 
 std::vector<std::byte> save(const Env& e, const Any& v) {
-  return e.type(v.type()).serialize(v, knot::serialize(e.type_name(v.type())));
+  check(e.contains_type(v.type()), "cannot find type 0x{}", v.type());
+  check(e.contains_serialize(v.type()), "type {} is not serializable", e.type_name(v.type()));
+
+  return e.serialize(v, knot::serialize(e.type_name(v.type())));
 }
 
 std::string generate_error_msg(std::string_view src, const ParseError& error) {
@@ -166,7 +172,7 @@ auto parse_script_to_graphs(const Env& e, std::string_view script, std::function
 }
 
 void run(const RunCommand& cmd, const Env& e) {
-  run(e, load_file(cmd.script), cmd.expr, [&](const std::string& name) { return *load(e, read_binary(name)); })
+  run(e, load_file(cmd.script), cmd.expr, [&](const std::string& name) { return *load(e, read_binary(name), name); })
     .map([&](std::vector<Any> outputs) {
       if(cmd.output_prefix != "") {
         for(size_t i = 0; i < outputs.size(); i++) {
@@ -178,7 +184,11 @@ void run(const RunCommand& cmd, const Env& e) {
 
       if(cmd.output_prefix == "" || cmd.verbosity != 0) {
         for(const Any& any : outputs) {
-          fmt::print("{}\n", e.type(any.type()).to_string(any));
+          if(e.contains_type(any.type()) && e.contains_to_string(any.type())) {
+            fmt::print("{}\n", e.to_string(any));
+          } else {
+            fmt::print("[Object of type {}]\n", type_name_or_id(e, any.type()));
+          }
         }
       }
     })
@@ -186,7 +196,7 @@ void run(const RunCommand& cmd, const Env& e) {
 }
 
 void run(const FunctionQueryCommand& cmd, const Env& e) {
-  const auto type_name = [&](auto t) { return e.type_name(t.type_id()); };
+  const auto type_name = [&](auto t) { return type_name_or_id(e, t.type_id()); };
 
   const std::regex re(cmd.regex);
 
@@ -195,7 +205,7 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
 
     const auto doesnt_have = [&](const std::vector<TypeProperties>& types, const std::string& type) {
       check(e.contains_type(type), "type {} not found", type);
-      const TypeID type_id = e.type(type).type.type_id();
+      const TypeID type_id = e.type_properties(type).type_id();
       return std::none_of(types.begin(), types.end(), [&](auto t) { return t.type_id() == type_id; });
     };
 

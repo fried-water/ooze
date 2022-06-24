@@ -33,8 +33,8 @@ int sleep(int x) {
 ooze::Env create_env() {
   ooze::Env e = ooze::create_primative_env();
 
-  e.add<Point>("Point");
-  e.add<Box>("Box");
+  ooze::add_tieable_type<Point>(e, "Point");
+  ooze::add_tieable_type<Box>(e, "Box");
 
   e.add("add", add);
   e.add("scale", scale);
