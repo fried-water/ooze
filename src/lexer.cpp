@@ -21,7 +21,7 @@ constexpr auto int_re = ctll::fixed_string{"^-?\\d+(i8|i16|i32|i64|u8|u16|u32|u6
 constexpr auto float_re = ctll::fixed_string{"^-?\\d+?\\.\\d+f?"};
 constexpr auto bool_re = ctll::fixed_string{"^true|^false"};
 constexpr auto string_re = ctll::fixed_string{"^\".*\""};
-constexpr auto file_re = ctll::fixed_string{"^@[._a-zA-Z0-9]+"};
+constexpr auto file_re = ctll::fixed_string{"^@[._a-zA-Z0-9/]+"};
 
 template <auto& T>
 using matcher = ctre::regex_search_t<typename ctre::regex_builder<T>::type>;

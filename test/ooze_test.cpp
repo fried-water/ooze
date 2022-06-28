@@ -37,7 +37,7 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
   const auto script = "fn f(x: Point, y: Point) -> Point { sum(sum(x, y), y) }";
 
   Env env = create_primative_env();
-  env.add<Point>("Point");
+  add_tieable_type<Point>(env, "Point");
   env.add("sum", [](Point p1, Point p2) { return Point{p1.x + p2.x, p1.y + p2.y}; });
 
   const auto results = run(env, script, "f(create_point(1, 2), create_point(9, 7))");
@@ -79,7 +79,6 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_already_move) {
-
   const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }";
 
   Env env = create_primative_env();

@@ -121,7 +121,7 @@ Result<FunctionGraph> create_graph(const Function& f,
     if(!e.contains_type(p.type)) {
       errors.push_back(fmt::format("type {} not found", p.type));
     } else {
-      input_types.push_back(p.borrow ? e.type_properties(p.type) : e.type_borrowed_properties(p.type));
+      input_types.push_back(p.borrow ? e.type_borrowed_properties(p.type) : e.type_properties(p.type));
     }
   }
 
