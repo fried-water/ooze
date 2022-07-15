@@ -29,8 +29,8 @@ public:
 
   operator bool() const { return _ptr != nullptr; }
 
-  friend const T& as_tie(const Indirect& i) { return *i; }
-  friend T& as_tie(Indirect& i) { return *i; }
+  friend auto as_tie(const Indirect& i) { return std::tie(*i); }
+  friend auto as_tie(Indirect& i) { return std::tie(*i); }
 
   KNOT_ORDERED(Indirect);
 };

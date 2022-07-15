@@ -116,6 +116,10 @@ ParseResult<pc::parser_result_t<Token, Parser>> parse_string(Parser p, const std
 
 ParseResult<ast::Expr> parse_expr(std::string_view src) { return parse_string(expr, src); }
 
+ParseResult<std::variant<ast::Expr, ast::Assignment>> parse_repl(std::string_view src) {
+  return parse_string(pc::choose(expr, assignment()), src);
+}
+
 ParseResult<AST> parse(std::string_view src) { return parse_string(pc::n(function()), src); }
 
 } // namespace ooze

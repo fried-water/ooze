@@ -59,5 +59,7 @@ struct Function {
 using AST = std::vector<ast::Function>;
 
 std::string pretty_print(const AST&);
+std::string pretty_print(const ast::Expr&);
+std::string pretty_print(const ast::Assignment&);
 
 } // namespace ooze

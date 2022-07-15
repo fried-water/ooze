@@ -81,14 +81,14 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
         } else {
           std::vector<std::string> errors =
             parameter_result ? std::vector<std::string>{} : std::move(parameter_result.error());
-          errors.insert(errors.begin(), fmt::format("Cannot find function {}()", call->name));
+          errors.insert(errors.begin(), fmt::format("Function {} not found", call->name));
           return tl::unexpected{std::move(errors)};
         }
       },
       [&](const std::string& identifier) {
         const auto it = ctx.bindings.find(identifier);
         return it != ctx.bindings.end() ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
-                                        : err(fmt::format("{} not found", identifier));
+                                        : err(fmt::format("Identifier {} not found", identifier));
       },
       [&](const Literal& literal) {
         return std::visit(
@@ -110,8 +110,67 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
     expr.v);
 }
 
-Result<FunctionGraph> create_graph(const Function& f,
-                                   const Env& e,
+} // namespace
+
+Result<Map<std::string, FunctionGraph>>
+create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&)> load) {
+  Map<std::string, std::vector<std::string>> dependencies;
+
+  for(const Function& function : ast) {
+    dependencies.emplace(
+      function.name,
+      knot::preorder_accumulate<std::vector<std::string>>(function, [&](std::vector<std::string> v, const Call& c) {
+        v.push_back(c.name);
+        return v;
+      }));
+  }
+
+  Map<std::string, FunctionGraph> graphs;
+  std::vector<std::string> errors;
+  Set<std::string> graph_errors;
+
+  const auto satisfied = [&](const std::string& dep) {
+    return e.contains_function(dep) || graphs.find(dep) != graphs.end();
+  };
+
+  auto it = ast.begin();
+  while(it != ast.end()) {
+    it = std::find_if(ast.begin(), ast.end(), [&](const Function& f) {
+      const std::vector<std::string>& deps = dependencies.at(f.name);
+      return graphs.find(f.name) == graphs.end() && std::all_of(deps.begin(), deps.end(), satisfied) &&
+             graph_errors.find(f.name) == graph_errors.end();
+    });
+
+    if(it != ast.end()) {
+      auto graph_result = create_graph(e, *it, graphs, load);
+
+      if(graph_result) {
+        graphs.emplace(it->name, std::move(*graph_result));
+      } else {
+        graph_errors.insert(it->name);
+        errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
+      }
+    }
+  }
+
+  for(const Function& f : ast) {
+    if(graphs.find(f.name) == graphs.end() && graph_errors.find(f.name) == graph_errors.end()) {
+      std::string dependency_error = fmt::format("Error generating {}()\n", f.name);
+      for(const std::string& dep : dependencies.at(f.name)) {
+        if(!satisfied(dep) && graph_errors.find(f.name) == graph_errors.end()) {
+          dependency_error += fmt::format("  unfound dependency {}()\n", dep);
+        }
+      }
+      errors.push_back(std::move(dependency_error));
+    }
+  }
+
+  return errors.empty() ? Result<Map<std::string, FunctionGraph>>{std::move(graphs)}
+                        : tl::unexpected{std::move(errors)};
+}
+
+Result<FunctionGraph> create_graph(const Env& e,
+                                   const Function& f,
                                    const Map<std::string, FunctionGraph>& graphs,
                                    std::function<Any(const std::string&)> load) {
   std::vector<TypeProperties> input_types;
@@ -193,74 +252,58 @@ Result<FunctionGraph> create_graph(const Function& f,
     });
 }
 
-} // namespace
-
-Result<Map<std::string, FunctionGraph>>
-create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&)> load) {
-  Map<std::string, std::vector<std::string>> dependencies;
-
-  for(const Function& function : ast) {
-    dependencies.emplace(
-      function.name,
-      knot::preorder_accumulate<std::vector<std::string>>(function, [&](std::vector<std::string> v, const Call& c) {
-        v.push_back(c.name);
-        return v;
-      }));
-  }
-
-  Map<std::string, FunctionGraph> graphs;
-  std::vector<std::string> errors;
-  Set<std::string> graph_errors;
-
-  const auto satisfied = [&](const std::string& dep) {
-    return e.contains_function(dep) || graphs.find(dep) != graphs.end();
-  };
-
-  auto it = ast.begin();
-  while(it != ast.end()) {
-    it = std::find_if(ast.begin(), ast.end(), [&](const Function& f) {
-      const std::vector<std::string>& deps = dependencies.at(f.name);
-      return graphs.find(f.name) == graphs.end() && std::all_of(deps.begin(), deps.end(), satisfied) &&
-             graph_errors.find(f.name) == graph_errors.end();
-    });
-
-    if(it != ast.end()) {
-      auto graph_result = create_graph(*it, e, graphs, load);
-
-      if(graph_result) {
-        graphs.emplace(it->name, std::move(*graph_result));
-      } else {
-        graph_errors.insert(it->name);
-        errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
-      }
-    }
-  }
-
-  for(const Function& f : ast) {
-    if(graphs.find(f.name) == graphs.end() && graph_errors.find(f.name) == graph_errors.end()) {
-      std::string dependency_error = fmt::format("Error generating {}()\n", f.name);
-      for(const std::string& dep : dependencies.at(f.name)) {
-        if(!satisfied(dep) && graph_errors.find(f.name) == graph_errors.end()) {
-          dependency_error += fmt::format("  unfound dependency {}()\n", dep);
-        }
-      }
-      errors.push_back(std::move(dependency_error));
-    }
-  }
-
-  return errors.empty() ? Result<Map<std::string, FunctionGraph>>{std::move(graphs)}
-                        : tl::unexpected{std::move(errors)};
-}
-
 Result<FunctionGraph> create_graph(const Env& e,
                                    const ast::Expr& expr,
                                    const Map<std::string, FunctionGraph>& graphs,
+                                   const std::vector<std::pair<std::string, TypeProperties>>& inputs,
                                    std::function<Any(const std::string&)> load) {
-  GraphContext ctx{std::get<0>(anyf::make_graph({}))};
+  std::vector<TypeProperties> input_types;
+  Map<std::string, Term> bindings;
+
+  for(int i = 0; i < inputs.size(); i++) {
+    input_types.push_back(inputs[i].second);
+    bindings.emplace(inputs[i].first, Term{0, i});
+  }
+
+  GraphContext ctx{std::get<0>(anyf::make_graph(input_types)), std::move(bindings)};
+  ;
 
   return add_expr(ctx, expr, e, graphs, load).and_then([&](std::vector<Term> terms) {
     return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, "return"));
   });
+}
+
+std::vector<std::pair<std::string, TypeProperties>> inputs_of(const Env& e, const ast::Expr& expr) {
+  auto inputs = knot::preorder_accumulate<std::vector<std::pair<std::string, TypeProperties>>>(
+    expr, [&](std::vector<std::pair<std::string, TypeProperties>> inputs, const ast::Call& c) {
+      // Ignore errors, will be handled when creating the graph proper
+      if(e.contains_function(c.name)) {
+        const auto& input_types = e.function(c.name).input_types();
+        const size_t s = std::min(input_types.size(), c.parameters.size());
+
+        for(size_t i = 0; i < s; i++) {
+          if(std::holds_alternative<std::string>(c.parameters[i].v)) {
+            inputs.emplace_back(std::get<std::string>(c.parameters[i].v), input_types[i]);
+          }
+        }
+      }
+
+      return inputs;
+    });
+
+  // Sort by name, type, value
+  std::sort(inputs.begin(), inputs.end(), [](const auto& lhs, const auto& rhs) {
+    return std::make_tuple(std::cref(lhs.first), lhs.second.type_id(), lhs.second.is_cref()) <
+           std::make_tuple(std::cref(rhs.first), rhs.second.type_id(), rhs.second.is_cref());
+  });
+
+  // Erase all duplicates of the same name
+  auto it = inputs.begin();
+  while(it != inputs.end()) {
+    it = inputs.erase(it + 1, std::find_if(it + 1, inputs.end(), [&](const auto& p) { return p.first != it->first; }));
+  }
+
+  return inputs;
 }
 
 } // namespace ooze

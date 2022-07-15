@@ -22,10 +22,10 @@ struct Unspecified {
 Unspecified create_u(int x) { return {x}; }
 int take_u(Unspecified u) { return u.x; }
 
-Point add(Point a, Point b) { return {a.x + b.x, a.y + b.y}; }
-Point scale(Point a, int s) { return {a.x * s, a.y * s}; }
+Point add(const Point& a, const Point& b) { return {a.x + b.x, a.y + b.y}; }
+Point scale(const Point& a, const int& s) { return {a.x * s, a.y * s}; }
 
-int sleep(int x) {
+int sleep(const int& x) {
   std::this_thread::sleep_for(std::chrono::duration<int, std::ratio<1>>(x));
   return x;
 }

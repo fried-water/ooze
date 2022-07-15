@@ -1,9 +1,11 @@
 #include "pch.h"
 
 #include "graph_construction.h"
+#include "io.h"
 #include "ooze/core.h"
 #include "parser.h"
 #include "parser_combinators.h"
+#include "repl.h"
 
 #include <anyf/executor/task_executor.h>
 #include <anyf/graph_execution.h>
@@ -27,59 +29,6 @@ std::string join(const Range& range, F f) {
   }
 }
 
-void write_binary(const std::string& filename, Span<std::byte> bytes) {
-  std::basic_ofstream<char> file(filename, std::ios::binary);
-  file.write((const char*)bytes.begin(), bytes.size());
-}
-
-std::vector<std::byte> read_binary(const std::string& filename) {
-  std::basic_ifstream<char> file(filename.c_str(), std::ios::binary);
-  std::vector<std::byte> bytes;
-  std::transform(std::istreambuf_iterator<char>(file), {}, std::back_inserter(bytes), [](char c) {
-    return static_cast<std::byte>(c);
-  });
-
-  return bytes;
-}
-
-std::string load_file(const std::string& filename) {
-  std::ifstream file(filename);
-
-  std::stringstream sstr;
-  sstr << file.rdbuf();
-  return std::move(sstr).str();
-}
-
-std::string type_name_or_id(const Env& e, TypeID type) {
-  return e.contains_type(type) ? e.type_name(type) : fmt::format("0x{}", type);
-}
-
-std::optional<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
-  auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
-
-  check(opt_type.has_value(), "deserializing @{}", name);
-  check(e.contains_type(opt_type->first), "cannot find type {}", opt_type->first);
-  check(e.contains_serialize(e.type_id(opt_type->first)), "type {} is not serializable", opt_type->first);
-
-  return e.deserialize(opt_type->first, Span<std::byte>(opt_type->second, bytes.end()));
-}
-
-std::vector<std::byte> save(const Env& e, const Any& v) {
-  check(e.contains_type(v.type()), "cannot find type 0x{}", v.type());
-  check(e.contains_serialize(v.type()), "type {} is not serializable", e.type_name(v.type()));
-
-  return e.serialize(v, knot::serialize(e.type_name(v.type())));
-}
-
-std::string generate_error_msg(std::string_view src, const ParseError& error) {
-  std::string highlight = "";
-  for(int i = 0; i < error.pos; i++) highlight += " ";
-  highlight += '^';
-  for(int i = 0; i < static_cast<int>(error.error_token.size()) - 1; i++) highlight += "~";
-
-  return fmt::format("{}:{}:{} {}\n  {}\n  {}", src, error.line, error.pos, error.msg, error.error_line, highlight);
-}
-
 template <typename T>
 struct Option {
   std::string value;
@@ -98,6 +47,10 @@ struct RunCommand {
   std::string expr;
   std::string output_prefix;
   int verbosity = 0;
+};
+
+struct ReplCommand {
+  std::string script;
 };
 
 struct FunctionQueryCommand {
@@ -139,6 +92,12 @@ auto run_cmd_parser() {
     });
 }
 
+auto repl_cmd_parser() {
+  return pc::transform(pc::seq(pc::constant("repl", "repl"), pc::maybe(s_opt_parser())), [](auto opt_script) {
+    return opt_script ? ReplCommand{std::move(opt_script->value)} : ReplCommand{};
+  });
+}
+
 auto function_query_cmd_parser() {
   return pc::transform(pc::seq(pc::constant("functions", "functions"),
                                pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
@@ -163,22 +122,21 @@ auto type_query_cmd_parser() {
     [](std::optional<std::string> regex) { return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{}; });
 }
 
-auto cmd_parser() { return pc::choose(run_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser()); }
-
-auto parse_script_to_graphs(const Env& e, std::string_view script, std::function<Any(const std::string&)> load) {
-  return parse(script)
-    .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; })
-    .and_then([&](AST ast) { return create_graphs(e, ast, load); });
+auto cmd_parser() {
+  return pc::choose(run_cmd_parser(), repl_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser());
 }
 
 void run(const RunCommand& cmd, const Env& e) {
-  run(e, load_file(cmd.script), cmd.expr, [&](const std::string& name) { return *load(e, read_binary(name), name); })
+  run(e,
+      read_text_file(cmd.script),
+      cmd.expr,
+      [&](const std::string& name) { return *load(e, read_binary_file(name), name); })
     .map([&](std::vector<Any> outputs) {
       if(cmd.output_prefix != "") {
         for(size_t i = 0; i < outputs.size(); i++) {
-          write_binary(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
-                                           : fmt::format("{}_{}", cmd.output_prefix, i),
-                       save(e, outputs[i]));
+          write_binary_file(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
+                                                : fmt::format("{}_{}", cmd.output_prefix, i),
+                            save(e, outputs[i]));
         }
       }
 
@@ -195,8 +153,12 @@ void run(const RunCommand& cmd, const Env& e) {
     .or_else(dump_errors);
 }
 
+void run(const ReplCommand& cmd, const Env& e) { run_repl(e, cmd.script); }
+
 void run(const FunctionQueryCommand& cmd, const Env& e) {
-  const auto type_name = [&](auto t) { return type_name_or_id(e, t.type_id()); };
+  const auto type_name = [&](auto t) {
+    return fmt::format("{}{}", type_name_or_id(e, t.type_id()), t.is_cref() ? "&" : "");
+  };
 
   const std::regex re(cmd.regex);
 
@@ -211,7 +173,6 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
 
     const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
     const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };
-
     const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
 
     if(!std::regex_match(fn_name, re)) continue;
@@ -238,13 +199,34 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 
 } // namespace
 
+std::optional<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
+  auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
+
+  check(opt_type.has_value(), "deserializing @{}", name);
+  check(e.contains_type(opt_type->first), "cannot find type {}", opt_type->first);
+  check(e.contains_serialize(e.type_id(opt_type->first)), "type {} is not serializable", opt_type->first);
+
+  return e.deserialize(opt_type->first, Span<std::byte>(opt_type->second, bytes.end()));
+}
+
+std::vector<std::byte> save(const Env& e, const Any& v) {
+  check(e.contains_type(v.type()), "cannot find type 0x{}", v.type());
+  check(e.contains_serialize(v.type()), "type {} is not serializable", e.type_name(v.type()));
+
+  return e.serialize(v, knot::serialize(e.type_name(v.type())));
+}
+
 Result<std::vector<Any>>
 run(const Env& e, std::string_view script, std::string_view expr, std::function<Any(const std::string&)> load) {
   return merge(parse_expr(expr).map_error([&](const ParseError& error) {
            return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)};
          }),
-               parse_script_to_graphs(e, script, load),
-               [&](const auto& expr, const auto& graphs) { return create_graph(e, expr, graphs, load); })
+               parse(script)
+                 .map_error([&](const ParseError& error) {
+                   return std::vector<std::string>{generate_error_msg("<script>", error)};
+                 })
+                 .and_then([&](AST ast) { return create_graphs(e, ast, load); }))
+    .and_then([&](auto tup) { return create_graph(e, std::get<0>(tup), std::get<1>(tup), {}, load); })
     .map([&](FunctionGraph g) { return anyf::execute_graph(g, anyf::TaskExecutor{}, {}); });
 }
 
@@ -260,6 +242,7 @@ int main(int argc, char* argv[], const Env& e) {
   if(!opt_cmd) {
     const char* msg = "Usage:\n"
                       "  run [-s script] expr\n"
+                      "  repl [-s script]\n"
                       "  types [regex]\n"
                       "  functions [-t takes] [-r returns] [-c contains] [regex]\n";
 

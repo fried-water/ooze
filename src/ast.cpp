@@ -38,7 +38,7 @@ struct ExprPrettyPrinter {
   std::ostream& os;
 
   void operator()(const std::vector<Expr>& exprs) const { pretty_print(os, exprs, true); }
-  void operator()(const std::unique_ptr<Call>& call) const { pretty_print(os, *call); }
+  void operator()(const Indirect<Call>& call) const { pretty_print(os, *call); }
   void operator()(const std::string& name) const { os << name; }
   void operator()(const Literal& l) const { os << to_string(l); }
 };
@@ -90,6 +90,18 @@ std::string pretty_print(const AST& ast) {
     ss << "\n";
   }
 
+  return std::move(ss).str();
+}
+
+std::string pretty_print(const ast::Expr& expr) {
+  std::stringstream ss;
+  pretty_print(ss, expr);
+  return std::move(ss).str();
+}
+
+std::string pretty_print(const ast::Assignment& asgn) {
+  std::stringstream ss;
+  pretty_print(ss, asgn);
   return std::move(ss).str();
 }
 

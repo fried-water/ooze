@@ -7,22 +7,22 @@ namespace ooze {
 Env create_primative_env() {
   Env env;
 
-  env.add<bool>("bool");
+  add_tieable_type<bool>(env, "bool");
 
-  env.add<i8>("i8");
-  env.add<i16>("i16");
-  env.add<i32>("i32");
-  env.add<i64>("i64");
+  add_tieable_type<i8>(env, "i8");
+  add_tieable_type<i16>(env, "i16");
+  add_tieable_type<i32>(env, "i32");
+  add_tieable_type<i64>(env, "i64");
 
-  env.add<u8>("u8");
-  env.add<u16>("u16");
-  env.add<u32>("u32");
-  env.add<u64>("u64");
+  add_tieable_type<u8>(env, "u8");
+  add_tieable_type<u16>(env, "u16");
+  add_tieable_type<u32>(env, "u32");
+  add_tieable_type<u64>(env, "u64");
 
-  env.add<f32>("f32");
-  env.add<f64>("f64");
+  add_tieable_type<f32>(env, "f32");
+  add_tieable_type<f64>(env, "f64");
 
-  env.add<std::string>("string");
+  add_tieable_type<std::string>(env, "string");
 
   return env;
 }

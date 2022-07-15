@@ -16,8 +16,10 @@ add_library(ooze
   src/env.cpp
   src/ast.cpp
   src/lexer.cpp
+  src/io.cpp
   src/parser.cpp
   src/graph_construction.cpp
+  src/repl.cpp
   src/ooze.cpp)
 
 target_compile_features(ooze PUBLIC cxx_std_17)

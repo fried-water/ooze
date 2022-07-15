@@ -118,6 +118,10 @@ public:
   }
 };
 
+inline std::string type_name_or_id(const Env& e, TypeID type) {
+  return e.contains_type(type) ? e.type_name(type) : fmt::format("0x{}", type);
+}
+
 namespace details {
 
 template <typename T, typename... Ts>
