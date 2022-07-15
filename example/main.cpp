@@ -36,12 +36,12 @@ ooze::Env create_env() {
   ooze::add_tieable_type<Point>(e, "Point");
   ooze::add_tieable_type<Box>(e, "Box");
 
-  e.add("add", add);
-  e.add("scale", scale);
-  e.add("sleep", sleep);
+  e.functions.emplace("add", add);
+  e.functions.emplace("scale", scale);
+  e.functions.emplace("sleep", sleep);
 
-  e.add("create_u", create_u);
-  e.add("take_u", take_u);
+  e.functions.emplace("create_u", create_u);
+  e.functions.emplace("take_u", take_u);
 
   return e;
 }

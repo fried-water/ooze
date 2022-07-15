@@ -17,9 +17,9 @@ std::string msg(const Env& e, const std::string& function, const anyf::BadArity&
 std::string msg(const Env& e, const std::string& function, const anyf::BadType& err) {
   return fmt::format("{} expects {} for arg {}, given {}",
                      function,
-                     e.type_name(err.expected),
+                     e.type_names.at(err.expected),
                      err.index,
-                     e.contains_type(err.given) ? e.type_name(err.given) : "unknown type");
+                     type_name_or_id(e, err.given));
 }
 
 std::string msg(const Env& e, const std::string& function, const anyf::AlreadyMoved& err) {
@@ -74,10 +74,10 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
         if(const auto it = graphs.find(call->name); it != graphs.end()) {
           return parameter_result ? ctx.cg.add(it->second, *parameter_result).map_error(to_graph_error(e, call->name))
                                   : tl::unexpected{std::move(parameter_result.error())};
-        } else if(e.contains_function(call->name)) {
-          return parameter_result
-                   ? ctx.cg.add(e.function(call->name), *parameter_result).map_error(to_graph_error(e, call->name))
-                   : tl::unexpected{std::move(parameter_result.error())};
+        }
+        if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
+          return parameter_result ? ctx.cg.add(it->second, *parameter_result).map_error(to_graph_error(e, call->name))
+                                  : tl::unexpected{std::move(parameter_result.error())};
         } else {
           std::vector<std::string> errors =
             parameter_result ? std::vector<std::string>{} : std::move(parameter_result.error());
@@ -95,7 +95,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
           Overloaded{
             [&](const FileLiteral& file) {
               Any value = load(file.name);
-              const TypeProperties props = e.type_properties(e.type_name(value.type()));
+              const TypeProperties props{value.type(), true};
               return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, file.name));
             },
             [&](const std::string& value) {
@@ -130,7 +130,7 @@ create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&
   Set<std::string> graph_errors;
 
   const auto satisfied = [&](const std::string& dep) {
-    return e.contains_function(dep) || graphs.find(dep) != graphs.end();
+    return e.functions.find(dep) != e.functions.end() || graphs.find(dep) != graphs.end();
   };
 
   auto it = ast.begin();
@@ -177,10 +177,10 @@ Result<FunctionGraph> create_graph(const Env& e,
   std::vector<std::string> errors;
 
   for(const Parameter& p : f.parameters) {
-    if(!e.contains_type(p.type)) {
-      errors.push_back(fmt::format("type {} not found", p.type));
+    if(const auto it = e.type_ids.find(p.type); it != e.type_ids.end()) {
+      input_types.push_back(TypeProperties{it->second, !p.borrow});
     } else {
-      input_types.push_back(p.borrow ? e.type_borrowed_properties(p.type) : e.type_properties(p.type));
+      errors.push_back(fmt::format("type {} not found", p.type));
     }
   }
 
@@ -212,7 +212,7 @@ Result<FunctionGraph> create_graph(const Env& e,
                 std::vector<std::string> errors;
                 for(int i = 0; i < terms.size(); i++) {
                   if(assignment.variables[i].type) {
-                    const std::string& given_type = e.type_name(ctx.cg.type(terms[i]).type_id());
+                    const std::string given_type = type_name_or_id(e, ctx.cg.type(terms[i]).id);
 
                     if(given_type != assignment.variables[i].type) {
                       errors.push_back(fmt::format("{} expects {}, given {}",
@@ -238,7 +238,7 @@ Result<FunctionGraph> create_graph(const Env& e,
 
           std::vector<std::string> errors;
           for(int i = 0; i < terms.size(); i++) {
-            const std::string& given_type = e.type_name(ctx.cg.type(terms[i]).type_id());
+            const std::string given_type = type_name_or_id(e, ctx.cg.type(terms[i]).id);
 
             if(given_type != f.result[i]) {
               errors.push_back(
@@ -277,8 +277,9 @@ std::vector<std::pair<std::string, TypeProperties>> inputs_of(const Env& e, cons
   auto inputs = knot::preorder_accumulate<std::vector<std::pair<std::string, TypeProperties>>>(
     expr, [&](std::vector<std::pair<std::string, TypeProperties>> inputs, const ast::Call& c) {
       // Ignore errors, will be handled when creating the graph proper
-      if(e.contains_function(c.name)) {
-        const auto& input_types = e.function(c.name).input_types();
+
+      if(const auto it = e.functions.find(c.name); it != e.functions.end()) {
+        const auto& input_types = it->second.input_types();
         const size_t s = std::min(input_types.size(), c.parameters.size());
 
         for(size_t i = 0; i < s; i++) {
@@ -293,8 +294,8 @@ std::vector<std::pair<std::string, TypeProperties>> inputs_of(const Env& e, cons
 
   // Sort by name, type, value
   std::sort(inputs.begin(), inputs.end(), [](const auto& lhs, const auto& rhs) {
-    return std::make_tuple(std::cref(lhs.first), lhs.second.type_id(), lhs.second.is_cref()) <
-           std::make_tuple(std::cref(rhs.first), rhs.second.type_id(), rhs.second.is_cref());
+    return std::make_tuple(std::cref(lhs.first), lhs.second.id, !lhs.second.value) <
+           std::make_tuple(std::cref(rhs.first), rhs.second.id, !rhs.second.value);
   });
 
   // Erase all duplicates of the same name

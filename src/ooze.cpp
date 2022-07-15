@@ -142,10 +142,10 @@ void run(const RunCommand& cmd, const Env& e) {
 
       if(cmd.output_prefix == "" || cmd.verbosity != 0) {
         for(const Any& any : outputs) {
-          if(e.contains_type(any.type()) && e.contains_to_string(any.type())) {
-            fmt::print("{}\n", e.to_string(any));
+          if(const auto it = e.to_string.find(any.type()); it != e.to_string.end()) {
+            fmt::print("{}\n", it->second(any));
           } else {
-            fmt::print("[Object of type {}]\n", type_name_or_id(e, any.type()));
+            fmt::print("[Object of {}]\n", type_name_or_id(e, any.type()));
           }
         }
       }
@@ -156,23 +156,20 @@ void run(const RunCommand& cmd, const Env& e) {
 void run(const ReplCommand& cmd, const Env& e) { run_repl(e, cmd.script); }
 
 void run(const FunctionQueryCommand& cmd, const Env& e) {
-  const auto type_name = [&](auto t) {
-    return fmt::format("{}{}", type_name_or_id(e, t.type_id()), t.is_cref() ? "&" : "");
-  };
+  const auto type_name = [&](auto t) { return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&"); };
 
   const std::regex re(cmd.regex);
 
-  for(const std::string& fn_name : e.functions()) {
-    const AnyFunction& f = e.function(fn_name);
+  for(const auto& [fn_name, f] : e.functions) {
 
     const auto doesnt_have = [&](const std::vector<TypeProperties>& types, const std::string& type) {
-      check(e.contains_type(type), "type {} not found", type);
-      const TypeID type_id = e.type_properties(type).type_id();
-      return std::none_of(types.begin(), types.end(), [&](auto t) { return t.type_id() == type_id; });
+      const auto it = e.type_ids.find(type);
+      check(it != e.type_ids.end(), "type {} not found", type);
+      return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == it->second; });
     };
 
-    const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
-    const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };
+    const auto doesnt_take = [&, f = f](const std::string& type) { return doesnt_have(f.input_types(), type); };
+    const auto doesnt_return = [&, f = f](const std::string& type) { return doesnt_have(f.output_types(), type); };
     const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
 
     if(!std::regex_match(fn_name, re)) continue;
@@ -190,9 +187,9 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
 void run(const TypeQueryCommand& cmd, const Env& e) {
   const std::regex re(cmd.regex);
 
-  for(const std::string& t : e.types()) {
-    if(std::regex_match(t, re)) {
-      fmt::print("{}\n", t);
+  for(const auto& [id, name] : e.type_names) {
+    if(std::regex_match(name, re)) {
+      fmt::print("{}\n", name);
     }
   }
 }
@@ -203,17 +200,24 @@ std::optional<Any> load(const Env& e, Span<std::byte> bytes, const std::string& 
   auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
 
   check(opt_type.has_value(), "deserializing @{}", name);
-  check(e.contains_type(opt_type->first), "cannot find type {}", opt_type->first);
-  check(e.contains_serialize(e.type_id(opt_type->first)), "type {} is not serializable", opt_type->first);
 
-  return e.deserialize(opt_type->first, Span<std::byte>(opt_type->second, bytes.end()));
+  const auto id_it = e.type_ids.find(opt_type->first);
+  check(id_it != e.type_ids.end(), "cannot find type {}", opt_type->first);
+
+  const auto ser_it = e.deserialize.find(id_it->second);
+  check(ser_it != e.deserialize.end(), "type {} is not serializable", opt_type->first);
+
+  return ser_it->second(Span<std::byte>(opt_type->second, bytes.end()));
 }
 
 std::vector<std::byte> save(const Env& e, const Any& v) {
-  check(e.contains_type(v.type()), "cannot find type 0x{}", v.type());
-  check(e.contains_serialize(v.type()), "type {} is not serializable", e.type_name(v.type()));
+  const auto name_it = e.type_names.find(v.type());
+  check(name_it != e.type_names.end(), "cannot find type 0x{}", v.type());
 
-  return e.serialize(v, knot::serialize(e.type_name(v.type())));
+  const auto ser_it = e.serialize.find(v.type());
+  check(ser_it != e.serialize.end(), "type {} is not serializable", name_it->second);
+
+  return ser_it->second(v, knot::serialize(name_it->second));
 }
 
 Result<std::vector<Any>>

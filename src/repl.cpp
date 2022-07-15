@@ -54,7 +54,7 @@ void run_repl(const Env& e, std::string_view script) {
 
       if(line == ":env") {
         for(const auto& [v, f] : vars) {
-          fmt::print("{} {}{}\n", e.type_name(f.second), v, f.first.ready() ? "" : "*");
+          fmt::print("{} {}{}\n", type_name_or_id(e, f.second), v, f.first.ready() ? "" : "*");
         }
       } else {
         const auto res =
@@ -80,7 +80,7 @@ void run_repl(const Env& e, std::string_view script) {
                 const std::string var = std::get<std::string>(expr.v);
                 const auto it = vars.find(var);
                 if(it != vars.end()) {
-                  inputs.emplace_back(var, e.type_borrowed_properties(e.type_name(it->second.second)));
+                  inputs.emplace_back(var, TypeProperties{it->second.second});
                 }
               } else {
                 inputs = inputs_of(e, expr);
@@ -111,18 +111,16 @@ void run_repl(const Env& e, std::string_view script) {
                 } else {
                   auto& [future, var_type] = it->second;
 
-                  if(var_type != type.type_id()) {
-                    errors.push_back(fmt::format("{} expected {} but is {}",
-                                                 name,
-                                                 type_name_or_id(e, type.type_id()),
-                                                 type_name_or_id(e, var_type)));
-                  } else if(type.is_cref()) {
+                  if(var_type != type.id) {
+                    errors.push_back(fmt::format(
+                      "{} expected {} but is {}", name, type_name_or_id(e, type.id), type_name_or_id(e, var_type)));
+                  } else if(type.value) {
+                    value_inputs.push_back(std::move(future));
+                    vars.erase(it);
+                  } else {
                     auto [bf, next_future] = borrow(std::move(future));
                     borrowed_inputs.push_back(std::move(bf));
                     future = std::move(next_future);
-                  } else {
-                    value_inputs.push_back(std::move(future));
-                    vars.erase(it);
                   }
                 }
               }
@@ -131,15 +129,16 @@ void run_repl(const Env& e, std::string_view script) {
               if(opt_bindings) {
                 check(opt_bindings->size() == results.size(), "abc");
                 for(size_t i = 0; i < results.size(); i++) {
-                  vars[(*opt_bindings)[i].name] = std::pair(std::move(results[i]), output_types(g)[i].type_id());
+                  vars[(*opt_bindings)[i].name] = std::pair(std::move(results[i]), output_types(g)[i].id);
                 }
               } else {
                 for(size_t i = 0; i < results.size(); i++) {
                   Any any = std::move(results[i]).wait();
-                  if(e.contains_type(any.type()) && e.contains_to_string(any.type())) {
-                    fmt::print("{}\n", e.to_string(any));
+
+                  if(const auto it = e.to_string.find(any.type()); it != e.to_string.end()) {
+                    fmt::print("{}\n", it->second(any));
                   } else {
-                    fmt::print("[Object of type {}]\n", type_name_or_id(e, any.type()));
+                    fmt::print("[Object of {}]\n", type_name_or_id(e, any.type()));
                   }
                 }
               }
