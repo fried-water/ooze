@@ -42,7 +42,8 @@ namespace details {
 
 template <typename T, typename... Ts>
 auto generate_constructor(knot::TypeList<Ts...>) {
-  return [](Ts... ts) { return T{std::move(ts)...}; };
+  return
+    [](std::conditional_t<std::is_trivially_destructible_v<Ts>, const Ts&, Ts>... ts) { return T{std::move(ts)...}; };
 }
 
 } // namespace details

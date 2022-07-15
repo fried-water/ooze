@@ -1,11 +1,11 @@
 ./ooze functions
 add(Point&, Point&) -> Point
-create_box(Point, Point) -> Box
-create_point(i32, i32) -> Point
-create_u(i32) -> 0x4338757908
+create_box(Point&, Point&) -> Box
+create_point(i32&, i32&) -> Point
+create_u(i32) -> type 0x4306563257
 scale(Point&, i32&) -> Point
 sleep(i32&) -> i32
-take_u(0x4338757908) -> i32
+take_u(type 0x4306563257) -> i32
 ./ooze types
 Box
 Point

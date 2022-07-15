@@ -160,7 +160,14 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
 
   const std::regex re(cmd.regex);
 
-  for(const auto& [fn_name, f] : e.functions) {
+  std::vector<std::string> functions;
+  std::transform(
+    e.functions.begin(), e.functions.end(), std::back_inserter(functions), [](const auto& p) { return p.first; });
+
+  std::sort(functions.begin(), functions.end());
+
+  for(const std::string& fn_name : functions) {
+    const auto& f = e.functions.at(fn_name);
 
     const auto doesnt_have = [&](const std::vector<TypeProperties>& types, const std::string& type) {
       const auto it = e.type_ids.find(type);
@@ -168,8 +175,8 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
       return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == it->second; });
     };
 
-    const auto doesnt_take = [&, f = f](const std::string& type) { return doesnt_have(f.input_types(), type); };
-    const auto doesnt_return = [&, f = f](const std::string& type) { return doesnt_have(f.output_types(), type); };
+    const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
+    const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };
     const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
 
     if(!std::regex_match(fn_name, re)) continue;
@@ -187,9 +194,15 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
 void run(const TypeQueryCommand& cmd, const Env& e) {
   const std::regex re(cmd.regex);
 
-  for(const auto& [id, name] : e.type_names) {
-    if(std::regex_match(name, re)) {
-      fmt::print("{}\n", name);
+  std::vector<std::string> types;
+  std::transform(
+    e.type_names.begin(), e.type_names.end(), std::back_inserter(types), [](const auto& p) { return p.second; });
+
+  std::sort(types.begin(), types.end());
+
+  for(const std::string& type : types) {
+    if(std::regex_match(type, re)) {
+      fmt::print("{}\n", type);
     }
   }
 }
@@ -199,13 +212,13 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 std::optional<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
   auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
 
-  check(opt_type.has_value(), "deserializing @{}", name);
+  check(opt_type.has_value(), "deserializing file {}", name);
 
   const auto id_it = e.type_ids.find(opt_type->first);
   check(id_it != e.type_ids.end(), "cannot find type {}", opt_type->first);
 
   const auto ser_it = e.deserialize.find(id_it->second);
-  check(ser_it != e.deserialize.end(), "type {} is not serializable", opt_type->first);
+  check(ser_it != e.deserialize.end(), "type {} is not deserializable", opt_type->first);
 
   return ser_it->second(Span<std::byte>(opt_type->second, bytes.end()));
 }
