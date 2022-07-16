@@ -69,20 +69,30 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
   return std::visit(
     Overloaded{
       [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
-        auto parameter_result = accumulate_exprs(ctx, call->parameters, e, graphs, load);
-
-        if(const auto it = graphs.find(call->name); it != graphs.end()) {
-          return parameter_result ? ctx.cg.add(it->second, *parameter_result).map_error(to_graph_error(e, call->name))
-                                  : tl::unexpected{std::move(parameter_result.error())};
-        }
-        if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
-          return parameter_result ? ctx.cg.add(it->second, *parameter_result).map_error(to_graph_error(e, call->name))
-                                  : tl::unexpected{std::move(parameter_result.error())};
+        if(call->name == "load") {
+          if(call->parameters.size() != 1) {
+            return tl::unexpected{std::vector<std::string>{
+              fmt::format("load() expects a string literal, given {} args", call->parameters.size())}};
+          } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
+            return tl::unexpected{std::vector<std::string>{fmt::format("load() expects a string literal")}};
+          } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
+            return tl::unexpected{std::vector<std::string>{fmt::format("load() expects a string literal")}};
+          } else {
+            Any value = load(*string_ptr);
+            const TypeProperties props{value.type(), true};
+            return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
+          }
         } else {
-          std::vector<std::string> errors =
-            parameter_result ? std::vector<std::string>{} : std::move(parameter_result.error());
-          errors.insert(errors.begin(), fmt::format("Function {} not found", call->name));
-          return tl::unexpected{std::move(errors)};
+          return accumulate_exprs(ctx, call->parameters, e, graphs, load)
+            .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
+              if(const auto it = graphs.find(call->name); it != graphs.end()) {
+                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
+              } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
+                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
+              } else {
+                return tl::unexpected{std::vector<std::string>{fmt::format("Function {} not found", call->name)}};
+              }
+            });
         }
       },
       [&](const std::string& identifier) {
@@ -92,19 +102,13 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
       },
       [&](const Literal& literal) {
         return std::visit(
-          Overloaded{
-            [&](const FileLiteral& file) {
-              Any value = load(file.name);
-              const TypeProperties props{value.type(), true};
-              return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, file.name));
-            },
-            [&](const std::string& value) {
-              return ctx.cg.add(AnyFunction([=]() { return value; }), {}).map_error(to_graph_error(e, value));
-            },
-            [&](const auto& value) {
-              return ctx.cg.add(AnyFunction([=]() { return value; }), {})
-                .map_error(to_graph_error(e, std::to_string(value)));
-            }},
+          Overloaded{[&](const std::string& value) {
+                       return ctx.cg.add(AnyFunction([=]() { return value; }), {}).map_error(to_graph_error(e, value));
+                     },
+                     [&](const auto& value) {
+                       return ctx.cg.add(AnyFunction([=]() { return value; }), {})
+                         .map_error(to_graph_error(e, std::to_string(value)));
+                     }},
           literal);
       }},
     expr.v);

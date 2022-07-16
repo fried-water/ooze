@@ -11,10 +11,10 @@ $OOZE types
 echo "./ooze run \"create_point(4, 5)\" -o point"
 $OOZE run "create_point(4, 5)" -o point
 
-echo "./ooze run \"@point\""
-$OOZE run "@point"
+echo "./ooze run \"load('point')\""
+$OOZE run "load('point')"
 
-echo "./ooze run -s script.oz \"main(@point, 1)\""
-$OOZE run -s script.oz "main(@point, 1)"
+echo "./ooze run -s script.oz \"main(load('point'), 1)\""
+$OOZE run -s script.oz "main(load('point'), 1)"
 
 rm point

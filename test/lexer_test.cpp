@@ -90,9 +90,8 @@ BOOST_AUTO_TEST_CASE(lexer_other_literals) {
   BOOST_CHECK((Token{TokenType::LiteralString, std::string_view("\"\"")}) == lex_one("\"\""));
   BOOST_CHECK((Token{TokenType::LiteralString, std::string_view("\"abc\"")}) == lex_one("\"abc\""));
 
-  BOOST_CHECK((Token{TokenType::LiteralFile, std::string_view("@abc")}) == lex_one("@abc"));
-  BOOST_CHECK((Token{TokenType::LiteralFile, std::string_view("@a/b/c.txt")}) == lex_one("@a/b/c.txt"));
-  BOOST_CHECK((Token{TokenType::LiteralFile, std::string_view("@/a/b/c.txt")}) == lex_one("@/a/b/c.txt"));
+  BOOST_CHECK((Token{TokenType::LiteralString, std::string_view("''")}) == lex_one("''"));
+  BOOST_CHECK((Token{TokenType::LiteralString, std::string_view("'abc'")}) == lex_one("'abc'"));
 
   BOOST_CHECK((Token{TokenType::Whitespace, std::string_view("")}) == lex_one("@"));
 }

@@ -13,8 +13,7 @@ enum class TokenType {
   LiteralFloat,
   LiteralInt,
   LiteralBool,
-  LiteralString,
-  LiteralFile
+  LiteralString
 };
 
 struct Token {
