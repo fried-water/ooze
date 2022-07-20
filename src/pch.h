@@ -82,6 +82,8 @@ inline void dump_errors(const std::vector<std::string>& errors) {
   }
 }
 
+inline Result<std::vector<std::string>> convert_errors(std::vector<std::string> errors) { return errors; }
+
 inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string>{std::move(msg)}}; }
 
 template <typename T>
@@ -89,21 +91,32 @@ Result<T> success(T t) {
   return Result<T>{std::move(t)};
 }
 
-template <typename... Ts, typename E>
-tl::expected<std::tuple<Ts...>, std::vector<E>> merge(tl::expected<Ts, std::vector<E>>... results) {
-  std::vector<E> errors;
+template <typename T, typename E>
+T&& get_value(tl::expected<T, E>&& e) {
+  return std::move(e.value());
+}
 
-  const auto copy_errors = [&](auto& res) {
-    if(!res) {
-      errors.insert(
-        errors.end(), std::make_move_iterator(res.error().begin()), std::make_move_iterator(res.error().end()));
-    }
-  };
+template <typename T>
+T&& get_value(T&& t) {
+  return std::move(t);
+}
 
-  (copy_errors(results), ...);
+template <typename T, typename E>
+void append_errors(std::vector<std::string>& errors, tl::expected<T, E>&& e) {
+  if(!e) {
+    errors.insert(errors.end(), std::make_move_iterator(e.error().begin()), std::make_move_iterator(e.error().end()));
+  }
+}
 
-  return errors.empty() ? tl::expected<std::tuple<Ts...>, std::vector<E>>(std::tuple(std::move(results.value())...))
-                        : tl::unexpected{std::move(errors)};
+template <typename T>
+void append_errors(std::vector<std::string>&, T&&) {}
+
+template <typename... Ts>
+auto merge(Ts... ts) {
+  std::vector<std::string> errors;
+  (append_errors(errors, std::move(ts)), ...);
+
+  return errors.empty() ? success(std::tuple(get_value(std::move(ts))...)) : tl::unexpected{std::move(errors)};
 }
 
 } // namespace ooze

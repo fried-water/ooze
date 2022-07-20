@@ -2,10 +2,22 @@
 
 #include "ooze/env.h"
 
+#include <anyf/executor/task_executor.h>
+#include <anyf/future.h>
+#include <anyf/graph.h>
+
 #include <string_view>
 
 namespace ooze {
 
-void run_repl(const Env&, std::string_view script = {});
+struct Repl {
+  anyf::TaskExecutor executor;
+  Map<std::string, anyf::FunctionGraph> graphs;
+  Map<std::string, std::pair<anyf::Future, TypeID>> bindings;
+};
 
-}
+std::vector<std::string> step_repl(const Env&, Repl&, std::string_view line);
+
+void run_repl(const Env&);
+
+} // namespace ooze

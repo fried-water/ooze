@@ -35,7 +35,7 @@ struct Env {
 
 inline std::string type_name_or_id(const Env& e, TypeID type) {
   const auto it = e.type_names.find(type);
-  return it != e.type_names.end() ? it->second : fmt::format("type 0x{}", type);
+  return it != e.type_names.end() ? it->second : fmt::format("type 0x{:x}", type);
 }
 
 namespace details {

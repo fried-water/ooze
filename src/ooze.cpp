@@ -5,6 +5,7 @@
 #include "ooze/core.h"
 #include "parser.h"
 #include "parser_combinators.h"
+#include "queries.h"
 #include "repl.h"
 
 #include <anyf/executor/task_executor.h>
@@ -17,17 +18,6 @@
 namespace ooze {
 
 namespace {
-
-template <typename Range, typename F>
-std::string join(const Range& range, F f) {
-  if(range.begin() == range.end()) {
-    return "()";
-  } else {
-    std::string r = "(" + f(*range.begin());
-    std::for_each(++range.begin(), range.end(), [&](const auto& ele) { r += ", " + f(ele); });
-    return r + ")";
-  }
-}
 
 template <typename T>
 struct Option {
@@ -47,10 +37,6 @@ struct RunCommand {
   std::string expr;
   std::string output_prefix;
   int verbosity = 0;
-};
-
-struct ReplCommand {
-  std::string script;
 };
 
 struct FunctionQueryCommand {
@@ -92,12 +78,6 @@ auto run_cmd_parser() {
     });
 }
 
-auto repl_cmd_parser() {
-  return pc::transform(pc::seq(pc::constant("repl", "repl"), pc::maybe(s_opt_parser())), [](auto opt_script) {
-    return opt_script ? ReplCommand{std::move(opt_script->value)} : ReplCommand{};
-  });
-}
-
 auto function_query_cmd_parser() {
   return pc::transform(pc::seq(pc::constant("functions", "functions"),
                                pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
@@ -123,7 +103,7 @@ auto type_query_cmd_parser() {
 }
 
 auto cmd_parser() {
-  return pc::choose(run_cmd_parser(), repl_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser());
+  return pc::maybe(pc::choose(run_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser()));
 }
 
 void run(const RunCommand& cmd, const Env& e) {
@@ -153,11 +133,7 @@ void run(const RunCommand& cmd, const Env& e) {
     .or_else(dump_errors);
 }
 
-void run(const ReplCommand& cmd, const Env& e) { run_repl(e, cmd.script); }
-
 void run(const FunctionQueryCommand& cmd, const Env& e) {
-  const auto type_name = [&](auto t) { return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&"); };
-
   const std::regex re(cmd.regex);
 
   std::vector<std::string> functions;
@@ -184,10 +160,7 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
     if(std::any_of(cmd.returns.begin(), cmd.returns.end(), doesnt_return)) continue;
     if(std::any_of(cmd.contains.begin(), cmd.contains.end(), doesnt_contain)) continue;
 
-    fmt::print("{}{} -> {}\n",
-               fn_name,
-               join(f.input_types(), type_name),
-               f.output_types().size() == 1 ? type_name(f.output_types().front()) : join(f.output_types(), type_name));
+    fmt::print("{}\n", function_string(e, fn_name, f));
   }
 }
 
@@ -254,9 +227,9 @@ int main(int argc, char* argv[], const Env& e) {
     args.push_back(argv[i]);
   }
 
-  const auto opt_cmd = pc::parse(cmd_parser(), Span<std::string>{args});
+  const auto cmd_result = pc::parse(cmd_parser(), Span<std::string>{args});
 
-  if(!opt_cmd) {
+  if(!cmd_result) {
     const char* msg = "Usage:\n"
                       "  run [-s script] expr\n"
                       "  repl [-s script]\n"
@@ -264,8 +237,10 @@ int main(int argc, char* argv[], const Env& e) {
                       "  functions [-t takes] [-r returns] [-c contains] [regex]\n";
 
     fmt::print("{}", msg);
+  } else if(*cmd_result) {
+    std::visit([&](const auto& cmd) { run(cmd, e); }, **cmd_result);
   } else {
-    std::visit([&](const auto& cmd) { run(cmd, e); }, *opt_cmd);
+    run_repl(e);
   }
 
   return 0;

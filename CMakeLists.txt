@@ -20,6 +20,7 @@ add_library(ooze
   src/parser.cpp
   src/graph_construction.cpp
   src/repl.cpp
+  src/queries.cpp
   src/ooze.cpp)
 
 target_compile_features(ooze PUBLIC cxx_std_17)

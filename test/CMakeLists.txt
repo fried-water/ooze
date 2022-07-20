@@ -9,6 +9,7 @@ add_executable(ooze_test
   lexer_test.cpp
   parser_test.cpp
   parser_combinator_test.cpp
+  repl_test.cpp
   ooze_test.cpp)
 
 target_compile_options(ooze_test PRIVATE -Og -fsanitize=address)
