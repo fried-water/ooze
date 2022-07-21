@@ -107,16 +107,24 @@ auto cmd_parser() {
 }
 
 void run(const RunCommand& cmd, const Env& e) {
-  run(e,
-      read_text_file(cmd.script),
-      cmd.expr,
-      [&](const std::string& name) { return *load(e, read_binary_file(name), name); })
+  Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
+
+  script
+    .and_then([&](const std::string& script) {
+      return run(e, script, cmd.expr, [&](const std::string& name) {
+        return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
+      });
+    })
     .map([&](std::vector<Any> outputs) {
       if(cmd.output_prefix != "") {
         for(size_t i = 0; i < outputs.size(); i++) {
-          write_binary_file(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
-                                                : fmt::format("{}_{}", cmd.output_prefix, i),
-                            save(e, outputs[i]));
+          save(e, outputs[i])
+            .and_then([&](const std::vector<std::byte>& bytes) {
+              return write_binary_file(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
+                                                           : fmt::format("{}_{}", cmd.output_prefix, i),
+                                       bytes);
+            })
+            .map_error(dump_errors);
         }
       }
 
@@ -182,32 +190,45 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 
 } // namespace
 
-std::optional<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
+Result<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
   auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
 
-  check(opt_type.has_value(), "deserializing file {}", name);
+  if(!opt_type.has_value()) {
+    return err(fmt::format("error determining type from {}", name));
+  }
 
   const auto id_it = e.type_ids.find(opt_type->first);
-  check(id_it != e.type_ids.end(), "cannot find type {}", opt_type->first);
+  if(id_it == e.type_ids.end()) {
+    return err(fmt::format("cannot find type {}", opt_type->first));
+  }
 
   const auto ser_it = e.deserialize.find(id_it->second);
-  check(ser_it != e.deserialize.end(), "type {} is not deserializable", opt_type->first);
+  if(ser_it == e.deserialize.end()) {
+    return err(fmt::format("type {} is not deserializable", opt_type->first));
+  }
 
-  return ser_it->second(Span<std::byte>(opt_type->second, bytes.end()));
+  std::optional<Any> result = ser_it->second(Span<std::byte>(opt_type->second, bytes.end()));
+
+  return result.has_value() ? Result<Any>(std::move(*result))
+                            : err(fmt::format("error deserializing type {} from {}", opt_type->first, name));
 }
 
-std::vector<std::byte> save(const Env& e, const Any& v) {
+Result<std::vector<std::byte>> save(const Env& e, const Any& v) {
   const auto name_it = e.type_names.find(v.type());
-  check(name_it != e.type_names.end(), "cannot find type 0x{}", v.type());
+  if(name_it == e.type_names.end()) {
+    return err(fmt::format("cannot find {}", type_name_or_id(e, v.type())));
+  }
 
   const auto ser_it = e.serialize.find(v.type());
-  check(ser_it != e.serialize.end(), "type {} is not serializable", name_it->second);
+  if(ser_it == e.serialize.end()) {
+    return err(fmt::format("type {} is not serializable", name_it->second));
+  }
 
   return ser_it->second(v, knot::serialize(name_it->second));
 }
 
 Result<std::vector<Any>>
-run(const Env& e, std::string_view script, std::string_view expr, std::function<Any(const std::string&)> load) {
+run(const Env& e, std::string_view script, std::string_view expr, std::function<Result<Any>(const std::string&)> load) {
   return merge(parse_expr(expr).map_error([&](const ParseError& error) {
            return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)};
          }),

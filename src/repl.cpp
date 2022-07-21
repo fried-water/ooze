@@ -105,10 +105,15 @@ std::vector<std::string> run(const Env& e, Repl& repl, BindingsCmd) {
 }
 
 std::vector<std::string> run(const Env& e, Repl& repl, const EvalCmd& eval) {
-  return parse(read_text_file(eval.file))
-    .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; })
+  return read_text_file(eval.file)
+    .and_then([](std::string script) {
+      return parse(script).map_error(
+        [&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; });
+    })
     .and_then([&](AST ast) {
-      return create_graphs(e, ast, [&](const std::string& name) { return *load(e, read_binary_file(name), name); });
+      return create_graphs(e, ast, [&](const std::string& name) {
+        return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
+      });
     })
     .map([&](auto graphs) {
       std::vector<std::string> output{fmt::format("Loaded {} function(s) from {}", graphs.size(), eval.file)};
@@ -195,7 +200,11 @@ std::vector<std::string> run(const Env& e, Repl& repl, const SaveCmd& cmd) {
 
   repl.bindings[cmd.var].first = std::move(f2);
 
-  bf.then([&e, file = cmd.file](const Any& value) { write_binary_file(file, save(e, value)); });
+  auto f = bf.then([&e, file = cmd.file](const Any& v) {
+    return save(e, v).and_then([&](const auto& bytes) { return write_binary_file(file, bytes); });
+  });
+
+  repl.outstanding_writes.emplace_back(cmd.var, type, std::move(f));
 
   return {};
 }
@@ -260,7 +269,6 @@ expr_inputs(const Env& e, const Map<std::string, std::pair<anyf::Future, TypeID>
     return inputs;
   } else {
     return tl::unexpected{std::move(errors)};
-    ;
   }
 }
 
@@ -268,8 +276,9 @@ Result<std::tuple<std::vector<anyf::Future>, std::vector<TypeProperties>>>
 run_expr(const Env& e, Repl& repl, const ast::Expr& expr) {
   return expr_inputs(e, repl.bindings, expr)
     .and_then([&](auto inputs) {
-      auto g = create_graph(
-        e, expr, repl.graphs, inputs, [&](const std::string& name) { return *load(e, read_binary_file(name), name); });
+      auto g = create_graph(e, expr, repl.graphs, inputs, [&](const std::string& name) {
+        return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
+      });
 
       return merge(std::move(g), std::move(inputs));
     })
@@ -326,6 +335,29 @@ std::vector<std::string> wait_and_dump_results(const Env& e, std::vector<anyf::F
 } // namespace
 
 std::vector<std::string> step_repl(const Env& e, Repl& repl, std::string_view line) {
+  for(auto it = repl.outstanding_writes.begin(); it != repl.outstanding_writes.end();) {
+    auto& [binding, type, future] = *it;
+
+    if(future.ready()) {
+      const Result<void> result = anyf::any_cast<Result<void>>(std::move(future).wait());
+      if(!result) {
+        fmt::print("Error serializing {} ({})", binding, type_name_or_id(e, type));
+        if(result.error().size() == 1) {
+          fmt::print(": {}\n", result.error().front());
+        } else {
+          fmt::print("\n");
+          for(const std::string& msg : result.error()) {
+            fmt::print("  {}\n", msg);
+          }
+        }
+      }
+
+      it = repl.outstanding_writes.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   if(line.empty()) {
     return {};
   } else if(line[0] == ':') {
@@ -361,7 +393,7 @@ void run_repl(const Env& e) {
 
   std::string line;
   fmt::print("Welcome to the ooze repl!\n");
-  fmt::print("Try :h for help. Use Ctrl^C to exit.\n");
+  fmt::print("Try :h for help. Use Ctrl^D to exit.\n");
   fmt::print("> ");
 
   while(std::getline(std::cin, line)) {
@@ -370,6 +402,21 @@ void run_repl(const Env& e) {
     }
 
     fmt::print("> ");
+  }
+
+  for(auto& [binding, type, future] : repl.outstanding_writes) {
+    const Result<void> result = anyf::any_cast<Result<void>>(std::move(future).wait());
+    if(!result) {
+      fmt::print("Error serializing {} ({})", binding, type_name_or_id(e, type));
+      if(result.error().size() == 1) {
+        fmt::print(": {}\n", result.error().front());
+      } else {
+        fmt::print("\n");
+        for(const std::string& msg : result.error()) {
+          fmt::print("  {}\n", msg);
+        }
+      }
+    }
   }
 }
 

@@ -41,13 +41,13 @@ Result<std::vector<Term>> add_expr(GraphContext&,
                                    const Expr&,
                                    const Env&,
                                    const Map<std::string, FunctionGraph>&,
-                                   std::function<Any(const std::string&)>);
+                                   std::function<Result<Any>(const std::string&)>);
 
 Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx,
                                            const std::vector<Expr>& exprs,
                                            const Env& e,
                                            const Map<std::string, FunctionGraph>& graphs,
-                                           std::function<Any(const std::string&)> load) {
+                                           std::function<Result<Any>(const std::string&)> load) {
   auto [terms, errors] =
     accumulate<std::pair<std::vector<Term>, std::vector<std::string>>>(exprs, [&](auto acc, const Expr& expr) {
       if(auto terms = add_expr(ctx, expr, e, graphs, load); terms) {
@@ -65,7 +65,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
                                    const Expr& expr,
                                    const Env& e,
                                    const Map<std::string, FunctionGraph>& graphs,
-                                   std::function<Any(const std::string&)> load) {
+                                   std::function<Result<Any>(const std::string&)> load) {
   return std::visit(
     Overloaded{
       [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
@@ -78,9 +78,10 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
           } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
             return tl::unexpected{std::vector<std::string>{fmt::format("load() expects a string literal")}};
           } else {
-            Any value = load(*string_ptr);
-            const TypeProperties props{value.type(), true};
-            return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
+            return load(*string_ptr).and_then([&](Any value) {
+              const TypeProperties props{value.type(), true};
+              return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
+            });
           }
         } else {
           return accumulate_exprs(ctx, call->parameters, e, graphs, load)
@@ -117,7 +118,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
 } // namespace
 
 Result<Map<std::string, FunctionGraph>>
-create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&)> load) {
+create_graphs(const Env& e, const AST& ast, std::function<Result<Any>(const std::string&)> load) {
   Map<std::string, std::vector<std::string>> dependencies;
 
   for(const Function& function : ast) {
@@ -176,7 +177,7 @@ create_graphs(const Env& e, const AST& ast, std::function<Any(const std::string&
 Result<FunctionGraph> create_graph(const Env& e,
                                    const Function& f,
                                    const Map<std::string, FunctionGraph>& graphs,
-                                   std::function<Any(const std::string&)> load) {
+                                   std::function<Result<Any>(const std::string&)> load) {
   std::vector<TypeProperties> input_types;
   std::vector<std::string> errors;
 
@@ -260,7 +261,7 @@ Result<FunctionGraph> create_graph(const Env& e,
                                    const ast::Expr& expr,
                                    const Map<std::string, FunctionGraph>& graphs,
                                    const std::vector<std::pair<std::string, TypeProperties>>& inputs,
-                                   std::function<Any(const std::string&)> load) {
+                                   std::function<Result<Any>(const std::string&)> load) {
   std::vector<TypeProperties> input_types;
   Map<std::string, Term> bindings;
 

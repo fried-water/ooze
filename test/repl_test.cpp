@@ -36,12 +36,14 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   BOOST_CHECK(no_bindings == step_repl(e, r, ":b"));
 
   BOOST_CHECK(step_repl(e, r, "let x = 5").empty());
+  BOOST_CHECK(step_repl(e, r, ":a").empty());
 
   const std::vector<std::string> one_unknown_binding{"1 binding(s)",
                                                      fmt::format("  x: type 0x{:x}", anyf::type_id(knot::Type<int>{}))};
   BOOST_CHECK(one_unknown_binding == step_repl(e, r, ":b"));
 
   BOOST_CHECK(step_repl(e, r, "let y = 'abc'").empty());
+  BOOST_CHECK(step_repl(e, r, ":a").empty());
 
   e.add_name<int>("i32");
 
