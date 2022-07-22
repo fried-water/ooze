@@ -68,49 +68,59 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
                                    const Map<std::string, FunctionGraph>& graphs,
                                    std::function<Result<Any>(const std::string&)> load) {
   return std::visit(
-    Overloaded{[&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
-                 if(call->name == "load") {
-                   if(call->parameters.size() != 1) {
-                     return err(fmt::format("load() expects a string literal, given {} args", call->parameters.size()));
-                   } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
-                     return err(fmt::format("load() expects a string literal"));
-                   } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
-                     return err(fmt::format("load() expects a string literal"));
-                   } else {
-                     return load(*string_ptr).and_then([&](Any value) {
-                       return ctx.cg.add(AnyFunction(std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
-                     });
-                   }
-                 } else {
-                   return accumulate_exprs(ctx, call->parameters, e, graphs, load)
-                     .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
-                       if(const auto it = graphs.find(call->name); it != graphs.end()) {
-                         return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
-                       } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
-                         return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
-                       } else {
-                         return err(fmt::format("Function {} not found", call->name));
-                       }
-                     });
-                 }
-               },
-               [&](const std::string& identifier) {
-                 const auto it = ctx.bindings.find(identifier);
-                 return it != ctx.bindings.end() ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
-                                                 : err(fmt::format("Identifier {} not found", identifier));
-               },
-               [&](const Literal& literal) {
-                 return std::visit(
-                   Overloaded{
-                     [&](const std::string& value) {
+    Overloaded{
+      [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
+        if(call->name == "load") {
+          if(call->parameters.size() != 1) {
+            return err(fmt::format("load expects a string literal, given {} arg(s)", call->parameters.size()));
+          } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
+            return err(fmt::format("load expects a string literal"));
+          } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
+            return err(fmt::format("load expects a string literal"));
+          } else {
+            return load(*string_ptr).and_then([&](Any value) {
+              return ctx.cg.add(AnyFunction(std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
+            });
+          }
+        } else {
+          return accumulate_exprs(ctx, call->parameters, e, graphs, load)
+            .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
+              if(call->name == "clone") {
+                if(call->parameters.size() != 1) {
+                  return err(fmt::format("clone expects 1 arg, given {} arg(s)", call->parameters.size()));
+                } else if(const TypeID input_type = ctx.cg.type(terms.front()).id; !anyf::is_copyable(input_type)) {
+                  return err(fmt::format("clone requires a copyable type, given {}", type_name_or_id(e, input_type)));
+                } else {
+                  AnyFunction clone(
+                    {{input_type}}, {input_type}, [](Span<Any*> s) { return std::vector<Any>{*s.front()}; });
+                  return ctx.cg.add(std::move(clone), terms).map_error(to_graph_error(e, call->name));
+                }
+              } else if(const auto it = graphs.find(call->name); it != graphs.end()) {
+                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
+              } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
+                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
+              } else {
+                return err(fmt::format("Function {} not found", call->name));
+              }
+            });
+        }
+      },
+      [&](const std::string& identifier) {
+        const auto it = ctx.bindings.find(identifier);
+        return it != ctx.bindings.end() ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
+                                        : err(fmt::format("Identifier {} not found", identifier));
+      },
+      [&](const Literal& literal) {
+        return std::visit(
+          Overloaded{[&](const std::string& value) {
                        return ctx.cg.add(AnyFunction([=]() { return value; }), {}).map_error(to_graph_error(e, value));
                      },
                      [&](const auto& value) {
                        return ctx.cg.add(AnyFunction([=]() { return value; }), {})
                          .map_error(to_graph_error(e, std::to_string(value)));
                      }},
-                   literal);
-               }},
+          literal);
+      }},
     expr.v);
 }
 
@@ -260,19 +270,35 @@ Result<FunctionGraph> create_graph(const Env& e,
   }
 
   GraphContext ctx{std::get<0>(anyf::make_graph(input_types)), std::move(bindings)};
-  ;
 
   return add_expr(ctx, expr, e, graphs, load).and_then([&](std::vector<Term> terms) {
     return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, "return"));
   });
 }
 
-std::vector<std::pair<std::string, TypeProperties>> inputs_of(const Env& e, const ast::Expr& expr) {
+std::vector<std::pair<std::string, TypeProperties>>
+inputs_of(const Env& e, const ast::Expr& expr, std::function<std::optional<TypeID>(const std::string&)> type_of) {
+
+  if(std::holds_alternative<std::string>(expr.v)) {
+    const std::string binding = std::get<std::string>(expr.v);
+
+    if(auto opt_type = type_of(binding); opt_type) {
+      return {{binding, TypeProperties{*opt_type}}};
+    }
+  }
+
   auto inputs = knot::preorder_accumulate<std::vector<std::pair<std::string, TypeProperties>>>(
     expr, [&](std::vector<std::pair<std::string, TypeProperties>> inputs, const ast::Call& c) {
       // Ignore errors, will be handled when creating the graph proper
 
-      if(const auto it = e.functions.find(c.name); it != e.functions.end()) {
+      if(c.name == "clone") {
+        if(c.parameters.size() > 0 && std::holds_alternative<std::string>(c.parameters[0].v)) {
+          const std::string binding = std::get<std::string>(c.parameters[0].v);
+          if(auto opt_type = type_of(binding); opt_type) {
+            inputs.emplace_back(binding, TypeProperties{*opt_type});
+          }
+        }
+      } else if(const auto it = e.functions.find(c.name); it != e.functions.end()) {
         const auto& input_types = it->second.input_types();
         const size_t s = std::min(input_types.size(), c.parameters.size());
 

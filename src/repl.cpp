@@ -254,16 +254,11 @@ std::vector<std::string> run(const Env&, Repl& repl, const AwaitCmd& cmd) {
 
 Result<std::vector<std::pair<std::string, TypeProperties>>>
 expr_inputs(const Env& e, const Map<std::string, BindingEntry>& bindings, const ast::Expr& expr) {
-  std::vector<std::pair<std::string, TypeProperties>> inputs;
-  if(std::holds_alternative<std::string>(expr.v)) {
-    const std::string binding = std::get<std::string>(expr.v);
-
-    if(const auto it = bindings.find(binding); it != bindings.end()) {
-      inputs.emplace_back(binding, TypeProperties{it->second.type});
-    }
-  } else {
-    inputs = inputs_of(e, expr);
-  }
+  const std::vector<std::pair<std::string, TypeProperties>> inputs =
+    inputs_of(e, expr, [&](const std::string& binding) {
+      const auto it = bindings.find(binding);
+      return it != bindings.end() ? std::optional(it->second.type) : std::nullopt;
+    });
 
   std::vector<std::string> errors;
   for(const auto& [name, type] : inputs) {

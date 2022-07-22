@@ -90,4 +90,22 @@ BOOST_AUTO_TEST_CASE(ooze_already_move) {
   BOOST_CHECK(err("f return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
 }
 
+BOOST_AUTO_TEST_CASE(ooze_clone) {
+  Env env = create_primative_env();
+  env.add_name<std::unique_ptr<int>>("unique_int");
+  env.functions.emplace("make_unique_int", [](int x) { return std::make_unique<int>(x); });
+
+  auto res = run(env, "", "clone(make_unique_int(0))");
+
+  BOOST_CHECK(err("clone expects 1 arg, given 0 arg(s)") == run(env, "", "clone()"));
+  BOOST_CHECK(err("clone requires a copyable type, given unique_int") == run(env, "", "clone(make_unique_int(0))"));
+
+  const auto results = run(env, "", "clone('abc')");
+
+  BOOST_REQUIRE(results.has_value());
+  BOOST_CHECK_EQUAL(1, results->size());
+  BOOST_REQUIRE(anyf::holds_alternative<std::string>(results->front()));
+  BOOST_CHECK("abc" == anyf::any_cast<std::string>(results->front()));
+}
+
 } // namespace ooze

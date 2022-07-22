@@ -23,6 +23,7 @@ Result<FunctionGraph> create_graph(const Env&,
                                    const std::vector<std::pair<std::string, TypeProperties>>&,
                                    std::function<Result<Any>(const std::string&)>);
 
-std::vector<std::pair<std::string, TypeProperties>> inputs_of(const Env&, const ast::Expr&);
+std::vector<std::pair<std::string, TypeProperties>>
+inputs_of(const Env&, const ast::Expr&, std::function<std::optional<TypeID>(const std::string&)> type_of);
 
 } // namespace ooze
