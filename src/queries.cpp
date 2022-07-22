@@ -20,13 +20,16 @@ std::string join(const Range& range, F f) {
 std::string function_string(const Env& e,
                             std::string_view fn_name,
                             const std::vector<TypeProperties>& inputs,
-                            const std::vector<TypeProperties>& outputs) {
-  const auto type_name = [&](auto t) { return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&"); };
+                            const std::vector<TypeID>& outputs) {
+  const auto input_type_name = [&](auto t) {
+    return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&");
+  };
+  const auto output_type_name = [&](auto t) { return type_name_or_id(e, t); };
 
   return fmt::format("{}{} -> {}",
                      fn_name,
-                     join(inputs, type_name),
-                     outputs.size() == 1 ? type_name(outputs.front()) : join(outputs, type_name));
+                     join(inputs, input_type_name),
+                     outputs.size() == 1 ? output_type_name(outputs.front()) : join(outputs, output_type_name));
 }
 
 } // namespace

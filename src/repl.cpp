@@ -306,11 +306,8 @@ run_expr(const Env& e, Repl& repl, const ast::Expr& expr) {
         }
       }
 
-      std::vector<TypeID> outputs(output_types(g).size());
-      std::transform(output_types(g).begin(), output_types(g).end(), outputs.begin(), [](auto t) { return t.id; });
-
       return std::tuple(anyf::execute_graph(g, repl.executor, std::move(value_inputs), std::move(borrowed_inputs)),
-                        std::move(outputs));
+                        output_types(g));
     });
 }
 

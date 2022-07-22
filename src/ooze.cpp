@@ -153,14 +153,23 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
   for(const std::string& fn_name : functions) {
     const auto& f = e.functions.at(fn_name);
 
-    const auto doesnt_have = [&](const std::vector<TypeProperties>& types, const std::string& type) {
-      const auto it = e.type_ids.find(type);
-      if(it == e.type_ids.end()) {
+    const auto find_type_id = [&](const std::string& type) {
+      if(const auto it = e.type_ids.find(type); it == e.type_ids.end()) {
         fmt::print("type {} not found", type);
         std::exit(1);
+      } else {
+        return it->second;
       }
-      return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == it->second; });
     };
+
+    const auto doesnt_have =
+      Overloaded{[&](const std::vector<TypeProperties>& types, const std::string& type) {
+                   const TypeID exp = find_type_id(type);
+                   return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == exp; });
+                 },
+                 [&](const std::vector<TypeID>& types, const std::string& type) {
+                   return std::find(types.begin(), types.end(), find_type_id(type)) == types.end();
+                 }};
 
     const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
     const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };

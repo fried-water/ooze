@@ -68,50 +68,49 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
                                    const Map<std::string, FunctionGraph>& graphs,
                                    std::function<Result<Any>(const std::string&)> load) {
   return std::visit(
-    Overloaded{
-      [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
-        if(call->name == "load") {
-          if(call->parameters.size() != 1) {
-            return err(fmt::format("load() expects a string literal, given {} args", call->parameters.size()));
-          } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
-            return err(fmt::format("load() expects a string literal"));
-          } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
-            return err(fmt::format("load() expects a string literal"));
-          } else {
-            return load(*string_ptr).and_then([&](Any value) {
-              const TypeProperties props{value.type(), true};
-              return ctx.cg.add(AnyFunction(props, std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
-            });
-          }
-        } else {
-          return accumulate_exprs(ctx, call->parameters, e, graphs, load)
-            .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
-              if(const auto it = graphs.find(call->name); it != graphs.end()) {
-                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
-              } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
-                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
-              } else {
-                return err(fmt::format("Function {} not found", call->name));
-              }
-            });
-        }
-      },
-      [&](const std::string& identifier) {
-        const auto it = ctx.bindings.find(identifier);
-        return it != ctx.bindings.end() ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
-                                        : err(fmt::format("Identifier {} not found", identifier));
-      },
-      [&](const Literal& literal) {
-        return std::visit(
-          Overloaded{[&](const std::string& value) {
+    Overloaded{[&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
+                 if(call->name == "load") {
+                   if(call->parameters.size() != 1) {
+                     return err(fmt::format("load() expects a string literal, given {} args", call->parameters.size()));
+                   } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
+                     return err(fmt::format("load() expects a string literal"));
+                   } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
+                     return err(fmt::format("load() expects a string literal"));
+                   } else {
+                     return load(*string_ptr).and_then([&](Any value) {
+                       return ctx.cg.add(AnyFunction(std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
+                     });
+                   }
+                 } else {
+                   return accumulate_exprs(ctx, call->parameters, e, graphs, load)
+                     .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
+                       if(const auto it = graphs.find(call->name); it != graphs.end()) {
+                         return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
+                       } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
+                         return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
+                       } else {
+                         return err(fmt::format("Function {} not found", call->name));
+                       }
+                     });
+                 }
+               },
+               [&](const std::string& identifier) {
+                 const auto it = ctx.bindings.find(identifier);
+                 return it != ctx.bindings.end() ? Result<std::vector<Term>>{std::vector<Term>{it->second}}
+                                                 : err(fmt::format("Identifier {} not found", identifier));
+               },
+               [&](const Literal& literal) {
+                 return std::visit(
+                   Overloaded{
+                     [&](const std::string& value) {
                        return ctx.cg.add(AnyFunction([=]() { return value; }), {}).map_error(to_graph_error(e, value));
                      },
                      [&](const auto& value) {
                        return ctx.cg.add(AnyFunction([=]() { return value; }), {})
                          .map_error(to_graph_error(e, std::to_string(value)));
                      }},
-          literal);
-      }},
+                   literal);
+               }},
     expr.v);
 }
 
