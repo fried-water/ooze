@@ -39,7 +39,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   BOOST_CHECK(step_repl(e, r, ":a").empty());
 
   const std::vector<std::string> one_unknown_binding{"1 binding(s)",
-                                                     fmt::format("  x: type 0x{:x}", anyf::type_id(knot::Type<int>{}))};
+                                                     fmt::format("  x: type 0x{:x}", anyf::type_id<int>())};
   BOOST_CHECK(one_unknown_binding == step_repl(e, r, ":b"));
 
   BOOST_CHECK(step_repl(e, r, "let y = 'abc'").empty());
@@ -48,16 +48,16 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   e.add_name<int>("i32");
 
   const std::vector<std::string> two_bindings{
-    "2 binding(s)", "  x: i32", fmt::format("  y: {}", type_name_or_id(e, anyf::type_id(knot::Type<std::string>{})))};
+    "2 binding(s)", "  x: i32", fmt::format("  y: {}", type_name_or_id(e, anyf::type_id<std::string>()))};
   BOOST_CHECK(two_bindings == step_repl(e, r, ":b"));
 
   BOOST_CHECK(r.bindings.size() == 2);
 
-  BOOST_CHECK(anyf::type_id(knot::Type<int>{}) == r.bindings.at("x").second);
-  BOOST_CHECK(anyf::type_id(knot::Type<std::string>{}) == r.bindings.at("y").second);
+  BOOST_CHECK(anyf::type_id<int>() == r.bindings.at("x").type);
+  BOOST_CHECK(anyf::type_id<std::string>() == r.bindings.at("y").type);
 
-  BOOST_CHECK(5 == anyf::any_cast<int>(std::move(r.bindings.at("x").first).wait()));
-  BOOST_CHECK("abc" == anyf::any_cast<std::string>(std::move(r.bindings.at("y").first).wait()));
+  BOOST_CHECK(5 == anyf::any_cast<int>(std::move(r.bindings.at("x").future).wait()));
+  BOOST_CHECK("abc" == anyf::any_cast<std::string>(std::move(r.bindings.at("y").future).wait()));
 }
 
 BOOST_AUTO_TEST_CASE(repl_types) {
@@ -71,13 +71,13 @@ BOOST_AUTO_TEST_CASE(repl_types) {
 
   e.add_name<A>("A");
 
-  e.to_string.emplace(anyf::type_id(knot::Type<B>{}), [](const Any&) { return std::string("B"); });
+  e.to_string.emplace(anyf::type_id<B>(), [](const Any&) { return std::string("B"); });
 
   const std::vector<std::string> expected{
     "3 type(s)",
     "  A                    [to_string: N, serialize: N]",
     "  i32                  [to_string: Y, serialize: Y]",
-    fmt::format("  {:<20} [to_string: Y, serialize: N]", type_name_or_id(e, anyf::type_id(knot::Type<B>{})))};
+    fmt::format("  {:<20} [to_string: Y, serialize: N]", type_name_or_id(e, anyf::type_id<B>()))};
 
   BOOST_CHECK(expected == step_repl(e, r, ":t"));
 }
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
 
   struct A {};
 
-  const auto a_type = anyf::type_id(knot::Type<A>{});
+  const auto a_type = anyf::type_id<A>();
 
   e.functions.emplace("create_a", []() { return A{}; });
   e.functions.emplace("read_a", [](const A&) {});

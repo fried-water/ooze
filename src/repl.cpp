@@ -77,6 +77,27 @@ auto parse_command(std::string_view line) {
   });
 }
 
+Result<std::pair<TypeID, anyf::Future>> take(Repl& repl, const std::string& name) {
+  if(const auto var_it = repl.bindings.find(name); var_it != repl.bindings.end()) {
+    BindingEntry e = std::move(var_it->second);
+    repl.bindings.erase(var_it);
+    return std::pair(e.type, std::move(e.future));
+  } else {
+    return err(fmt::format("Binding {} not found", name));
+  }
+}
+
+Result<std::pair<TypeID, anyf::BorrowedFuture>> borrow(Repl& repl, const std::string& name) {
+  if(const auto var_it = repl.bindings.find(name); var_it == repl.bindings.end()) {
+    return err(fmt::format("Binding {} not found", name));
+  } else if(BindingEntry& e = var_it->second; e.borrowed_future.valid()) {
+    return std::pair(e.type, e.borrowed_future);
+  } else {
+    std::tie(e.borrowed_future, e.future) = borrow(std::move(e.future));
+    return std::pair(e.type, e.borrowed_future);
+  }
+}
+
 std::vector<std::string> run(const Env& e, Repl&, const HelpCmd& help) {
   return {{":h - This message"},
           {":b - List all bindings (* means they are not ready)"},
@@ -91,14 +112,17 @@ std::vector<std::string> run(const Env& e, Repl& repl, BindingsCmd) {
   std::vector<std::string> output{fmt::format("{} binding(s)", repl.bindings.size())};
 
   std::vector<std::string> ordered;
-  for(const auto& [v, f] : repl.bindings) {
-    ordered.push_back(v);
+  for(const auto& [binding, entry] : repl.bindings) {
+    ordered.push_back(binding);
   }
   std::sort(ordered.begin(), ordered.end());
 
-  for(const auto& v : ordered) {
-    const auto& [f, type] = repl.bindings.at(v);
-    output.push_back(fmt::format("  {}: {}{}", v, type_name_or_id(e, type), f.ready() ? "" : "*"));
+  for(const auto& binding : ordered) {
+    const auto& [type, f, b] = repl.bindings.at(binding);
+    output.push_back(fmt::format("  {}: {}{}",
+                                 binding,
+                                 type_name_or_id(e, type),
+                                 f.ready() || (b.valid() && b.unique()) ? "" : (b.valid() ? "&" : "*")));
   }
 
   return output;
@@ -182,52 +206,44 @@ std::vector<std::string> run(const Env& e, Repl&, const TypesCmd&) {
 }
 
 std::vector<std::string> run(const Env& e, Repl& repl, const SaveCmd& cmd) {
-  const auto var_it = repl.bindings.find(cmd.var);
+  auto res = borrow(repl, cmd.var);
 
-  if(var_it == repl.bindings.end()) {
-    return {fmt::format("Binding {} not found", cmd.var)};
+  if(!res) {
+    return std::move(res.error());
   }
 
-  auto& [future, type] = var_it->second;
+  auto& [type, bf] = res.value();
 
   const auto serialize_it = e.serialize.find(type);
 
   if(serialize_it == e.serialize.end()) {
-    return {fmt::format("{} ({}) does not support serialization", cmd.var, type_name_or_id(e, type))};
+    err(fmt::format("{} ({}) does not support serialization", cmd.var, type_name_or_id(e, type)));
   }
 
-  auto [bf, f2] = borrow(std::move(future));
-
-  repl.bindings[cmd.var].first = std::move(f2);
-
-  auto f = bf.then([&e, file = cmd.file](const Any& v) {
+  repl.outstanding_writes.emplace_back(cmd.var, type, bf.then([&e, file = cmd.file](const Any& v) {
     return save(e, v).and_then([&](const auto& bytes) { return write_binary_file(file, bytes); });
-  });
-
-  repl.outstanding_writes.emplace_back(cmd.var, type, std::move(f));
+  }));
 
   return {};
 }
 
 std::vector<std::string> run(const Env&, Repl& repl, const ReleaseCmd& cmd) {
-  if(const auto it = repl.bindings.find(cmd.var); it != repl.bindings.end()) {
-    repl.bindings.erase(it);
-    return {};
-  } else {
-    return {fmt::format("Binding {} not found", cmd.var)};
-  }
+  return take(repl, cmd.var)
+    .map([](const auto&) { return std::vector<std::string>{}; })
+    .map_error(convert_errors)
+    .value();
 }
 
 std::vector<std::string> run(const Env&, Repl& repl, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
-    for(auto& [name, pair] : repl.bindings) {
-      pair.first = anyf::Future(repl.executor, std::move(pair.first).wait());
+    for(auto& [binding, entry] : repl.bindings) {
+      entry.future = anyf::Future(repl.executor, std::move(entry.future).wait());
     }
   } else {
     for(const std::string& binding : cmd.bindings) {
       if(const auto it = repl.bindings.find(binding); it != repl.bindings.end()) {
-        it->second.first = anyf::Future(repl.executor, std::move(it->second.first).wait());
+        it->second.future = anyf::Future(repl.executor, std::move(it->second.future).wait());
       } else {
         output.push_back(fmt::format("Binding {} not found", binding));
       }
@@ -237,13 +253,13 @@ std::vector<std::string> run(const Env&, Repl& repl, const AwaitCmd& cmd) {
 }
 
 Result<std::vector<std::pair<std::string, TypeProperties>>>
-expr_inputs(const Env& e, const Map<std::string, std::pair<anyf::Future, TypeID>>& bindings, const ast::Expr& expr) {
+expr_inputs(const Env& e, const Map<std::string, BindingEntry>& bindings, const ast::Expr& expr) {
   std::vector<std::pair<std::string, TypeProperties>> inputs;
   if(std::holds_alternative<std::string>(expr.v)) {
-    const std::string var = std::get<std::string>(expr.v);
-    const auto it = bindings.find(var);
-    if(it != bindings.end()) {
-      inputs.emplace_back(var, TypeProperties{it->second.second});
+    const std::string binding = std::get<std::string>(expr.v);
+
+    if(const auto it = bindings.find(binding); it != bindings.end()) {
+      inputs.emplace_back(binding, TypeProperties{it->second.type});
     }
   } else {
     inputs = inputs_of(e, expr);
@@ -251,17 +267,11 @@ expr_inputs(const Env& e, const Map<std::string, std::pair<anyf::Future, TypeID>
 
   std::vector<std::string> errors;
   for(const auto& [name, type] : inputs) {
-    const auto it = bindings.find(name);
-
-    if(it == bindings.end()) {
-      errors.push_back(fmt::format("{} not found", name));
-    } else {
-      auto& [future, var_type] = it->second;
-
-      if(var_type != type.id) {
-        errors.push_back(
-          fmt::format("{} expected {} but is {}", name, type_name_or_id(e, type.id), type_name_or_id(e, var_type)));
-      }
+    if(const auto it = bindings.find(name); it == bindings.end()) {
+      errors.push_back(fmt::format("Binding {} not found", name));
+    } else if(it->second.type != type.id) {
+      errors.push_back(fmt::format(
+        "{} expected {} but is {}", name, type_name_or_id(e, type.id), type_name_or_id(e, it->second.type)));
     }
   }
 
@@ -289,15 +299,10 @@ run_expr(const Env& e, Repl& repl, const ast::Expr& expr) {
       std::vector<anyf::BorrowedFuture> borrowed_inputs;
 
       for(const auto& [name, type] : inputs) {
-        auto& [future, var_type] = repl.bindings.at(name);
-
         if(type.value) {
-          value_inputs.push_back(std::move(future));
-          repl.bindings.erase(name);
+          value_inputs.push_back(take(repl, name).value().second);
         } else {
-          auto [bf, next_future] = borrow(std::move(future));
-          borrowed_inputs.push_back(std::move(bf));
-          future = std::move(next_future);
+          borrowed_inputs.push_back(borrow(repl, name).value().second);
         }
       }
 
@@ -313,7 +318,7 @@ void bind_results(const Env& e,
                   std::vector<anyf::Future> results) {
   check(bindings.size() == results.size(), "TODO");
   for(size_t i = 0; i < results.size(); i++) {
-    repl.bindings[bindings[i].name] = std::pair(std::move(results[i]), types[i].id);
+    repl.bindings[bindings[i].name] = BindingEntry{types[i].id, std::move(results[i])};
   }
 }
 
