@@ -38,7 +38,7 @@ struct Call {
 };
 
 struct Assignment {
-  std::vector<Binding> variables;
+  std::vector<Binding> bindings;
   Expr expr;
 
   KNOT_COMPAREABLE(Assignment);

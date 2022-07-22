@@ -282,7 +282,7 @@ expr_inputs(const Env& e, const Map<std::string, BindingEntry>& bindings, const 
   }
 }
 
-Result<std::tuple<std::vector<anyf::Future>, std::vector<TypeProperties>>>
+Result<std::tuple<std::vector<anyf::Future>, std::vector<TypeID>>>
 run_expr(const Env& e, Repl& repl, const ast::Expr& expr) {
   return expr_inputs(e, repl.bindings, expr)
     .and_then([&](auto inputs) {
@@ -306,20 +306,28 @@ run_expr(const Env& e, Repl& repl, const ast::Expr& expr) {
         }
       }
 
+      std::vector<TypeID> outputs(output_types(g).size());
+      std::transform(output_types(g).begin(), output_types(g).end(), outputs.begin(), [](auto t) { return t.id; });
+
       return std::tuple(anyf::execute_graph(g, repl.executor, std::move(value_inputs), std::move(borrowed_inputs)),
-                        output_types(g));
+                        std::move(outputs));
     });
 }
 
-void bind_results(const Env& e,
-                  Repl& repl,
-                  const std::vector<TypeProperties>& types,
-                  const std::vector<ast::Binding>& bindings,
-                  std::vector<anyf::Future> results) {
-  check(bindings.size() == results.size(), "TODO");
-  for(size_t i = 0; i < results.size(); i++) {
-    repl.bindings[bindings[i].name] = BindingEntry{types[i].id, std::move(results[i])};
-  }
+std::vector<std::string> bind_results(const Env& e,
+                                      Repl& repl,
+                                      const std::vector<TypeID>& types,
+                                      const std::vector<ast::Binding>& bindings,
+                                      std::vector<anyf::Future> results) {
+  return type_check(e, bindings, types)
+    .map([&]() {
+      for(size_t i = 0; i < results.size(); i++) {
+        repl.bindings[bindings[i].name] = BindingEntry{types[i], std::move(results[i])};
+      }
+      return std::vector<std::string>{};
+    })
+    .map_error(convert_errors)
+    .value();
 }
 
 std::vector<std::string> wait_and_dump_results(const Env& e, std::vector<anyf::Future> results) {
@@ -374,19 +382,18 @@ std::vector<std::string> step_repl(const Env& e, Repl& repl, std::string_view li
     return parse_repl(line)
       .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<repl>", error)}; })
       .and_then([&](std::variant<ast::Expr, ast::Assignment> var) {
-        return std::visit(
-          Overloaded{[&](ast::Assignment assignment) {
-                       return run_expr(e, repl, assignment.expr).map([&](auto tup) {
-                         bind_results(e, repl, std::get<1>(tup), assignment.variables, std::move(std::get<0>(tup)));
-                         return std::vector<std::string>{};
-                       });
-                     },
-                     [&](ast::Expr expr) {
-                       return run_expr(e, repl, expr).map([&](auto tup) {
-                         return wait_and_dump_results(e, std::move(std::get<0>(tup)));
-                       });
-                     }},
-          std::move(var));
+        return std::visit(Overloaded{[&](ast::Assignment assignment) {
+                                       return run_expr(e, repl, assignment.expr).map([&](auto tup) {
+                                         return bind_results(
+                                           e, repl, std::get<1>(tup), assignment.bindings, std::move(std::get<0>(tup)));
+                                       });
+                                     },
+                                     [&](ast::Expr expr) {
+                                       return run_expr(e, repl, expr).map([&](auto tup) {
+                                         return wait_and_dump_results(e, std::move(std::get<0>(tup)));
+                                       });
+                                     }},
+                          std::move(var));
       })
       .or_else(convert_errors)
       .value();

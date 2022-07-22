@@ -155,7 +155,10 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
 
     const auto doesnt_have = [&](const std::vector<TypeProperties>& types, const std::string& type) {
       const auto it = e.type_ids.find(type);
-      check(it != e.type_ids.end(), "type {} not found", type);
+      if(it == e.type_ids.end()) {
+        fmt::print("type {} not found", type);
+        std::exit(1);
+      }
       return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == it->second; });
     };
 

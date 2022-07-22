@@ -7,7 +7,10 @@
 namespace ooze {
 
 Result<std::vector<Any>> run(const Env& e, std::string_view script, std::string_view expr) {
-  return run(e, script, expr, [](const auto&) -> Any { error("Loader not specified"); });
+  return run(e, script, expr, [](const auto&) -> Any {
+    BOOST_REQUIRE(false);
+    return Any{};
+  });
 }
 
 BOOST_AUTO_TEST_CASE(ooze_basic) {

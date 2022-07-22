@@ -48,19 +48,6 @@ struct Overloaded : Ts... {
 template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
-template <typename... Ts>
-[[noreturn]] void error(const char* fmt_string, const Ts&... ts) {
-  fmt::print("Error: {}\n", fmt::format(fmt_string, ts...));
-  exit(1);
-}
-
-template <typename... Ts>
-void check(bool b, const char* fmt_string, const Ts&... ts) {
-  if(!b) {
-    error(fmt_string, ts...);
-  }
-}
-
 template <typename T, typename Range, typename F>
 T accumulate(Range&& range, F f, T acc = {}) {
   for(auto&& value : range) {

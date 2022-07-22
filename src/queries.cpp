@@ -39,4 +39,23 @@ std::string function_string(const Env& e, std::string_view fn_name, const anyf::
   return function_string(e, fn_name, f.input_types(), f.output_types());
 }
 
+Result<void> type_check(const Env& e, const std::vector<ast::Binding>& bindings, const std::vector<TypeID>& types) {
+  if(types.size() != bindings.size()) {
+    return err(fmt::format("Assignment expects {} value(s), given {}", bindings.size(), types.size()));
+  }
+
+  std::vector<std::string> errors;
+  for(int i = 0; i < types.size(); i++) {
+    if(bindings[i].type) {
+      const std::string given_type = type_name_or_id(e, types[i]);
+
+      if(given_type != bindings[i].type) {
+        errors.push_back(fmt::format("{} expects {}, given {}", bindings[i].name, *bindings[i].type, given_type));
+      }
+    }
+  }
+
+  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
+}
+
 } // namespace ooze

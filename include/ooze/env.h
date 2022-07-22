@@ -28,8 +28,8 @@ struct Env {
 
   template <typename T>
   void add_name(const std::string& name) {
-    type_ids.emplace(name, anyf::type_id(knot::Type<T>{}));
-    type_names.emplace(anyf::type_id(knot::Type<T>{}), name);
+    type_ids.emplace(name, anyf::type_id<T>());
+    type_names.emplace(anyf::type_id<T>(), name);
   }
 };
 
@@ -50,7 +50,7 @@ auto generate_constructor(knot::TypeList<Ts...>) {
 
 template <typename T>
 void add_tieable_type(Env& e, const std::string& name) {
-  const TypeID type = anyf::type_id(knot::Type<T>{});
+  const TypeID type = anyf::type_id<T>();
 
   e.add_name<T>(name);
 

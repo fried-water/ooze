@@ -46,7 +46,7 @@ struct ExprPrettyPrinter {
 void pretty_print(std::ostream& os, const Expr& e) { std::visit(ExprPrettyPrinter{os}, e.v); }
 
 void pretty_print(std::ostream& os, const Assignment& a) {
-  pretty_print(os << "let ", a.variables, true);
+  pretty_print(os << "let ", a.bindings, true);
   pretty_print(os << " = ", a.expr);
 }
 

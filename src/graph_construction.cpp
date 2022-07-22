@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "graph_construction.h"
+#include "queries.h"
 
 namespace ooze {
 
@@ -71,12 +72,11 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
       [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
         if(call->name == "load") {
           if(call->parameters.size() != 1) {
-            return tl::unexpected{std::vector<std::string>{
-              fmt::format("load() expects a string literal, given {} args", call->parameters.size())}};
+            return err(fmt::format("load() expects a string literal, given {} args", call->parameters.size()));
           } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
-            return tl::unexpected{std::vector<std::string>{fmt::format("load() expects a string literal")}};
+            return err(fmt::format("load() expects a string literal"));
           } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
-            return tl::unexpected{std::vector<std::string>{fmt::format("load() expects a string literal")}};
+            return err(fmt::format("load() expects a string literal"));
           } else {
             return load(*string_ptr).and_then([&](Any value) {
               const TypeProperties props{value.type(), true};
@@ -91,7 +91,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
               } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
                 return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
               } else {
-                return tl::unexpected{std::vector<std::string>{fmt::format("Function {} not found", call->name)}};
+                return err(fmt::format("Function {} not found", call->name));
               }
             });
         }
@@ -209,26 +209,16 @@ Result<FunctionGraph> create_graph(const Env& e,
           return std::move(acc).and_then([&](GraphContext ctx) {
             return add_expr(ctx, assignment.expr, e, graphs, load)
               .and_then([&](std::vector<Term> terms) -> Result<GraphContext> {
-                if(terms.size() != assignment.variables.size()) {
-                  return err(
-                    fmt::format("Assignment expects {} value(s), given {}", assignment.variables.size(), terms.size()));
-                }
+                std::vector<TypeID> inputs(terms.size());
+                std::transform(
+                  terms.begin(), terms.end(), inputs.begin(), [&](const auto& t) { return ctx.cg.type(t).id; });
 
-                std::vector<std::string> errors;
-                for(int i = 0; i < terms.size(); i++) {
-                  if(assignment.variables[i].type) {
-                    const std::string given_type = type_name_or_id(e, ctx.cg.type(terms[i]).id);
-
-                    if(given_type != assignment.variables[i].type) {
-                      errors.push_back(fmt::format("{} expects {}, given {}",
-                                                   assignment.variables[i].name,
-                                                   *assignment.variables[i].type,
-                                                   given_type));
-                    }
+                return type_check(e, assignment.bindings, inputs).map([&]() {
+                  for(int i = 0; i < terms.size(); i++) {
+                    ctx.bindings.emplace(assignment.bindings[i].name, terms[i]);
                   }
-                  ctx.bindings.emplace(assignment.variables[i].name, terms[i]);
-                }
-                return errors.empty() ? Result<GraphContext>{std::move(ctx)} : tl::unexpected{std::move(errors)};
+                  return std::move(ctx);
+                });
               });
           });
         },
