@@ -146,7 +146,7 @@ auto transform(P p, F f) {
 
     using T = typename decltype(s)::value_type;
 
-    if constexpr(is_tuple(decay(knot::Type<decltype(*opt.value)>{}))) {
+    if constexpr(knot::is_tuple_like(decay(knot::Type<decltype(*opt.value)>{}))) {
       using R = std::decay_t<decltype(std::apply(f, std::move(*opt.value)))>;
       return opt ? passing_result(opt.tokens, std::apply(f, std::move(*opt.value)), std::move(opt.errors))
                  : failing_result<R>(opt.tokens, std::move(opt.errors));
