@@ -108,4 +108,18 @@ BOOST_AUTO_TEST_CASE(ooze_clone) {
   BOOST_CHECK("abc" == anyf::any_cast<std::string>(results->front()));
 }
 
+BOOST_AUTO_TEST_CASE(ooze_rebind) {
+  const auto script = "fn f(x: i32) -> i32 { let x = double(x) let x = double(x) x }";
+
+  Env env = create_primative_env();
+  env.functions.emplace("double", [](int x) { return x + x; });
+
+  const auto results = run(env, script, "f(1)");
+
+  BOOST_REQUIRE(results.has_value());
+  BOOST_CHECK_EQUAL(1, results->size());
+  BOOST_REQUIRE(anyf::holds_alternative<int>(results->front()));
+  BOOST_CHECK(4 == anyf::any_cast<int>(results->front()));
+}
+
 } // namespace ooze

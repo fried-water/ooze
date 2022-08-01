@@ -224,7 +224,7 @@ Result<FunctionGraph> create_graph(const Env& e,
 
                 return type_check(e, assignment.bindings, inputs).map([&]() {
                   for(int i = 0; i < terms.size(); i++) {
-                    ctx.bindings.emplace(assignment.bindings[i].name, terms[i]);
+                    ctx.bindings.insert_or_assign(assignment.bindings[i].name, terms[i]);
                   }
                   return std::move(ctx);
                 });
