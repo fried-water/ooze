@@ -20,7 +20,7 @@
 namespace ooze {
 
 template <typename Key, typename Value>
-using Map = std::unordered_map<Key, Value, knot::Hash>;
+using Map = std::unordered_map<Key, Value>;
 
 template <typename T>
 using Set = std::unordered_set<T, knot::Hash>;

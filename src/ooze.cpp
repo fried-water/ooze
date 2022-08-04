@@ -239,17 +239,27 @@ Result<std::vector<std::byte>> save(const Env& e, const Any& v) {
   return ser_it->second(v, knot::serialize(name_it->second));
 }
 
+Result<Map<std::string, anyf::FunctionGraph>>
+parse_script(const Env& e, std::string_view script, std::function<Result<Any>(const std::string&)> load) {
+  return parse(script)
+    .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; })
+    .and_then([&](AST ast) { return create_graphs(e, ast, load); });
+}
+
+Result<anyf::FunctionGraph> parse_expr(const Env& e,
+                                       std::string_view expr,
+                                       std::function<Result<Any>(const std::string&)> load,
+                                       const Map<std::string, anyf::FunctionGraph>& graphs) {
+  return parse_expr(expr)
+    .map_error(
+      [&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)}; })
+    .and_then([&](ast::Expr expr) { return create_graph(e, expr, graphs, {}, load); });
+}
+
 Result<std::vector<Any>>
 run(const Env& e, std::string_view script, std::string_view expr, std::function<Result<Any>(const std::string&)> load) {
-  return merge(parse_expr(expr).map_error([&](const ParseError& error) {
-           return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)};
-         }),
-               parse(script)
-                 .map_error([&](const ParseError& error) {
-                   return std::vector<std::string>{generate_error_msg("<script>", error)};
-                 })
-                 .and_then([&](AST ast) { return create_graphs(e, ast, load); }))
-    .and_then([&](auto tup) { return create_graph(e, std::get<0>(tup), std::get<1>(tup), {}, load); })
+  return parse_script(e, script, load)
+    .and_then([&](auto graphs) { return parse_expr(e, expr, load, graphs); })
     .map([&](FunctionGraph g) { return anyf::execute_graph(g, anyf::TaskExecutor{}, {}); });
 }
 

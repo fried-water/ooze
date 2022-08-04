@@ -130,12 +130,8 @@ std::vector<std::string> run(const Env& e, Repl& repl, BindingsCmd) {
 
 std::vector<std::string> run(const Env& e, Repl& repl, const EvalCmd& eval) {
   return read_text_file(eval.file)
-    .and_then([](std::string script) {
-      return parse(script).map_error(
-        [&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; });
-    })
-    .and_then([&](AST ast) {
-      return create_graphs(e, ast, [&](const std::string& name) {
+    .and_then([&](std::string script) {
+      return parse_script(e, script, [&](const std::string& name) {
         return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
       });
     })
