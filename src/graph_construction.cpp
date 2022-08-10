@@ -27,6 +27,10 @@ std::string msg(const Env& e, const std::string& function, const anyf::AlreadyMo
   return fmt::format("{} value for arg {} already moved", function, err.index);
 }
 
+std::string msg(const Env& e, const std::string& function, const anyf::CannotCopy& err) {
+  return fmt::format("Function input {} of type {} cannot be copied", err.index, e.type_names.at(err.type));
+}
+
 auto to_graph_error(const Env& e, std::string function) {
   return [&, f = std::move(function)](anyf::GraphError error) {
     return std::visit([&](auto err) { return std::vector{msg(e, f, err)}; }, error);
