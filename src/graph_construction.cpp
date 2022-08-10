@@ -84,6 +84,13 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
           }
         } else {
           return accumulate_exprs(ctx, call->parameters, e, graphs, load)
+            .map_error([&](std::vector<std::string> errors) {
+              if(call->name != "clone" && graphs.find(call->name) == graphs.end() &&
+                 e.functions.find(call->name) == e.functions.end()) {
+                errors.push_back(fmt::format("Function {} not found", call->name));
+              }
+              return errors;
+            })
             .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
               if(call->name == "clone") {
                 if(call->parameters.size() != 1) {
@@ -279,52 +286,40 @@ Result<FunctionGraph> create_graph(const Env& e,
 std::vector<std::pair<std::string, TypeProperties>>
 inputs_of(const Env& e, const ast::Expr& expr, std::function<std::optional<TypeID>(const std::string&)> type_of) {
 
-  if(std::holds_alternative<std::string>(expr.v)) {
-    const std::string binding = std::get<std::string>(expr.v);
-
-    if(auto opt_type = type_of(binding); opt_type) {
-      return {{binding, TypeProperties{*opt_type}}};
-    }
-  }
-
+  // Add inputs for all identifiers
   auto inputs = knot::preorder_accumulate<std::vector<std::pair<std::string, TypeProperties>>>(
-    expr, [&](std::vector<std::pair<std::string, TypeProperties>> inputs, const ast::Call& c) {
-      // Ignore errors, will be handled when creating the graph proper
-
-      if(c.name == "clone") {
-        if(c.parameters.size() > 0 && std::holds_alternative<std::string>(c.parameters[0].v)) {
-          const std::string binding = std::get<std::string>(c.parameters[0].v);
-          if(auto opt_type = type_of(binding); opt_type) {
-            inputs.emplace_back(binding, TypeProperties{*opt_type});
-          }
-        }
-      } else if(const auto it = e.functions.find(c.name); it != e.functions.end()) {
-        const auto& input_types = it->second.input_types();
-        const size_t s = std::min(input_types.size(), c.parameters.size());
-
-        for(size_t i = 0; i < s; i++) {
-          if(std::holds_alternative<std::string>(c.parameters[i].v)) {
-            inputs.emplace_back(std::get<std::string>(c.parameters[i].v), input_types[i]);
-          }
+    expr, [&](auto inputs, const ast::Expr& expr) {
+      if(const std::string* binding = std::get_if<std::string>(&expr.v); binding != nullptr) {
+        if(auto opt_type = type_of(*binding); opt_type) {
+          inputs.emplace_back(*binding, TypeProperties{*opt_type});
         }
       }
 
       return inputs;
     });
 
-  // Sort by name, type, value
-  std::sort(inputs.begin(), inputs.end(), [](const auto& lhs, const auto& rhs) {
-    return std::make_tuple(std::cref(lhs.first), lhs.second.id, !lhs.second.value) <
-           std::make_tuple(std::cref(rhs.first), rhs.second.id, !rhs.second.value);
-  });
+  // For all known function inputs, check if it takes its argument by value
+  return knot::preorder_accumulate<std::vector<std::pair<std::string, TypeProperties>>>(
+    expr,
+    [&](auto inputs, const ast::Call& c) {
+      if(const auto it = e.functions.find(c.name); it != e.functions.end()) {
+        const auto& input_types = it->second.input_types();
+        const size_t s = std::min(input_types.size(), c.parameters.size());
 
-  // Erase all duplicates of the same name
-  auto it = inputs.begin();
-  while(it != inputs.end()) {
-    it = inputs.erase(it + 1, std::find_if(it + 1, inputs.end(), [&](const auto& p) { return p.first != it->first; }));
-  }
+        for(size_t i = 0; i < s; i++) {
+          if(const std::string* binding = std::get_if<std::string>(&c.parameters[i].v); binding != nullptr) {
+            const auto it =
+              std::find_if(inputs.begin(), inputs.end(), [&](const auto& p) { return p.first == *binding; });
+            if(it != inputs.end() && it->second.id == input_types[i].id) {
+              it->second.value = input_types[i].value;
+            }
+          }
+        }
+      }
 
-  return inputs;
+      return inputs;
+    },
+    std::move(inputs));
 }
 
 } // namespace ooze

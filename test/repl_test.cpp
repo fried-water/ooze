@@ -28,6 +28,51 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
   BOOST_CHECK(expected3 == step_repl(e, r, "pow(3)"));
 }
 
+BOOST_AUTO_TEST_CASE(repl_missing_function) {
+  Env e = create_primative_env();
+  Repl r;
+
+  step_repl(e, r, "let x = 1");
+
+  const std::vector<std::string> expected{"Function missing not found"};
+  BOOST_CHECK(expected == step_repl(e, r, "missing()"));
+  BOOST_CHECK(expected == step_repl(e, r, "missing(x)"));
+}
+
+BOOST_AUTO_TEST_CASE(repl_missing_binding) {
+  Env e = create_primative_env();
+  Repl r;
+
+  e.functions.emplace("identity", [](int x) { return x; });
+
+  const std::vector<std::string> expected{"Identifier x not found"};
+  BOOST_CHECK(expected == step_repl(e, r, "x"));
+  BOOST_CHECK(expected == step_repl(e, r, "identity(x)"));
+}
+
+BOOST_AUTO_TEST_CASE(repl_missing_function_bindings) {
+  Env e = create_primative_env();
+  Repl r;
+
+  const std::vector<std::string> expected{
+    "Identifier x not found", "Identifier y not found", "Function missing not found"};
+
+  BOOST_CHECK(expected == step_repl(e, r, "missing(x, y)"));
+}
+
+BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
+  Env e = create_primative_env();
+  Repl r;
+
+  e.functions.emplace("make_ptr", [](int x) { return std::make_unique<int>(x); });
+  e.functions.emplace("take_ptr", [](std::unique_ptr<int> x) { return *x; });
+
+  BOOST_CHECK(step_repl(e, r, "let x = make_ptr(5)").empty());
+
+  const std::vector<std::string> expected{"5"};
+  BOOST_CHECK(expected == step_repl(e, r, "take_ptr(x)"));
+}
+
 BOOST_AUTO_TEST_CASE(repl_bindings) {
   Env e;
   Repl r;
