@@ -3,6 +3,7 @@
 #include "graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
+#include "overload_resolution.h"
 #include "parser.h"
 #include "parser_combinators.h"
 #include "queries.h"
@@ -158,7 +159,7 @@ std::vector<std::string> run(const Env& e, Repl& repl, const FunctionsCmd&) {
   }
 
   for(const auto& [name, fs] : e.functions) {
-    if(name != "clone") {
+    if(name != "clone" && name != "to_string") {
       for(const AnyFunction& f : fs) {
         functions.emplace_back(name, function_string(e, name, f));
       }
@@ -171,6 +172,10 @@ std::vector<std::string> run(const Env& e, Repl& repl, const FunctionsCmd&) {
 
   if(const auto it = e.functions.find("clone"); it != e.functions.end()) {
     output.push_back(fmt::format("  clone [{} overloads]", it->second.size()));
+  }
+
+  if(const auto it = e.functions.find("to_string"); it != e.functions.end()) {
+    output.push_back(fmt::format("  to_string [{} overloads]", it->second.size()));
   }
 
   for(const auto& [name, str] : functions) {
@@ -187,8 +192,13 @@ std::vector<std::string> run(const Env& e, Repl&, const TypesCmd&) {
     types[type_name_or_id(e, id)] = {};
   }
 
-  for(const auto& [id, _] : e.to_string) {
-    std::get<0>(types[type_name_or_id(e, id)]) = true;
+  const auto to_string_it = e.functions.find("to_string");
+  if(to_string_it != e.functions.end()) {
+    for(const auto& f : to_string_it->second) {
+      if(f.input_types().size() == 1) {
+        std::get<0>(types[type_name_or_id(e, f.input_types().front().id)]) = true;
+      }
+    }
   }
 
   for(const auto& [id, _] : e.serialize) {
@@ -335,10 +345,16 @@ std::vector<std::string> wait_and_dump_results(const Env& e, std::vector<anyf::F
   for(auto& future : results) {
     Any any = std::move(future).wait();
 
-    const auto it = e.to_string.find(any.type());
-
-    output.push_back(it != e.to_string.end() ? it->second(any)
-                                             : fmt::format("[Object of {}]", type_name_or_id(e, any.type())));
+    if(const auto to_string_function = overload_resolution(e, "to_string", {any.type()}); to_string_function) {
+      const auto& f = to_string_function.value();
+      if(f.output_types() == std::vector<TypeID>{anyf::type_id<std::string>()}) {
+        output.push_back(anyf::any_cast<std::string>(to_string_function.value()({&any}).front()));
+      } else {
+        output.push_back(fmt::format("[Object of {}]", type_name_or_id(e, any.type())));
+      }
+    } else {
+      output.push_back(fmt::format("[Object of {}]", type_name_or_id(e, any.type())));
+    }
   }
 
   return output;

@@ -21,7 +21,6 @@ using anyf::TypeProperties;
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
   std::unordered_map<std::string, TypeID> type_ids;
-  std::unordered_map<TypeID, std::function<std::string(const Any&)>> to_string;
   std::unordered_map<TypeID, std::function<std::vector<std::byte>(const Any&, std::vector<std::byte>)>> serialize;
   std::unordered_map<TypeID, std::function<std::optional<Any>(Span<std::byte>)>> deserialize;
   std::unordered_map<std::string, std::vector<AnyFunction>> functions;
@@ -63,7 +62,7 @@ void add_tieable_type(Env& e, const std::string& name) {
 
   e.add_type<T>(name);
 
-  e.to_string.emplace(type, [](const Any& t) { return knot::debug(anyf::any_cast<T>(t)); });
+  e.add_function("to_string", [](const T& t) { return knot::debug(t); });
 
   e.serialize.emplace(type, [](const Any& t, std::vector<std::byte> bytes) {
     knot::serialize(anyf::any_cast<T>(t), std::back_inserter(bytes));

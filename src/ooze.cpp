@@ -3,6 +3,7 @@
 #include "graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
+#include "overload_resolution.h"
 #include "parser.h"
 #include "parser_combinators.h"
 #include "queries.h"
@@ -129,9 +130,14 @@ void run(const RunCommand& cmd, const Env& e) {
       }
 
       if(cmd.output_prefix == "" || cmd.verbosity != 0) {
-        for(const Any& any : outputs) {
-          if(const auto it = e.to_string.find(any.type()); it != e.to_string.end()) {
-            fmt::print("{}\n", it->second(any));
+        for(Any& any : outputs) {
+          if(const auto to_string_function = overload_resolution(e, "to_string", {any.type()}); to_string_function) {
+            const auto& f = to_string_function.value();
+            if(f.output_types() == std::vector<TypeID>{anyf::type_id<std::string>()}) {
+              fmt::print("{}\n", anyf::any_cast<std::string>(to_string_function.value()({&any}).front()));
+            } else {
+              fmt::print("[Object of {}]\n", type_name_or_id(e, any.type()));
+            }
           } else {
             fmt::print("[Object of {}]\n", type_name_or_id(e, any.type()));
           }

@@ -116,7 +116,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
 
   e.add_type<A>("A");
 
-  e.to_string.emplace(anyf::type_id<B>(), [](const Any&) { return std::string("B"); });
+  e.add_function("to_string", [](const B&) { return std::string("B"); });
 
   const std::vector<std::string> expected{
     "3 type(s)",
@@ -143,6 +143,7 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
 
   const std::vector<std::string> expected{"5 function(s)",
                                           "  clone [12 overloads]",
+                                          "  to_string [12 overloads]",
                                           "  concat(string&, string&) -> string",
                                           fmt::format("  create_a() -> {}", type_name_or_id(e, a_type)),
                                           "  pow(i32) -> i32",
