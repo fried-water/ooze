@@ -19,6 +19,7 @@ add_library(ooze
   src/io.cpp
   src/parser.cpp
   src/graph_construction.cpp
+  src/overload_resolution.cpp
   src/repl.cpp
   src/queries.cpp
   src/ooze.cpp)

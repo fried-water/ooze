@@ -151,36 +151,36 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
   std::sort(functions.begin(), functions.end());
 
   for(const std::string& fn_name : functions) {
-    const auto& f = e.functions.at(fn_name);
+    for(const auto& f : e.functions.at(fn_name)) {
+      const auto find_type_id = [&](const std::string& type) {
+        if(const auto it = e.type_ids.find(type); it == e.type_ids.end()) {
+          fmt::print("type {} not found", type);
+          std::exit(1);
+        } else {
+          return it->second;
+        }
+      };
 
-    const auto find_type_id = [&](const std::string& type) {
-      if(const auto it = e.type_ids.find(type); it == e.type_ids.end()) {
-        fmt::print("type {} not found", type);
-        std::exit(1);
-      } else {
-        return it->second;
-      }
-    };
+      const auto doesnt_have =
+        Overloaded{[&](const std::vector<TypeProperties>& types, const std::string& type) {
+                     const TypeID exp = find_type_id(type);
+                     return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == exp; });
+                   },
+                   [&](const std::vector<TypeID>& types, const std::string& type) {
+                     return std::find(types.begin(), types.end(), find_type_id(type)) == types.end();
+                   }};
 
-    const auto doesnt_have =
-      Overloaded{[&](const std::vector<TypeProperties>& types, const std::string& type) {
-                   const TypeID exp = find_type_id(type);
-                   return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == exp; });
-                 },
-                 [&](const std::vector<TypeID>& types, const std::string& type) {
-                   return std::find(types.begin(), types.end(), find_type_id(type)) == types.end();
-                 }};
+      const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
+      const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };
+      const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
 
-    const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
-    const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };
-    const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
+      if(!std::regex_match(fn_name, re)) continue;
+      if(std::any_of(cmd.takes.begin(), cmd.takes.end(), doesnt_take)) continue;
+      if(std::any_of(cmd.returns.begin(), cmd.returns.end(), doesnt_return)) continue;
+      if(std::any_of(cmd.contains.begin(), cmd.contains.end(), doesnt_contain)) continue;
 
-    if(!std::regex_match(fn_name, re)) continue;
-    if(std::any_of(cmd.takes.begin(), cmd.takes.end(), doesnt_take)) continue;
-    if(std::any_of(cmd.returns.begin(), cmd.returns.end(), doesnt_return)) continue;
-    if(std::any_of(cmd.contains.begin(), cmd.contains.end(), doesnt_contain)) continue;
-
-    fmt::print("{}\n", function_string(e, fn_name, f));
+      fmt::print("{}\n", function_string(e, fn_name, f));
+    }
   }
 }
 

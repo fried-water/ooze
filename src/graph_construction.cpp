@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "graph_construction.h"
+#include "overload_resolution.h"
 #include "queries.h"
 
 namespace ooze {
@@ -91,7 +92,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
             .map_error([&](std::vector<std::string> errors) {
               if(call->name != "clone" && graphs.find(call->name) == graphs.end() &&
                  e.functions.find(call->name) == e.functions.end()) {
-                errors.push_back(fmt::format("Function {} not found", call->name));
+                errors.push_back(fmt::format("use of undeclared function '{}'", call->name));
               }
               return errors;
             })
@@ -108,10 +109,14 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
                 }
               } else if(const auto it = graphs.find(call->name); it != graphs.end()) {
                 return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
-              } else if(const auto it = e.functions.find(call->name); it != e.functions.end()) {
-                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
               } else {
-                return err(fmt::format("Function {} not found", call->name));
+                std::vector<TypeID> types;
+                std::transform(terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) {
+                  return ctx.cg.type(term).id;
+                });
+                return overload_resolution(e, call->name, types).and_then([&](AnyFunction func) {
+                  return ctx.cg.add(std::move(func), terms).map_error(to_graph_error(e, call->name));
+                });
               }
             });
         }
@@ -302,28 +307,55 @@ inputs_of(const Env& e, const ast::Expr& expr, std::function<std::optional<TypeI
       return inputs;
     });
 
+  std::unordered_map<const ast::Expr*, anyf::TypeID> expr_types;
+
   // For all known function inputs, check if it takes its argument by value
-  return knot::preorder_accumulate<std::vector<std::pair<std::string, TypeProperties>>>(
-    expr,
-    [&](auto inputs, const ast::Call& c) {
-      if(const auto it = e.functions.find(c.name); it != e.functions.end()) {
-        const auto& input_types = it->second.input_types();
-        const size_t s = std::min(input_types.size(), c.parameters.size());
+  // To resolve function overloads we need to do a partial type check
+  // If any fails we can abort since it's guarenteed to fail later when constructing the graph
+  knot::postorder(expr, [&](const ast::Expr& expr) {
+    std::optional<TypeID> type =
+      std::visit(Overloaded{[](const Literal& literal) { return std::optional(ooze::type_of(literal)); },
+                            [&](const std::string& binding) { return type_of(binding); },
+                            [&](const Indirect<Call>& c) -> std::optional<TypeID> {
+                              std::vector<anyf::TypeID> given_types;
+                              for(const ast::Expr& e : c->parameters) {
+                                const auto it = expr_types.find(&e);
+                                if(it == expr_types.end()) {
+                                  return std::nullopt;
+                                }
+                                given_types.push_back(it->second);
+                              }
 
-        for(size_t i = 0; i < s; i++) {
-          if(const std::string* binding = std::get_if<std::string>(&c.parameters[i].v); binding != nullptr) {
-            const auto it =
-              std::find_if(inputs.begin(), inputs.end(), [&](const auto& p) { return p.first == *binding; });
-            if(it != inputs.end() && it->second.id == input_types[i].id) {
-              it->second.value = input_types[i].value;
-            }
-          }
-        }
-      }
+                              Result<AnyFunction> f = overload_resolution(e, c->name, given_types);
 
-      return inputs;
-    },
-    std::move(inputs));
+                              if(!f) {
+                                return std::nullopt;
+                              }
+
+                              const auto input_types = f.value().input_types();
+
+                              for(size_t i = 0; i < input_types.size(); i++) {
+                                if(const std::string* binding = std::get_if<std::string>(&c->parameters[i].v);
+                                   binding != nullptr) {
+                                  const auto it = std::find_if(
+                                    inputs.begin(), inputs.end(), [&](const auto& p) { return p.first == *binding; });
+                                  if(it != inputs.end() && it->second.id == input_types[i].id) {
+                                    it->second.value = input_types[i].value;
+                                  }
+                                }
+                              }
+
+                              assert(f.value().output_types().size() == 1); // TODO decide how to handle this
+                              return f.value().output_types().front();
+                            }},
+                 expr.v);
+
+    if(type) {
+      expr_types.emplace(&expr, *type);
+    }
+  });
+
+  return inputs;
 }
 
 } // namespace ooze

@@ -24,12 +24,17 @@ struct Env {
   std::unordered_map<TypeID, std::function<std::string(const Any&)>> to_string;
   std::unordered_map<TypeID, std::function<std::vector<std::byte>(const Any&, std::vector<std::byte>)>> serialize;
   std::unordered_map<TypeID, std::function<std::optional<Any>(Span<std::byte>)>> deserialize;
-  std::unordered_map<std::string, AnyFunction> functions;
+  std::unordered_map<std::string, std::vector<AnyFunction>> functions;
 
   template <typename T>
-  void add_name(const std::string& name) {
+  void add_type(const std::string& name) {
     type_ids.emplace(name, anyf::type_id<T>());
     type_names.emplace(anyf::type_id<T>(), name);
+  }
+
+  template <typename F>
+  void add_function(const std::string& name, F&& f) {
+    functions[name].push_back(AnyFunction{std::forward<F>(f)});
   }
 };
 
@@ -52,7 +57,7 @@ template <typename T>
 void add_tieable_type(Env& e, const std::string& name) {
   const TypeID type = anyf::type_id<T>();
 
-  e.add_name<T>(name);
+  e.add_type<T>(name);
 
   e.to_string.emplace(type, [](const Any& t) { return knot::debug(anyf::any_cast<T>(t)); });
 
@@ -72,7 +77,7 @@ void add_tieable_type(Env& e, const std::string& name) {
 
     using knot::as_tie;
 
-    e.functions.emplace(create_name, details::generate_constructor<T>(as_typelist(tie_type(knot::Type<T>{}))));
+    e.add_function(create_name, details::generate_constructor<T>(as_typelist(tie_type(knot::Type<T>{}))));
   }
 }
 

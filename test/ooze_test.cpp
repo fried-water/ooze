@@ -6,6 +6,15 @@
 
 namespace ooze {
 
+namespace {
+
+template <typename... Ts>
+auto errors(Ts... ts) {
+  return tl::unexpected{std::vector<std::string>{std::move(ts)...}};
+}
+
+} // namespace
+
 Result<std::vector<Any>> run(const Env& e, std::string_view script, std::string_view expr) {
   return run(e, script, expr, [](const auto&) -> Any {
     BOOST_REQUIRE(false);
@@ -19,7 +28,7 @@ BOOST_AUTO_TEST_CASE(ooze_basic) {
                                       "}";
 
   Env env = create_primative_env();
-  env.functions.emplace("sum", [](int x, int y) { return x + y; });
+  env.add_function("sum", [](int x, int y) { return x + y; });
 
   const auto results = run(env, script, "f(5, 6)");
 
@@ -41,7 +50,7 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
 
   Env env = create_primative_env();
   add_tieable_type<Point>(env, "Point");
-  env.functions.emplace("sum", [](Point p1, Point p2) { return Point{p1.x + p2.x, p1.y + p2.y}; });
+  env.add_function("sum", [](Point p1, Point p2) { return Point{p1.x + p2.x, p1.y + p2.y}; });
 
   const auto results = run(env, script, "f(create_point(1, 2), create_point(9, 7))");
 
@@ -58,9 +67,12 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_count) {
   const auto valid = "fn f(x: u32) -> u32 { identity(x) }";
 
   Env env = create_primative_env();
-  env.functions.emplace("identity", [](u32 u) { return u; });
+  env.add_function("identity", [](u32 u) { return u; });
 
-  BOOST_CHECK(err("identity expects 1 arg(s), given 0") == run(env, wrong_arg, "f()"));
+  const auto expected_wrong_args_errors =
+    errors("no matching overload found for identity()", "  candidate: identity(u32) -> u32");
+
+  BOOST_CHECK(expected_wrong_args_errors == run(env, wrong_arg, "f()"));
   BOOST_CHECK(err("Assignment expects 0 value(s), given 1") == run(env, wrong_bind, "f()"));
   BOOST_CHECK(err("f returns 0 value(s), given 1") == run(env, wrong_return, "f()"));
   BOOST_CHECK(err("f expects 1 arg(s), given 0") == run(env, valid, "f()"));
@@ -73,9 +85,12 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
   const auto valid = "fn f(x: u32) -> u32 { identity(x) }";
 
   Env env = create_primative_env();
-  env.functions.emplace("identity", [](u32 u) { return u; });
+  env.add_function("identity", [](u32 u) { return u; });
 
-  BOOST_CHECK(err("identity expects u32 for arg 0, given i32") == run(env, wrong_arg, "f()"));
+  const auto expected_wrong_args_errors =
+    errors("no matching overload found for identity(i32)", "  candidate: identity(u32) -> u32");
+
+  BOOST_CHECK(expected_wrong_args_errors == run(env, wrong_arg, "f()"));
   BOOST_CHECK(err("x expects i32, given u32") == run(env, wrong_bind, "f()"));
   BOOST_CHECK(err("f return element 0 expects i32, given u32") == run(env, wrong_return, "f()"));
   BOOST_CHECK(err("f expects u32 for arg 0, given i32") == run(env, valid, "f(0)"));
@@ -85,15 +100,15 @@ BOOST_AUTO_TEST_CASE(ooze_already_move) {
   const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }";
 
   Env env = create_primative_env();
-  env.add_name<std::unique_ptr<int>>("unique_int");
-  env.functions.emplace("make_unique_int", [](int x) { return std::make_unique<int>(x); });
+  env.add_type<std::unique_ptr<int>>("unique_int");
+  env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
   BOOST_CHECK(err("f return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_clone) {
   Env env = create_primative_env();
-  env.add_name<std::unique_ptr<int>>("unique_int");
-  env.functions.emplace("make_unique_int", [](int x) { return std::make_unique<int>(x); });
+  env.add_type<std::unique_ptr<int>>("unique_int");
+  env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
 
   auto res = run(env, "", "clone(make_unique_int(0))");
 
@@ -112,7 +127,7 @@ BOOST_AUTO_TEST_CASE(ooze_rebind) {
   const auto script = "fn f(x: i32) -> i32 { let x = double(x) let x = double(x) x }";
 
   Env env = create_primative_env();
-  env.functions.emplace("double", [](int x) { return x + x; });
+  env.add_function("double", [](int x) { return x + x; });
 
   const auto results = run(env, script, "f(1)");
 

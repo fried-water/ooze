@@ -6,6 +6,10 @@ namespace ooze {
 
 namespace {
 
+auto type_name_callback(const Env& e) {
+  return [&](TypeID type) { return type_name_or_id(e, type); };
+}
+
 template <typename Range, typename F>
 std::string join(const Range& range, F f) {
   if(range.begin() == range.end()) {
@@ -24,15 +28,19 @@ std::string function_string(const Env& e,
   const auto input_type_name = [&](auto t) {
     return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&");
   };
-  const auto output_type_name = [&](auto t) { return type_name_or_id(e, t); };
 
   return fmt::format("{}{} -> {}",
                      fn_name,
                      join(inputs, input_type_name),
-                     outputs.size() == 1 ? output_type_name(outputs.front()) : join(outputs, output_type_name));
+                     outputs.size() == 1 ? type_name_callback(e)(outputs.front())
+                                         : join(outputs, type_name_callback(e)));
 }
 
 } // namespace
+
+std::string type_list_string(const Env& e, const std::vector<TypeID>& types) {
+  return join(types, type_name_callback(e));
+}
 
 std::string function_string(const Env& e, std::string_view fn_name, const anyf::FunctionGraph& g) {
   return function_string(e, fn_name, input_types(g), output_types(g));

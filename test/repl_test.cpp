@@ -23,7 +23,7 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
   const std::vector<std::string> expected2{"abc"};
   BOOST_CHECK(expected2 == step_repl(e, r, "'abc'"));
 
-  e.functions.emplace("pow", AnyFunction([](int x) { return x * x; }));
+  e.add_function("pow", AnyFunction([](int x) { return x * x; }));
   const std::vector<std::string> expected3{"9"};
   BOOST_CHECK(expected3 == step_repl(e, r, "pow(3)"));
 }
@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_function) {
 
   step_repl(e, r, "let x = 1");
 
-  const std::vector<std::string> expected{"Function missing not found"};
+  const std::vector<std::string> expected{"use of undeclared function 'missing'"};
   BOOST_CHECK(expected == step_repl(e, r, "missing()"));
   BOOST_CHECK(expected == step_repl(e, r, "missing(x)"));
 }
@@ -43,7 +43,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_binding) {
   Env e = create_primative_env();
   Repl r;
 
-  e.functions.emplace("identity", [](int x) { return x; });
+  e.add_function("identity", [](int x) { return x; });
 
   const std::vector<std::string> expected{"Identifier x not found"};
   BOOST_CHECK(expected == step_repl(e, r, "x"));
@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_function_bindings) {
   Repl r;
 
   const std::vector<std::string> expected{
-    "Identifier x not found", "Identifier y not found", "Function missing not found"};
+    "Identifier x not found", "Identifier y not found", "use of undeclared function 'missing'"};
 
   BOOST_CHECK(expected == step_repl(e, r, "missing(x, y)"));
 }
@@ -64,8 +64,8 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
   Env e = create_primative_env();
   Repl r;
 
-  e.functions.emplace("make_ptr", [](int x) { return std::make_unique<int>(x); });
-  e.functions.emplace("take_ptr", [](std::unique_ptr<int> x) { return *x; });
+  e.add_function("make_ptr", [](int x) { return std::make_unique<int>(x); });
+  e.add_function("take_ptr", [](std::unique_ptr<int> x) { return *x; });
 
   BOOST_CHECK(step_repl(e, r, "let x = make_ptr(5)").empty());
 
@@ -90,7 +90,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   BOOST_CHECK(step_repl(e, r, "let y = 'abc'").empty());
   BOOST_CHECK(step_repl(e, r, ":a").empty());
 
-  e.add_name<int>("i32");
+  e.add_type<int>("i32");
 
   const std::vector<std::string> two_bindings{
     "2 binding(s)", "  x: i32", fmt::format("  y: {}", type_name_or_id(e, anyf::type_id<std::string>()))};
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
   struct A {};
   struct B {};
 
-  e.add_name<A>("A");
+  e.add_type<A>("A");
 
   e.to_string.emplace(anyf::type_id<B>(), [](const Any&) { return std::string("B"); });
 
@@ -135,11 +135,11 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
 
   const auto a_type = anyf::type_id<A>();
 
-  e.functions.emplace("create_a", []() { return A{}; });
-  e.functions.emplace("read_a", [](const A&) {});
-  e.functions.emplace("take_a", [](A) {});
-  e.functions.emplace("pow", AnyFunction([](int x) { return x * x; }));
-  e.functions.emplace("concat", AnyFunction([](const std::string& a, const std::string& b) { return a + b; }));
+  e.add_function("create_a", []() { return A{}; });
+  e.add_function("read_a", [](const A&) {});
+  e.add_function("take_a", [](A) {});
+  e.add_function("pow", [](int x) { return x * x; });
+  e.add_function("concat", [](const std::string& a, const std::string& b) { return a + b; });
 
   const std::vector<std::string> expected{"5 function(s)",
                                           "  concat(string&, string&) -> string",

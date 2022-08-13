@@ -151,15 +151,19 @@ std::vector<std::string> run(const Env& e, Repl& repl, const EvalCmd& eval) {
 }
 
 std::vector<std::string> run(const Env& e, Repl& repl, const FunctionsCmd&) {
-  std::map<std::string, std::string> functions;
+  std::vector<std::pair<std::string, std::string>> functions;
 
   for(const auto& [name, graph] : repl.graphs) {
-    functions.emplace(name, function_string(e, name, graph));
+    functions.emplace_back(name, function_string(e, name, graph));
   }
 
-  for(const auto& [name, f] : e.functions) {
-    functions.emplace(name, function_string(e, name, f));
+  for(const auto& [name, fs] : e.functions) {
+    for(const AnyFunction& f : fs) {
+      functions.emplace_back(name, function_string(e, name, f));
+    }
   }
+
+  std::sort(functions.begin(), functions.end());
 
   std::vector<std::string> output{fmt::format("{} function(s)", functions.size())};
   for(const auto& [name, str] : functions) {

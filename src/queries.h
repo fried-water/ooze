@@ -6,6 +6,8 @@
 
 namespace ooze {
 
+std::string type_list_string(const Env& e, const std::vector<TypeID>& types);
+
 std::string function_string(const Env&, std::string_view fn_name, const anyf::FunctionGraph&);
 std::string function_string(const Env&, std::string_view fn_name, const anyf::AnyFunction&);
 
