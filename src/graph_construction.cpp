@@ -90,24 +90,13 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
         } else {
           return accumulate_exprs(ctx, call->parameters, e, graphs, load)
             .map_error([&](std::vector<std::string> errors) {
-              if(call->name != "clone" && graphs.find(call->name) == graphs.end() &&
-                 e.functions.find(call->name) == e.functions.end()) {
+              if(graphs.find(call->name) == graphs.end() && e.functions.find(call->name) == e.functions.end()) {
                 errors.push_back(fmt::format("use of undeclared function '{}'", call->name));
               }
               return errors;
             })
             .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
-              if(call->name == "clone") {
-                if(call->parameters.size() != 1) {
-                  return err(fmt::format("clone expects 1 arg, given {} arg(s)", call->parameters.size()));
-                } else if(const TypeID input_type = ctx.cg.type(terms.front()).id; !anyf::is_copyable(input_type)) {
-                  return err(fmt::format("clone requires a copyable type, given {}", type_name_or_id(e, input_type)));
-                } else {
-                  AnyFunction clone(
-                    {{input_type}}, {input_type}, [](Span<Any*> s) { return std::vector<Any>{*s.front()}; });
-                  return ctx.cg.add(std::move(clone), terms).map_error(to_graph_error(e, call->name));
-                }
-              } else if(const auto it = graphs.find(call->name); it != graphs.end()) {
+              if(const auto it = graphs.find(call->name); it != graphs.end()) {
                 return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
               } else {
                 std::vector<TypeID> types;

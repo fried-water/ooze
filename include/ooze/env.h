@@ -26,15 +26,19 @@ struct Env {
   std::unordered_map<TypeID, std::function<std::optional<Any>(Span<std::byte>)>> deserialize;
   std::unordered_map<std::string, std::vector<AnyFunction>> functions;
 
+  template <typename F>
+  void add_function(const std::string& name, F&& f) {
+    functions[name].push_back(AnyFunction{std::forward<F>(f)});
+  }
+
   template <typename T>
   void add_type(const std::string& name) {
     type_ids.emplace(name, anyf::type_id<T>());
     type_names.emplace(anyf::type_id<T>(), name);
-  }
 
-  template <typename F>
-  void add_function(const std::string& name, F&& f) {
-    functions[name].push_back(AnyFunction{std::forward<F>(f)});
+    if constexpr(std::is_copy_constructible_v<T>) {
+      add_function("clone", [](const T& t) { return t; });
+    }
   }
 };
 

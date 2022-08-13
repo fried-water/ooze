@@ -158,14 +158,21 @@ std::vector<std::string> run(const Env& e, Repl& repl, const FunctionsCmd&) {
   }
 
   for(const auto& [name, fs] : e.functions) {
-    for(const AnyFunction& f : fs) {
-      functions.emplace_back(name, function_string(e, name, f));
+    if(name != "clone") {
+      for(const AnyFunction& f : fs) {
+        functions.emplace_back(name, function_string(e, name, f));
+      }
     }
   }
 
   std::sort(functions.begin(), functions.end());
 
   std::vector<std::string> output{fmt::format("{} function(s)", functions.size())};
+
+  if(const auto it = e.functions.find("clone"); it != e.functions.end()) {
+    output.push_back(fmt::format("  clone [{} overloads]", it->second.size()));
+  }
+
   for(const auto& [name, str] : functions) {
     output.push_back(fmt::format("  {}", str));
   }

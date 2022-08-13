@@ -142,13 +142,13 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
   e.add_function("concat", [](const std::string& a, const std::string& b) { return a + b; });
 
   const std::vector<std::string> expected{"5 function(s)",
+                                          "  clone [12 overloads]",
                                           "  concat(string&, string&) -> string",
                                           fmt::format("  create_a() -> {}", type_name_or_id(e, a_type)),
                                           "  pow(i32) -> i32",
                                           fmt::format("  read_a({}&) -> ()", type_name_or_id(e, a_type)),
-                                          fmt::format("  take_a({}) -> ()", type_name_or_id(e, a_type))
+                                          fmt::format("  take_a({}) -> ()", type_name_or_id(e, a_type))};
 
-  };
   BOOST_CHECK(expected == step_repl(e, r, ":f"));
 }
 

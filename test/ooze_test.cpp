@@ -106,14 +106,19 @@ BOOST_AUTO_TEST_CASE(ooze_already_move) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_clone) {
-  Env env = create_primative_env();
+  Env env;
+  env.add_type<std::string>("string");
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
 
-  auto res = run(env, "", "clone(make_unique_int(0))");
+  const auto expected_missing_args_errors =
+    errors("no matching overload found for clone()", "  candidate: clone(string&) -> string");
 
-  BOOST_CHECK(err("clone expects 1 arg, given 0 arg(s)") == run(env, "", "clone()"));
-  BOOST_CHECK(err("clone requires a copyable type, given unique_int") == run(env, "", "clone(make_unique_int(0))"));
+  const auto expected_wrong_args_errors =
+    errors("no matching overload found for clone(unique_int)", "  candidate: clone(string&) -> string");
+
+  BOOST_CHECK(expected_missing_args_errors == run(env, "", "clone()"));
+  BOOST_CHECK(expected_wrong_args_errors == run(env, "", "clone(make_unique_int(0))"));
 
   const auto results = run(env, "", "clone('abc')");
 
