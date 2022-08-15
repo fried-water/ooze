@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include "queries.h"
 #include "repl.h"
 
 #include <boost/test/unit_test.hpp>
