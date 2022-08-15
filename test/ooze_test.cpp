@@ -69,10 +69,6 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](u32 u) { return u; });
 
-  const auto expected_wrong_args_errors =
-    errors("no matching overload found for identity()", "  candidate: identity(u32) -> u32");
-
-  BOOST_CHECK(expected_wrong_args_errors == run(env, wrong_arg, "f()"));
   BOOST_CHECK(err("Assignment expects 0 value(s), given 1") == run(env, wrong_bind, "f()"));
   BOOST_CHECK(err("f returns 0 value(s), given 1") == run(env, wrong_return, "f()"));
   BOOST_CHECK(err("f expects 1 arg(s), given 0") == run(env, valid, "f()"));
@@ -87,10 +83,6 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
   Env env = create_primative_env();
   env.add_function("identity", [](u32 u) { return u; });
 
-  const auto expected_wrong_args_errors =
-    errors("no matching overload found for identity(i32)", "  candidate: identity(u32) -> u32");
-
-  BOOST_CHECK(expected_wrong_args_errors == run(env, wrong_arg, "f()"));
   BOOST_CHECK(err("x expects i32, given u32") == run(env, wrong_bind, "f()"));
   BOOST_CHECK(err("f return element 0 expects i32, given u32") == run(env, wrong_return, "f()"));
   BOOST_CHECK(err("f expects u32 for arg 0, given i32") == run(env, valid, "f(0)"));
@@ -110,15 +102,6 @@ BOOST_AUTO_TEST_CASE(ooze_clone) {
   env.add_type<std::string>("string");
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
-
-  const auto expected_missing_args_errors =
-    errors("no matching overload found for clone()", "  candidate: clone(string&) -> string");
-
-  const auto expected_wrong_args_errors =
-    errors("no matching overload found for clone(unique_int)", "  candidate: clone(string&) -> string");
-
-  BOOST_CHECK(expected_missing_args_errors == run(env, "", "clone()"));
-  BOOST_CHECK(expected_wrong_args_errors == run(env, "", "clone(make_unique_int(0))"));
 
   const auto results = run(env, "", "clone('abc')");
 

@@ -99,10 +99,9 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
               if(const auto it = graphs.find(call->name); it != graphs.end()) {
                 return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
               } else {
-                std::vector<TypeID> types;
-                std::transform(terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) {
-                  return ctx.cg.type(term).id;
-                });
+                std::vector<TypeProperties> types;
+                std::transform(
+                  terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) { return ctx.cg.type(term); });
                 return overload_resolution(e, call->name, types).and_then([&](AnyFunction func) {
                   return ctx.cg.add(std::move(func), terms).map_error(to_graph_error(e, call->name));
                 });
@@ -306,13 +305,13 @@ inputs_of(const Env& e, const ast::Expr& expr, std::function<std::optional<TypeI
       std::visit(Overloaded{[](const Literal& literal) { return std::optional(ooze::type_of(literal)); },
                             [&](const std::string& binding) { return type_of(binding); },
                             [&](const Indirect<Call>& c) -> std::optional<TypeID> {
-                              std::vector<anyf::TypeID> given_types;
+                              std::vector<TypeProperties> given_types;
                               for(const ast::Expr& e : c->parameters) {
                                 const auto it = expr_types.find(&e);
                                 if(it == expr_types.end()) {
                                   return std::nullopt;
                                 }
-                                given_types.push_back(it->second);
+                                given_types.push_back({it->second, true});
                               }
 
                               Result<AnyFunction> f = overload_resolution(e, c->name, given_types);

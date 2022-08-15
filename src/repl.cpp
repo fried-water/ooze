@@ -345,13 +345,11 @@ std::vector<std::string> wait_and_dump_results(const Env& e, std::vector<anyf::F
   for(auto& future : results) {
     Any any = std::move(future).wait();
 
-    if(const auto to_string_function = overload_resolution(e, "to_string", {any.type()}); to_string_function) {
-      const auto& f = to_string_function.value();
-      if(f.output_types() == std::vector<TypeID>{anyf::type_id<std::string>()}) {
-        output.push_back(anyf::any_cast<std::string>(to_string_function.value()({&any}).front()));
-      } else {
-        output.push_back(fmt::format("[Object of {}]", type_name_or_id(e, any.type())));
-      }
+    const auto to_string_function =
+      overload_resolution(e, "to_string", {{any.type(), false}}, Span<TypeID>{anyf::type_id<std::string>()});
+
+    if(to_string_function) {
+      output.push_back(anyf::any_cast<std::string>(to_string_function.value()({&any}).front()));
     } else {
       output.push_back(fmt::format("[Object of {}]", type_name_or_id(e, any.type())));
     }

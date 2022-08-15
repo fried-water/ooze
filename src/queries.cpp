@@ -6,17 +6,13 @@ namespace ooze {
 
 namespace {
 
-auto type_name_callback(const Env& e) {
-  return [&](TypeID type) { return type_name_or_id(e, type); };
-}
-
 template <typename Range, typename F>
 std::string join(const Range& range, F f) {
   if(range.begin() == range.end()) {
     return "()";
   } else {
     std::string r = "(" + f(*range.begin());
-    std::for_each(++range.begin(), range.end(), [&](const auto& ele) { r += ", " + f(ele); });
+    std::for_each(range.begin() + 1, range.end(), [&](const auto& ele) { r += ", " + f(ele); });
     return r + ")";
   }
 }
@@ -29,17 +25,22 @@ std::string function_string(const Env& e,
     return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&");
   };
 
-  return fmt::format("{}{} -> {}",
-                     fn_name,
-                     join(inputs, input_type_name),
-                     outputs.size() == 1 ? type_name_callback(e)(outputs.front())
-                                         : join(outputs, type_name_callback(e)));
+  return fmt::format("{}{} -> {}", fn_name, type_list_string(e, inputs), output_type_list_string(e, outputs));
 }
 
 } // namespace
 
-std::string type_list_string(const Env& e, const std::vector<TypeID>& types) {
-  return join(types, type_name_callback(e));
+std::string type_list_string(const Env& e, Span<TypeID> types) {
+  return join(types, [&](TypeID type) { return type_name_or_id(e, type); });
+}
+
+std::string type_list_string(const Env& e, Span<TypeProperties> types) {
+  return join(types,
+              [&](TypeProperties t) { return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&"); });
+}
+
+std::string output_type_list_string(const Env& e, Span<TypeID> types) {
+  return types.size() == 1 ? type_name_or_id(e, types.front()) : type_list_string(e, types);
 }
 
 std::string function_string(const Env& e, std::string_view fn_name, const anyf::FunctionGraph& g) {
