@@ -9,19 +9,16 @@ namespace ooze {
 
 using anyf::FunctionGraph;
 
-Result<Map<std::string, FunctionGraph>>
-create_graphs(const Env&, const AST&, std::function<Result<Any>(const std::string&)>);
+std::pair<Env, std::vector<std::string>>
+create_graphs(Env, const AST&, std::function<Result<Any>(const Env&, const std::string&)>);
 
-Result<FunctionGraph> create_graph(const Env& e,
-                                   const ast::Function& f,
-                                   const Map<std::string, FunctionGraph>&,
-                                   std::function<Result<Any>(const std::string&)>);
+Result<FunctionGraph>
+create_graph(const Env& e, const ast::Function& f, std::function<Result<Any>(const Env&, const std::string&)>);
 
 Result<FunctionGraph> create_graph(const Env&,
                                    const ast::Expr&,
-                                   const Map<std::string, FunctionGraph>&,
                                    const std::vector<std::pair<std::string, TypeProperties>>&,
-                                   std::function<Result<Any>(const std::string&)>);
+                                   std::function<Result<Any>(const Env&, const std::string&)>);
 
 std::vector<std::pair<std::string, TypeProperties>>
 inputs_of(const Env&, const ast::Expr&, std::function<std::optional<TypeID>(const std::string&)> type_of);

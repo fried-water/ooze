@@ -43,20 +43,16 @@ struct GraphContext {
   Map<std::string, Term> bindings;
 };
 
-Result<std::vector<Term>> add_expr(GraphContext&,
-                                   const Expr&,
-                                   const Env&,
-                                   const Map<std::string, FunctionGraph>&,
-                                   std::function<Result<Any>(const std::string&)>);
+Result<std::vector<Term>>
+add_expr(GraphContext&, const Expr&, const Env&, std::function<Result<Any>(const Env&, const std::string&)>);
 
 Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx,
                                            const std::vector<Expr>& exprs,
                                            const Env& e,
-                                           const Map<std::string, FunctionGraph>& graphs,
-                                           std::function<Result<Any>(const std::string&)> load) {
+                                           std::function<Result<Any>(const Env&, const std::string&)> load) {
   auto [terms, errors] =
     accumulate<std::pair<std::vector<Term>, std::vector<std::string>>>(exprs, [&](auto acc, const Expr& expr) {
-      if(auto terms = add_expr(ctx, expr, e, graphs, load); terms) {
+      if(auto terms = add_expr(ctx, expr, e, load); terms) {
         acc.first.insert(acc.first.end(), terms->begin(), terms->end());
       } else {
         acc.second.insert(acc.second.end(), terms.error().begin(), terms.error().end());
@@ -70,8 +66,7 @@ Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx,
 Result<std::vector<Term>> add_expr(GraphContext& ctx,
                                    const Expr& expr,
                                    const Env& e,
-                                   const Map<std::string, FunctionGraph>& graphs,
-                                   std::function<Result<Any>(const std::string&)> load) {
+                                   std::function<Result<Any>(const Env&, const std::string&)> load) {
   return std::visit(
     Overloaded{
       [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
@@ -83,29 +78,27 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
           } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
             return err(fmt::format("load expects a string literal"));
           } else {
-            return load(*string_ptr).and_then([&](Any value) {
+            return load(e, *string_ptr).and_then([&](Any value) {
               return ctx.cg.add(AnyFunction(std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
             });
           }
         } else {
-          return accumulate_exprs(ctx, call->parameters, e, graphs, load)
+          return accumulate_exprs(ctx, call->parameters, e, load)
             .map_error([&](std::vector<std::string> errors) {
-              if(graphs.find(call->name) == graphs.end() && e.functions.find(call->name) == e.functions.end()) {
+              if(e.functions.find(call->name) == e.functions.end()) {
                 errors.push_back(fmt::format("use of undeclared function '{}'", call->name));
               }
               return errors;
             })
             .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
-              if(const auto it = graphs.find(call->name); it != graphs.end()) {
-                return ctx.cg.add(it->second, terms).map_error(to_graph_error(e, call->name));
-              } else {
-                std::vector<TypeProperties> types;
-                std::transform(
-                  terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) { return ctx.cg.type(term); });
-                return overload_resolution(e, call->name, types).and_then([&](AnyFunction func) {
-                  return ctx.cg.add(std::move(func), terms).map_error(to_graph_error(e, call->name));
-                });
-              }
+              std::vector<TypeProperties> types;
+              std::transform(
+                terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) { return ctx.cg.type(term); });
+              return overload_resolution(e, call->name, types).and_then([&](EnvFunction f) {
+                return std::visit(
+                  [&](auto f) { return ctx.cg.add(std::move(f), terms).map_error(to_graph_error(e, call->name)); },
+                  std::move(f));
+              });
             });
         }
       },
@@ -130,8 +123,8 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
 
 } // namespace
 
-Result<Map<std::string, FunctionGraph>>
-create_graphs(const Env& e, const AST& ast, std::function<Result<Any>(const std::string&)> load) {
+std::pair<Env, std::vector<std::string>>
+create_graphs(Env e, const AST& ast, std::function<Result<Any>(const Env&, const std::string&)> load) {
   Map<std::string, std::vector<std::string>> dependencies;
 
   for(const Function& function : ast) {
@@ -147,23 +140,21 @@ create_graphs(const Env& e, const AST& ast, std::function<Result<Any>(const std:
   std::vector<std::string> errors;
   Set<std::string> graph_errors;
 
-  const auto satisfied = [&](const std::string& dep) {
-    return e.functions.find(dep) != e.functions.end() || graphs.find(dep) != graphs.end();
-  };
+  const auto satisfied = [&](const std::string& dep) { return e.functions.find(dep) != e.functions.end(); };
 
   auto it = ast.begin();
   while(it != ast.end()) {
     it = std::find_if(ast.begin(), ast.end(), [&](const Function& f) {
       const std::vector<std::string>& deps = dependencies.at(f.name);
-      return graphs.find(f.name) == graphs.end() && std::all_of(deps.begin(), deps.end(), satisfied) &&
+      return e.functions.find(f.name) == e.functions.end() && std::all_of(deps.begin(), deps.end(), satisfied) &&
              graph_errors.find(f.name) == graph_errors.end();
     });
 
     if(it != ast.end()) {
-      auto graph_result = create_graph(e, *it, graphs, load);
+      auto graph_result = create_graph(e, *it, load);
 
       if(graph_result) {
-        graphs.emplace(it->name, std::move(*graph_result));
+        e.add_graph(it->name, std::move(*graph_result));
       } else {
         graph_errors.insert(it->name);
         errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
@@ -172,7 +163,7 @@ create_graphs(const Env& e, const AST& ast, std::function<Result<Any>(const std:
   }
 
   for(const Function& f : ast) {
-    if(graphs.find(f.name) == graphs.end() && graph_errors.find(f.name) == graph_errors.end()) {
+    if(e.functions.find(f.name) == e.functions.end() && graph_errors.find(f.name) == graph_errors.end()) {
       std::string dependency_error = fmt::format("Error generating {}()\n", f.name);
       for(const std::string& dep : dependencies.at(f.name)) {
         if(!satisfied(dep) && graph_errors.find(f.name) == graph_errors.end()) {
@@ -183,14 +174,11 @@ create_graphs(const Env& e, const AST& ast, std::function<Result<Any>(const std:
     }
   }
 
-  return errors.empty() ? Result<Map<std::string, FunctionGraph>>{std::move(graphs)}
-                        : tl::unexpected{std::move(errors)};
+  return {std::move(e), std::move(errors)};
 }
 
-Result<FunctionGraph> create_graph(const Env& e,
-                                   const Function& f,
-                                   const Map<std::string, FunctionGraph>& graphs,
-                                   std::function<Result<Any>(const std::string&)> load) {
+Result<FunctionGraph>
+create_graph(const Env& e, const Function& f, std::function<Result<Any>(const Env&, const std::string&)> load) {
   std::vector<TypeProperties> input_types;
   std::vector<std::string> errors;
 
@@ -220,7 +208,7 @@ Result<FunctionGraph> create_graph(const Env& e,
         f.assignments,
         [&](auto acc, const Assignment& assignment) {
           return std::move(acc).and_then([&](GraphContext ctx) {
-            return add_expr(ctx, assignment.expr, e, graphs, load)
+            return add_expr(ctx, assignment.expr, e, load)
               .and_then([&](std::vector<Term> terms) -> Result<GraphContext> {
                 std::vector<TypeID> inputs(terms.size());
                 std::transform(
@@ -238,33 +226,31 @@ Result<FunctionGraph> create_graph(const Env& e,
         std::move(ctx));
     })
     .and_then([&](GraphContext ctx) {
-      return accumulate_exprs(ctx, f.ret, e, graphs, load)
-        .and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
-          if(terms.size() != f.result.size()) {
-            return err(fmt::format("{} returns {} value(s), given {}", f.name, f.result.size(), terms.size()));
-          }
+      return accumulate_exprs(ctx, f.ret, e, load).and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
+        if(terms.size() != f.result.size()) {
+          return err(fmt::format("{} returns {} value(s), given {}", f.name, f.result.size(), terms.size()));
+        }
 
-          std::vector<std::string> errors;
-          for(int i = 0; i < terms.size(); i++) {
-            const std::string given_type = type_name_or_id(e, ctx.cg.type(terms[i]).id);
+        std::vector<std::string> errors;
+        for(int i = 0; i < terms.size(); i++) {
+          const std::string given_type = type_name_or_id(e, ctx.cg.type(terms[i]).id);
 
-            if(given_type != f.result[i]) {
-              errors.push_back(
-                fmt::format("{} return element {} expects {}, given {}", f.name, i, f.result[i], given_type));
-            }
+          if(given_type != f.result[i]) {
+            errors.push_back(
+              fmt::format("{} return element {} expects {}, given {}", f.name, i, f.result[i], given_type));
           }
-          return errors.empty()
-                   ? std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, fmt::format("{} return", f.name)))
-                   : tl::unexpected{std::move(errors)};
-        });
+        }
+        return errors.empty()
+                 ? std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, fmt::format("{} return", f.name)))
+                 : tl::unexpected{std::move(errors)};
+      });
     });
 }
 
 Result<FunctionGraph> create_graph(const Env& e,
                                    const ast::Expr& expr,
-                                   const Map<std::string, FunctionGraph>& graphs,
                                    const std::vector<std::pair<std::string, TypeProperties>>& inputs,
-                                   std::function<Result<Any>(const std::string&)> load) {
+                                   std::function<Result<Any>(const Env&, const std::string&)> load) {
   std::vector<TypeProperties> input_types;
   Map<std::string, Term> bindings;
 
@@ -275,7 +261,7 @@ Result<FunctionGraph> create_graph(const Env& e,
 
   GraphContext ctx{std::get<0>(anyf::make_graph(input_types)), std::move(bindings)};
 
-  return add_expr(ctx, expr, e, graphs, load).and_then([&](std::vector<Term> terms) {
+  return add_expr(ctx, expr, e, load).and_then([&](std::vector<Term> terms) {
     return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, "return"));
   });
 }
@@ -314,27 +300,27 @@ inputs_of(const Env& e, const ast::Expr& expr, std::function<std::optional<TypeI
                                 given_types.push_back({it->second, true});
                               }
 
-                              Result<AnyFunction> f = overload_resolution(e, c->name, given_types);
+                              Result<EnvFunction> f = overload_resolution(e, c->name, given_types);
 
                               if(!f) {
                                 return std::nullopt;
                               }
 
-                              const auto input_types = f.value().input_types();
+                              const auto function_inputs = input_types(f.value());
 
-                              for(size_t i = 0; i < input_types.size(); i++) {
+                              for(size_t i = 0; i < function_inputs.size(); i++) {
                                 if(const std::string* binding = std::get_if<std::string>(&c->parameters[i].v);
                                    binding != nullptr) {
                                   const auto it = std::find_if(
                                     inputs.begin(), inputs.end(), [&](const auto& p) { return p.first == *binding; });
-                                  if(it != inputs.end() && it->second.id == input_types[i].id) {
-                                    it->second.value = input_types[i].value;
+                                  if(it != inputs.end() && it->second.id == function_inputs[i].id) {
+                                    it->second.value = function_inputs[i].value;
                                   }
                                 }
                               }
 
-                              assert(f.value().output_types().size() == 1); // TODO decide how to handle this
-                              return f.value().output_types().front();
+                              assert(output_types(f.value()).size() == 1); // TODO decide how to handle this
+                              return output_types(f.value()).front();
                             }},
                  expr.v);
 

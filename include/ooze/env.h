@@ -1,6 +1,7 @@
 #pragma once
 
 #include <anyf/any_function.h>
+#include <anyf/graph.h>
 #include <anyf/traits.h>
 #include <anyf/type.h>
 #include <knot/core.h>
@@ -14,21 +15,36 @@ namespace ooze {
 
 using anyf::Any;
 using anyf::AnyFunction;
+using anyf::FunctionGraph;
 using anyf::Span;
 using anyf::TypeID;
 using anyf::TypeProperties;
+
+using EnvFunction = std::variant<AnyFunction, FunctionGraph>;
+
+inline const std::vector<TypeProperties>& input_types(const EnvFunction& f) {
+  return std::holds_alternative<AnyFunction>(f) ? std::get<AnyFunction>(f).input_types()
+                                                : input_types(std::get<FunctionGraph>(f));
+}
+
+inline const std::vector<TypeID>& output_types(const EnvFunction& f) {
+  return std::holds_alternative<AnyFunction>(f) ? std::get<AnyFunction>(f).output_types()
+                                                : output_types(std::get<FunctionGraph>(f));
+}
 
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
   std::unordered_map<std::string, TypeID> type_ids;
   std::unordered_map<TypeID, std::function<std::vector<std::byte>(const Any&, std::vector<std::byte>)>> serialize;
   std::unordered_map<TypeID, std::function<std::optional<Any>(Span<std::byte>)>> deserialize;
-  std::unordered_map<std::string, std::vector<AnyFunction>> functions;
+  std::unordered_map<std::string, std::vector<EnvFunction>> functions;
 
   template <typename F>
   void add_function(const std::string& name, F&& f) {
-    functions[name].push_back(AnyFunction{std::forward<F>(f)});
+    functions[name].emplace_back(AnyFunction{std::forward<F>(f)});
   }
+
+  void add_graph(const std::string& name, FunctionGraph f) { functions[name].emplace_back(std::move(f)); }
 
   template <typename T>
   void add_type(const std::string& name) {

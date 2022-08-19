@@ -63,9 +63,9 @@ T accumulate(Range&& range, F f, T acc = {}) {
 template <typename T>
 using Result = tl::expected<T, std::vector<std::string>>;
 
-inline void dump_errors(const std::vector<std::string>& errors) {
-  for(const std::string& e : errors) {
-    fmt::print("{}\n", e);
+inline void dump(const std::vector<std::string>& lines) {
+  for(const std::string& line : lines) {
+    fmt::print("{}\n", line);
   }
 }
 

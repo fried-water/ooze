@@ -43,11 +43,15 @@ std::string output_type_list_string(const Env& e, Span<TypeID> types) {
   return types.size() == 1 ? type_name_or_id(e, types.front()) : type_list_string(e, types);
 }
 
-std::string function_string(const Env& e, std::string_view fn_name, const anyf::FunctionGraph& g) {
+std::string function_string(const Env& e, std::string_view fn_name, const EnvFunction& f) {
+  return std::visit([&](const auto& f) { return function_string(e, fn_name, input_types(f), output_types(f)); }, f);
+}
+
+std::string function_string(const Env& e, std::string_view fn_name, const FunctionGraph& g) {
   return function_string(e, fn_name, input_types(g), output_types(g));
 }
 
-std::string function_string(const Env& e, std::string_view fn_name, const anyf::AnyFunction& f) {
+std::string function_string(const Env& e, std::string_view fn_name, const AnyFunction& f) {
   return function_string(e, fn_name, f.input_types(), f.output_types());
 }
 

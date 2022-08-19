@@ -34,20 +34,20 @@ bool type_check(Span<anyf::TypeID> expected, Span<anyf::TypeID> given) {
 
 } // namespace
 
-Result<anyf::AnyFunction> overload_resolution(const Env& e,
-                                              const std::string& name,
-                                              Span<anyf::TypeProperties> inputs,
-                                              std::optional<Span<anyf::TypeID>> outputs) {
+Result<EnvFunction> overload_resolution(const Env& e,
+                                        const std::string& name,
+                                        Span<anyf::TypeProperties> inputs,
+                                        std::optional<Span<anyf::TypeID>> outputs) {
   const auto it = e.functions.find(name);
 
   if(it == e.functions.end()) {
     return err(fmt::format("use of undeclared function '{}'", name));
   }
 
-  std::vector<anyf::AnyFunction> results;
+  std::vector<EnvFunction> results;
 
   std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(results), [&](const auto& fn) {
-    return type_check(fn.input_types(), inputs) && (!outputs || type_check(fn.output_types(), *outputs));
+    return type_check(input_types(fn), inputs) && (!outputs || type_check(output_types(fn), *outputs));
   });
 
   if(results.size() == 1) {
@@ -63,7 +63,7 @@ Result<anyf::AnyFunction> overload_resolution(const Env& e,
                                                           type_list_string(e, inputs),
                                                           it->second.size())};
 
-    for(const AnyFunction& function : it->second) {
+    for(const auto& function : it->second) {
       errors.push_back(fmt::format("  {}", function_string(e, name, function)));
     }
 
@@ -72,7 +72,7 @@ Result<anyf::AnyFunction> overload_resolution(const Env& e,
     std::vector<std::string> errors{fmt::format(
       "function call is ambiguous {}{} [{} candidate(s)]", name, type_list_string(e, inputs), results.size())};
 
-    for(const AnyFunction& function : results) {
+    for(const auto& function : results) {
       errors.push_back(fmt::format("  {}", function_string(e, name, function)));
     }
 

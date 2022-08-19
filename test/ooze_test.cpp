@@ -1,6 +1,10 @@
 #include "pch.h"
 
+#include "bindings.h"
 #include "ooze/core.h"
+
+#include <anyf/executor/task_executor.h>
+#include <anyf/graph_execution.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -13,14 +17,26 @@ auto errors(Ts... ts) {
   return tl::unexpected{std::vector<std::string>{std::move(ts)...}};
 }
 
-} // namespace
+Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view expr) {
+  const auto load = [](const Env&, const std::string&) { return err("oops"); };
+  const auto [e2, errors] = parse_script(std::move(e), script, load);
 
-Result<std::vector<Any>> run(const Env& e, std::string_view script, std::string_view expr) {
-  return run(e, script, expr, [](const auto&) -> Any {
-    BOOST_REQUIRE(false);
-    return Any{};
+  if(!errors.empty()) {
+    return tl::unexpected{std::move(errors)};
+  }
+
+  anyf::TaskExecutor executor;
+
+  return run(e2, executor, expr, {}, load).second.map([](std::vector<Binding> bindings) {
+    std::vector<Any> anys;
+    for(Binding& b : bindings) {
+      anys.push_back(take(std::move(b)).wait());
+    }
+    return anys;
   });
 }
+
+} // namespace
 
 BOOST_AUTO_TEST_CASE(ooze_basic) {
   constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 {"
@@ -64,28 +80,24 @@ BOOST_AUTO_TEST_CASE(ooze_wrong_count) {
   const auto wrong_arg = "fn f(x: i32) -> u32 { identity() }";
   const auto wrong_bind = "fn f(x: u32) -> u32 { let () = identity(x) x }";
   const auto wrong_return = "fn f(x: u32) -> () { identity(x) }";
-  const auto valid = "fn f(x: u32) -> u32 { identity(x) }";
 
   Env env = create_primative_env();
   env.add_function("identity", [](u32 u) { return u; });
 
   BOOST_CHECK(err("Assignment expects 0 value(s), given 1") == run(env, wrong_bind, "f()"));
   BOOST_CHECK(err("f returns 0 value(s), given 1") == run(env, wrong_return, "f()"));
-  BOOST_CHECK(err("f expects 1 arg(s), given 0") == run(env, valid, "f()"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
   const auto wrong_arg = "fn f(x: i32) -> u32 { identity(x) }";
   const auto wrong_bind = "fn f(x: u32) -> u32 { let x: i32 = identity(x) x }";
   const auto wrong_return = "fn f(x: u32) -> i32 { identity(x) }";
-  const auto valid = "fn f(x: u32) -> u32 { identity(x) }";
 
   Env env = create_primative_env();
   env.add_function("identity", [](u32 u) { return u; });
 
   BOOST_CHECK(err("x expects i32, given u32") == run(env, wrong_bind, "f()"));
   BOOST_CHECK(err("f return element 0 expects i32, given u32") == run(env, wrong_return, "f()"));
-  BOOST_CHECK(err("f expects u32 for arg 0, given i32") == run(env, valid, "f(0)"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_already_move) {

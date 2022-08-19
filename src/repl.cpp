@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include "bindings.h"
 #include "graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
@@ -78,28 +79,7 @@ auto parse_command(std::string_view line) {
   });
 }
 
-Result<std::pair<TypeID, anyf::Future>> take(Repl& repl, const std::string& name) {
-  if(const auto var_it = repl.bindings.find(name); var_it != repl.bindings.end()) {
-    BindingEntry e = std::move(var_it->second);
-    repl.bindings.erase(var_it);
-    return std::pair(e.type, std::move(e.future));
-  } else {
-    return err(fmt::format("Binding {} not found", name));
-  }
-}
-
-Result<std::pair<TypeID, anyf::BorrowedFuture>> borrow(Repl& repl, const std::string& name) {
-  if(const auto var_it = repl.bindings.find(name); var_it == repl.bindings.end()) {
-    return err(fmt::format("Binding {} not found", name));
-  } else if(BindingEntry& e = var_it->second; e.borrowed_future.valid()) {
-    return std::pair(e.type, e.borrowed_future);
-  } else {
-    std::tie(e.borrowed_future, e.future) = borrow(std::move(e.future));
-    return std::pair(e.type, e.borrowed_future);
-  }
-}
-
-std::vector<std::string> run(const Env& e, Repl&, const HelpCmd& help) {
+std::vector<std::string> run(Repl&, const HelpCmd& help) {
   return {{":h - This message"},
           {":b - List all bindings (* means they are not ready)"},
           {":f - List all environment and script functions"},
@@ -109,7 +89,7 @@ std::vector<std::string> run(const Env& e, Repl&, const HelpCmd& help) {
           {":a bindings... - Await the given bindings or everything if unspecified"}};
 }
 
-std::vector<std::string> run(const Env& e, Repl& repl, BindingsCmd) {
+std::vector<std::string> run(Repl& repl, BindingsCmd) {
   std::vector<std::string> output{fmt::format("{} binding(s)", repl.bindings.size())};
 
   std::vector<std::string> ordered;
@@ -122,45 +102,35 @@ std::vector<std::string> run(const Env& e, Repl& repl, BindingsCmd) {
     const auto& [type, f, b] = repl.bindings.at(binding);
     output.push_back(fmt::format("  {}: {}{}",
                                  binding,
-                                 type_name_or_id(e, type),
+                                 type_name_or_id(repl.env, type),
                                  f.ready() || (b.valid() && b.unique()) ? "" : (b.valid() ? "&" : "*")));
   }
 
   return output;
 }
 
-std::vector<std::string> run(const Env& e, Repl& repl, const EvalCmd& eval) {
+std::vector<std::string> run(Repl& repl, const EvalCmd& eval) {
   return read_text_file(eval.file)
-    .and_then([&](std::string script) {
-      return parse_script(e, script, [&](const std::string& name) {
+    .map([&](std::string script) {
+      std::vector<std::string> errors;
+      std::tie(repl.env, errors) = parse_script(std::move(repl.env), script, [](const Env& e, const std::string& name) {
         return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
       });
-    })
-    .map([&](auto graphs) {
-      std::vector<std::string> output{fmt::format("Loaded {} function(s) from {}", graphs.size(), eval.file)};
-      for(auto& [name, graph] : graphs) {
-        output.push_back(fmt::format("  {} {}",
-                                     repl.graphs.find(name) == repl.graphs.end() ? "inserted" : "replaced",
-                                     function_string(e, name, graph)));
 
-        repl.graphs[name] = std::move(graph);
-      }
-      return output;
+      return errors;
     })
     .or_else(convert_errors)
     .value();
 }
 
-std::vector<std::string> run(const Env& e, Repl& repl, const FunctionsCmd&) {
-  std::vector<std::pair<std::string, std::string>> functions;
+std::vector<std::string> run(Repl& repl, const FunctionsCmd&) {
+  const Env& e = repl.env;
 
-  for(const auto& [name, graph] : repl.graphs) {
-    functions.emplace_back(name, function_string(e, name, graph));
-  }
+  std::vector<std::pair<std::string, std::string>> functions;
 
   for(const auto& [name, fs] : e.functions) {
     if(name != "clone" && name != "to_string") {
-      for(const AnyFunction& f : fs) {
+      for(const auto& f : fs) {
         functions.emplace_back(name, function_string(e, name, f));
       }
     }
@@ -185,7 +155,9 @@ std::vector<std::string> run(const Env& e, Repl& repl, const FunctionsCmd&) {
   return output;
 }
 
-std::vector<std::string> run(const Env& e, Repl&, const TypesCmd&) {
+std::vector<std::string> run(Repl& repl, const TypesCmd&) {
+  const Env& e = repl.env;
+
   std::map<std::string, std::tuple<bool, bool, bool>> types;
 
   for(const auto& [id, name] : e.type_names) {
@@ -195,8 +167,8 @@ std::vector<std::string> run(const Env& e, Repl&, const TypesCmd&) {
   const auto to_string_it = e.functions.find("to_string");
   if(to_string_it != e.functions.end()) {
     for(const auto& f : to_string_it->second) {
-      if(f.input_types().size() == 1) {
-        std::get<0>(types[type_name_or_id(e, f.input_types().front().id)]) = true;
+      if(input_types(f).size() == 1) {
+        std::get<0>(types[type_name_or_id(e, input_types(f).front().id)]) = true;
       }
     }
   }
@@ -222,8 +194,8 @@ std::vector<std::string> run(const Env& e, Repl&, const TypesCmd&) {
   return output;
 }
 
-std::vector<std::string> run(const Env& e, Repl& repl, const SaveCmd& cmd) {
-  auto res = borrow(repl, cmd.var);
+std::vector<std::string> run(Repl& repl, const SaveCmd& cmd) {
+  auto res = borrow(repl.bindings, cmd.var);
 
   if(!res) {
     return std::move(res.error());
@@ -231,27 +203,27 @@ std::vector<std::string> run(const Env& e, Repl& repl, const SaveCmd& cmd) {
 
   auto& [type, bf] = res.value();
 
-  const auto serialize_it = e.serialize.find(type);
+  const auto serialize_it = repl.env.serialize.find(type);
 
-  if(serialize_it == e.serialize.end()) {
-    err(fmt::format("{} ({}) does not support serialization", cmd.var, type_name_or_id(e, type)));
+  if(serialize_it == repl.env.serialize.end()) {
+    err(fmt::format("{} ({}) does not support serialization", cmd.var, type_name_or_id(repl.env, type)));
   }
 
-  repl.outstanding_writes.emplace_back(cmd.var, type, bf.then([&e, file = cmd.file](const Any& v) {
-    return save(e, v).and_then([&](const auto& bytes) { return write_binary_file(file, bytes); });
+  repl.outstanding_writes.emplace_back(cmd.var, type, bf.then([&repl, file = cmd.file](const Any& v) {
+    return save(repl.env, v).and_then([&](const auto& bytes) { return write_binary_file(file, bytes); });
   }));
 
   return {};
 }
 
-std::vector<std::string> run(const Env&, Repl& repl, const ReleaseCmd& cmd) {
-  return take(repl, cmd.var)
+std::vector<std::string> run(Repl& repl, const ReleaseCmd& cmd) {
+  return take(repl.bindings, cmd.var)
     .map([](const auto&) { return std::vector<std::string>{}; })
     .map_error(convert_errors)
     .value();
 }
 
-std::vector<std::string> run(const Env&, Repl& repl, const AwaitCmd& cmd) {
+std::vector<std::string> run(Repl& repl, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
     for(auto& [binding, entry] : repl.bindings) {
@@ -269,105 +241,16 @@ std::vector<std::string> run(const Env&, Repl& repl, const AwaitCmd& cmd) {
   return output;
 }
 
-Result<std::vector<std::pair<std::string, TypeProperties>>>
-expr_inputs(const Env& e, const Map<std::string, BindingEntry>& bindings, const ast::Expr& expr) {
-  const std::vector<std::pair<std::string, TypeProperties>> inputs =
-    inputs_of(e, expr, [&](const std::string& binding) {
-      const auto it = bindings.find(binding);
-      return it != bindings.end() ? std::optional(it->second.type) : std::nullopt;
-    });
-
-  std::vector<std::string> errors;
-  for(const auto& [name, type] : inputs) {
-    if(const auto it = bindings.find(name); it == bindings.end()) {
-      errors.push_back(fmt::format("Binding {} not found", name));
-    } else if(it->second.type != type.id) {
-      errors.push_back(fmt::format(
-        "{} expected {} but is {}", name, type_name_or_id(e, type.id), type_name_or_id(e, it->second.type)));
-    }
-  }
-
-  if(errors.empty()) {
-    return inputs;
-  } else {
-    return tl::unexpected{std::move(errors)};
-  }
-}
-
-Result<std::tuple<std::vector<anyf::Future>, std::vector<TypeID>>>
-run_expr(const Env& e, Repl& repl, const ast::Expr& expr) {
-  return expr_inputs(e, repl.bindings, expr)
-    .and_then([&](auto inputs) {
-      auto g = create_graph(e, expr, repl.graphs, inputs, [&](const std::string& name) {
-        return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
-      });
-
-      return merge(std::move(g), std::move(inputs));
-    })
-    .map([&](auto p) {
-      auto [g, inputs] = std::move(p);
-
-      std::vector<anyf::Future> value_inputs;
-      std::vector<anyf::BorrowedFuture> borrowed_inputs;
-
-      for(const auto& [name, type] : inputs) {
-        if(type.value) {
-          value_inputs.push_back(take(repl, name).value().second);
-        } else {
-          borrowed_inputs.push_back(borrow(repl, name).value().second);
-        }
-      }
-
-      return std::tuple(anyf::execute_graph(g, repl.executor, std::move(value_inputs), std::move(borrowed_inputs)),
-                        output_types(g));
-    });
-}
-
-std::vector<std::string> bind_results(const Env& e,
-                                      Repl& repl,
-                                      const std::vector<TypeID>& types,
-                                      const std::vector<ast::Binding>& bindings,
-                                      std::vector<anyf::Future> results) {
-  return type_check(e, bindings, types)
-    .map([&]() {
-      for(size_t i = 0; i < results.size(); i++) {
-        repl.bindings[bindings[i].name] = BindingEntry{types[i], std::move(results[i])};
-      }
-      return std::vector<std::string>{};
-    })
-    .map_error(convert_errors)
-    .value();
-}
-
-std::vector<std::string> wait_and_dump_results(const Env& e, std::vector<anyf::Future> results) {
-  std::vector<std::string> output;
-
-  for(auto& future : results) {
-    Any any = std::move(future).wait();
-
-    const auto to_string_function =
-      overload_resolution(e, "to_string", {{any.type(), false}}, Span<TypeID>{anyf::type_id<std::string>()});
-
-    if(to_string_function) {
-      output.push_back(anyf::any_cast<std::string>(to_string_function.value()({&any}).front()));
-    } else {
-      output.push_back(fmt::format("[Object of {}]", type_name_or_id(e, any.type())));
-    }
-  }
-
-  return output;
-}
-
 } // namespace
 
-std::vector<std::string> step_repl(const Env& e, Repl& repl, std::string_view line) {
+std::vector<std::string> step_repl(Repl& repl, std::string_view line) {
   for(auto it = repl.outstanding_writes.begin(); it != repl.outstanding_writes.end();) {
     auto& [binding, type, future] = *it;
 
     if(future.ready()) {
       const Result<void> result = anyf::any_cast<Result<void>>(std::move(future).wait());
       if(!result) {
-        fmt::print("Error serializing {} ({})", binding, type_name_or_id(e, type));
+        fmt::print("Error serializing {} ({})", binding, type_name_or_id(repl.env, type));
         if(result.error().size() == 1) {
           fmt::print(": {}\n", result.error().front());
         } else {
@@ -388,33 +271,25 @@ std::vector<std::string> step_repl(const Env& e, Repl& repl, std::string_view li
     return {};
   } else if(line[0] == ':') {
     return parse_command({line.data() + 1, line.size() - 1})
-      .map([&](const auto& cmd) { return std::visit([&](const auto& cmd) { return run(e, repl, cmd); }, cmd); })
+      .map([&](const auto& cmd) { return std::visit([&](const auto& cmd) { return run(repl, cmd); }, cmd); })
       .or_else(convert_errors)
       .value();
   } else {
-    return parse_repl(line)
-      .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<repl>", error)}; })
-      .and_then([&](std::variant<ast::Expr, ast::Assignment> var) {
-        return std::visit(Overloaded{[&](ast::Assignment assignment) {
-                                       return run_expr(e, repl, assignment.expr).map([&](auto tup) {
-                                         return bind_results(
-                                           e, repl, std::get<1>(tup), assignment.bindings, std::move(std::get<0>(tup)));
-                                       });
-                                     },
-                                     [&](ast::Expr expr) {
-                                       return run_expr(e, repl, expr).map([&](auto tup) {
-                                         return wait_and_dump_results(e, std::move(std::get<0>(tup)));
-                                       });
-                                     }},
-                          std::move(var));
-      })
+    Result<std::vector<Binding>> results;
+    std::tie(repl.bindings, results) =
+      run(repl.env, repl.executor, line, std::move(repl.bindings), [&](const Env& e, const std::string& name) {
+        return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
+      });
+
+    return std::move(results)
+      .map([&](std::vector<Binding> bindings) { return to_string(repl.env, repl.executor, std::move(bindings)); })
       .or_else(convert_errors)
       .value();
   }
 }
 
-void run_repl(const Env& e) {
-  Repl repl;
+void run_repl(Env e) {
+  Repl repl{std::move(e)};
 
   std::string line;
   fmt::print("Welcome to the ooze repl!\n");
@@ -422,7 +297,7 @@ void run_repl(const Env& e) {
   fmt::print("> ");
 
   while(std::getline(std::cin, line)) {
-    for(const auto& line : step_repl(e, repl, line)) {
+    for(const auto& line : step_repl(repl, line)) {
       fmt::print("{}\n", line);
     }
 

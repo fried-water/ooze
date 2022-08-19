@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include "bindings.h"
 #include "graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
@@ -107,43 +108,47 @@ auto cmd_parser() {
   return pc::maybe(pc::choose(run_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser()));
 }
 
-void run(const RunCommand& cmd, const Env& e) {
+void run(const RunCommand& cmd, Env e) {
+  const auto load_callback = [](const Env& e, const std::string& name) {
+    return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
+  };
+
   Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
 
-  script
-    .and_then([&](const std::string& script) {
-      return run(e, script, cmd.expr, [&](const std::string& name) {
-        return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
-      });
+  anyf::TaskExecutor executor;
+
+  script.map([&](const std::string& script) { return parse_script(std::move(e), script, load_callback); })
+    .and_then([&](auto pair) mutable {
+      return pair.second.empty() ? Result<Env>(std::move(pair.first)) : tl::unexpected{std::move(pair.second)};
     })
-    .map([&](std::vector<Any> outputs) {
+    .and_then([&](Env e) {
+      auto res = run(e, executor, cmd.expr, {}, load_callback).second;
+      return merge(std::move(e), std::move(res));
+    })
+    .map([&](auto p) {
+      Env e = std::move(std::get<0>(p));
+      std::vector<Binding> outputs = std::move(std::get<1>(p));
       if(cmd.output_prefix != "") {
         for(size_t i = 0; i < outputs.size(); i++) {
-          save(e, outputs[i])
-            .and_then([&](const std::vector<std::byte>& bytes) {
-              return write_binary_file(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
-                                                           : fmt::format("{}_{}", cmd.output_prefix, i),
-                                       bytes);
+          borrow(outputs[i])
+            .then([&, i](const Any& any) {
+              return save(e, any)
+                .and_then([&](const std::vector<std::byte>& bytes) {
+                  return write_binary_file(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
+                                                               : fmt::format("{}_{}", cmd.output_prefix, i),
+                                           bytes);
+                })
+                .or_else(dump);
             })
-            .map_error(dump_errors);
+            .wait();
         }
       }
 
       if(cmd.output_prefix == "" || cmd.verbosity != 0) {
-        for(Any& any : outputs) {
-
-          const auto to_string_function =
-            overload_resolution(e, "to_string", {{any.type(), false}}, Span<TypeID>{anyf::type_id<std::string>()});
-
-          if(to_string_function) {
-            fmt::print("{}\n", anyf::any_cast<std::string>(to_string_function.value()({&any}).front()));
-          } else {
-            fmt::print("[Object of {}]\n", type_name_or_id(e, any.type()));
-          }
-        }
+        dump(to_string(e, executor, std::move(outputs)));
       }
     })
-    .or_else(dump_errors);
+    .or_else(dump);
 }
 
 void run(const FunctionQueryCommand& cmd, const Env& e) {
@@ -175,8 +180,8 @@ void run(const FunctionQueryCommand& cmd, const Env& e) {
                      return std::find(types.begin(), types.end(), find_type_id(type)) == types.end();
                    }};
 
-      const auto doesnt_take = [&](const std::string& type) { return doesnt_have(f.input_types(), type); };
-      const auto doesnt_return = [&](const std::string& type) { return doesnt_have(f.output_types(), type); };
+      const auto doesnt_take = [&](const std::string& type) { return doesnt_have(input_types(f), type); };
+      const auto doesnt_return = [&](const std::string& type) { return doesnt_have(output_types(f), type); };
       const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
 
       if(!std::regex_match(fn_name, re)) continue;
@@ -244,31 +249,158 @@ Result<std::vector<std::byte>> save(const Env& e, const Any& v) {
   return ser_it->second(v, knot::serialize(name_it->second));
 }
 
-Result<Map<std::string, anyf::FunctionGraph>>
-parse_script(const Env& e, std::string_view script, std::function<Result<Any>(const std::string&)> load) {
-  return parse(script)
-    .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<script>", error)}; })
-    .and_then([&](AST ast) { return create_graphs(e, ast, load); });
+std::pair<Env, std::vector<std::string>>
+parse_script(Env e, std::string_view script, std::function<Result<Any>(const Env&, const std::string&)> load) {
+  auto result = parse(script)
+                  .map_error([&](const ParseError& error) {
+                    return std::vector<std::string>{generate_error_msg("<script>", error)};
+                  })
+                  .map([&](AST ast) { return create_graphs(std::move(e), ast, load); });
+
+  return result ? std::move(result.value()) : std::pair(std::move(e), std::move(result.error()));
 }
 
-Result<anyf::FunctionGraph> parse_expr(const Env& e,
-                                       std::string_view expr,
-                                       std::function<Result<Any>(const std::string&)> load,
-                                       const Map<std::string, anyf::FunctionGraph>& graphs) {
+Result<FunctionGraph>
+parse_expr(const Env& e, std::string_view expr, std::function<Result<Any>(const Env&, const std::string&)> load) {
   return parse_expr(expr)
     .map_error(
       [&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)}; })
-    .and_then([&](ast::Expr expr) { return create_graph(e, expr, graphs, {}, load); });
+    .and_then([&](ast::Expr expr) { return create_graph(e, expr, {}, load); });
 }
 
-Result<std::vector<Any>>
-run(const Env& e, std::string_view script, std::string_view expr, std::function<Result<Any>(const std::string&)> load) {
-  return parse_script(e, script, load)
-    .and_then([&](auto graphs) { return parse_expr(e, expr, load, graphs); })
-    .map([&](FunctionGraph g) { return anyf::execute_graph(g, anyf::TaskExecutor{}, {}); });
+Result<std::vector<std::pair<std::string, TypeProperties>>>
+expr_inputs(const Env& e, const Map<std::string, Binding>& bindings, const ast::Expr& expr) {
+  const std::vector<std::pair<std::string, TypeProperties>> inputs =
+    inputs_of(e, expr, [&](const std::string& binding) {
+      const auto it = bindings.find(binding);
+      return it != bindings.end() ? std::optional(it->second.type) : std::nullopt;
+    });
+
+  std::vector<std::string> errors;
+  for(const auto& [name, type] : inputs) {
+    if(const auto it = bindings.find(name); it == bindings.end()) {
+      errors.push_back(fmt::format("Binding {} not found", name));
+    } else if(it->second.type != type.id) {
+      errors.push_back(fmt::format(
+        "{} expected {} but is {}", name, type_name_or_id(e, type.id), type_name_or_id(e, it->second.type)));
+    }
+  }
+
+  if(errors.empty()) {
+    return inputs;
+  } else {
+    return tl::unexpected{std::move(errors)};
+  }
 }
 
-int main(int argc, char* argv[], const Env& e) {
+std::pair<std::unordered_map<std::string, Binding>, Result<std::vector<Binding>>>
+run_expr(const Env& e,
+         anyf::TaskExecutor& executor,
+         const ast::Expr& expr,
+         std::unordered_map<std::string, Binding> bindings,
+         std::function<Result<Any>(const Env&, const std::string&)> load,
+         std::optional<std::vector<ast::Binding>> expected_bindings = {}) {
+  auto res = expr_inputs(e, bindings, expr)
+               .and_then([&](auto inputs) {
+                 auto g = create_graph(e, expr, inputs, load).and_then([&](auto g) {
+                   return expected_bindings
+                            ? type_check(e, *expected_bindings, output_types(g)).map([&]() { return std::move(g); })
+                            : Result<FunctionGraph>{std::move(g)};
+                 });
+
+                 return merge(std::move(g), std::move(inputs));
+               })
+               .map([&](auto p) {
+                 auto [g, inputs] = std::move(p);
+
+                 std::vector<anyf::Future> value_inputs;
+                 std::vector<anyf::BorrowedFuture> borrowed_inputs;
+
+                 for(const auto& [name, type] : inputs) {
+                   if(type.value) {
+                     value_inputs.push_back(take(bindings, name).value().second);
+                   } else {
+                     borrowed_inputs.push_back(borrow(bindings, name).value().second);
+                   }
+                 }
+
+                 auto futures = anyf::execute_graph(g, executor, std::move(value_inputs), std::move(borrowed_inputs));
+
+                 std::vector<Binding> output_bindings;
+                 output_bindings.reserve(futures.size());
+                 for(size_t i = 0; i < futures.size(); i++) {
+                   output_bindings.push_back({output_types(g)[i], std::move(futures[i])});
+                 }
+
+                 return output_bindings;
+               });
+
+  return {std::move(bindings), std::move(res)};
+}
+
+std::pair<std::unordered_map<std::string, Binding>, Result<std::vector<Binding>>>
+run(const Env& e,
+    anyf::TaskExecutor& executor,
+    std::string_view assignment_or_expr,
+    std::unordered_map<std::string, Binding> bindings,
+    std::function<Result<Any>(const Env&, const std::string&)> load) {
+  auto res =
+    parse_repl(assignment_or_expr)
+      .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<src>", error)}; })
+      .map([&](std::variant<ast::Expr, ast::Assignment> var) {
+        return std::visit(
+          Overloaded{[&](ast::Assignment assignment) {
+                       Result<std::vector<Binding>> result;
+                       std::tie(bindings, result) =
+                         run_expr(e, executor, assignment.expr, std::move(bindings), load, assignment.bindings);
+
+                       result = std::move(result).map([&](std::vector<Binding> results) {
+                         for(size_t i = 0; i < results.size(); i++) {
+                           bindings[assignment.bindings[i].name] = std::move(results[i]);
+                         }
+                         return std::vector<Binding>{};
+                       });
+
+                       return std::pair(std::move(bindings), std::move(result));
+                     },
+                     [&](ast::Expr expr) { return run_expr(e, executor, expr, std::move(bindings), load); }},
+          std::move(var));
+      });
+
+  return res ? std::move(res.value()) : std::pair(std::move(bindings), tl::unexpected{std::move(res.error())});
+}
+
+std::vector<std::string> to_string(const Env& e, anyf::TaskExecutor& executor, std::vector<Binding> bindings) {
+  std::vector<std::pair<TypeID, Result<anyf::Future>>> results;
+  results.reserve(bindings.size());
+
+  for(Binding& b : bindings) {
+    results.emplace_back(
+      b.type,
+      overload_resolution(e, "to_string", {{b.type, false}}, Span<TypeID>{anyf::type_id<std::string>()})
+        .map([&](EnvFunction f) {
+          return std::visit(
+            Overloaded{
+              [&](AnyFunction f) { return borrow(b).then([f = std::move(f)](Any any) { return f({&any}).front(); }); },
+              [&](const FunctionGraph& g) {
+                return std::move(anyf::execute_graph(g, executor, {}, {borrow(b)}).front());
+              }},
+            std::move(f));
+        }));
+  }
+
+  std::vector<std::string> outputs;
+  outputs.reserve(bindings.size());
+
+  for(auto& [type, result] : results) {
+    outputs.push_back(result ? anyf::any_cast<std::string>(std::move(result.value()).wait())
+                             : fmt::format("[Object of {}]", type_name_or_id(e, type)));
+  }
+
+  return outputs;
+}
+
+int main(int argc, char* argv[], Env e) {
 
   std::vector<std::string> args;
   for(int i = 1; i < argc; i++) {
@@ -286,7 +418,7 @@ int main(int argc, char* argv[], const Env& e) {
 
     fmt::print("{}", msg);
   } else if(*cmd_result) {
-    std::visit([&](const auto& cmd) { run(cmd, e); }, **cmd_result);
+    std::visit([&](const auto& cmd) { run(cmd, std::move(e)); }, **cmd_result);
   } else {
     run_repl(e);
   }
