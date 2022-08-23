@@ -12,14 +12,16 @@ namespace ooze {
 
 namespace {
 
+Result<Any> no_load(const Env&, const std::string&) { return err("oops"); }
+
 template <typename... Ts>
 auto errors(Ts... ts) {
   return tl::unexpected{std::vector<std::string>{std::move(ts)...}};
 }
 
 Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view expr) {
-  const auto load = [](const Env&, const std::string&) { return err("oops"); };
-  const auto [e2, errors] = parse_script(std::move(e), script, load);
+  std::vector<std::string> errors;
+  std::tie(e, errors) = parse_script(std::move(e), script, no_load);
 
   if(!errors.empty()) {
     return tl::unexpected{std::move(errors)};
@@ -27,7 +29,7 @@ Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view ex
 
   anyf::TaskExecutor executor;
 
-  return run(e2, executor, expr, {}, load).second.map([](std::vector<Binding> bindings) {
+  return ooze::run(e, executor, expr, {}, no_load).second.map([](std::vector<Binding> bindings) {
     std::vector<Any> anys;
     for(Binding& b : bindings) {
       anys.push_back(take(std::move(b)).wait());
@@ -135,6 +137,23 @@ BOOST_AUTO_TEST_CASE(ooze_rebind) {
   BOOST_CHECK_EQUAL(1, results->size());
   BOOST_REQUIRE(anyf::holds_alternative<int>(results->front()));
   BOOST_CHECK(4 == anyf::any_cast<int>(results->front()));
+}
+
+BOOST_AUTO_TEST_CASE(ooze_deduce_return, *boost::unit_test::disabled()) {
+  const auto script = "fn f() -> i32 { create() }";
+  const auto script2 = "fn f() -> f32 { let x: f32 = create() x }";
+
+  Env env = create_primative_env();
+  env.add_function("create", []() { return 1; });
+  env.add_function("create", []() { return 1.0f; });
+
+  std::vector<std::string> errors;
+
+  std::tie(env, errors) = parse_script(std::move(env), script, no_load);
+  BOOST_CHECK(errors.empty());
+
+  std::tie(env, errors) = parse_script(std::move(env), script2, no_load);
+  BOOST_CHECK(errors.empty());
 }
 
 } // namespace ooze
