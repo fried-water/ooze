@@ -12,8 +12,6 @@ namespace ooze {
 
 namespace {
 
-Result<Any> no_load(const Env&, const std::string&) { return err("oops"); }
-
 template <typename... Ts>
 auto errors(Ts... ts) {
   return tl::unexpected{std::vector<std::string>{std::move(ts)...}};
@@ -21,7 +19,7 @@ auto errors(Ts... ts) {
 
 Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view expr) {
   std::vector<std::string> errors;
-  std::tie(e, errors) = parse_script(std::move(e), script, no_load);
+  std::tie(e, errors) = parse_script(std::move(e), script);
 
   if(!errors.empty()) {
     return tl::unexpected{std::move(errors)};
@@ -29,7 +27,7 @@ Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view ex
 
   anyf::TaskExecutor executor;
 
-  return ooze::run(e, executor, expr, {}, no_load).second.map([](std::vector<Binding> bindings) {
+  return ooze::run(e, executor, expr, {}).second.map([](std::vector<Binding> bindings) {
     std::vector<Any> anys;
     for(Binding& b : bindings) {
       anys.push_back(take(std::move(b)).wait());
@@ -149,10 +147,10 @@ BOOST_AUTO_TEST_CASE(ooze_deduce_return, *boost::unit_test::disabled()) {
 
   std::vector<std::string> errors;
 
-  std::tie(env, errors) = parse_script(std::move(env), script, no_load);
+  std::tie(env, errors) = parse_script(std::move(env), script);
   BOOST_CHECK(errors.empty());
 
-  std::tie(env, errors) = parse_script(std::move(env), script2, no_load);
+  std::tie(env, errors) = parse_script(std::move(env), script2);
   BOOST_CHECK(errors.empty());
 }
 

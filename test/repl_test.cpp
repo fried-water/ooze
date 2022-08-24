@@ -100,22 +100,21 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_types) {
+  struct A {};
+  struct B {};
+
   Repl r;
 
   add_tieable_type<int>(r.env, "i32");
 
-  struct A {};
-  struct B {};
-
   r.env.add_type<A>("A");
-
   r.env.add_function("to_string", [](const B&) { return std::string("B"); });
 
   const std::vector<std::string> expected{
     "3 type(s)",
-    "  A                    [to_string: N, serialize: N]",
-    "  i32                  [to_string: Y, serialize: Y]",
-    fmt::format("  {:<20} [to_string: Y, serialize: N]", type_name_or_id(r.env, anyf::type_id<B>()))};
+    "  A                    [to_string: N]",
+    "  i32                  [to_string: Y]",
+    fmt::format("  {:<20} [to_string: Y]", type_name_or_id(r.env, anyf::type_id<B>()))};
 
   BOOST_CHECK(expected == step_repl(r, ":t"));
 }
@@ -136,6 +135,8 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
   const std::vector<std::string> expected{"5 function(s)",
                                           "  clone [12 overloads]",
                                           "  to_string [12 overloads]",
+                                          "  serialize [12 overloads]",
+                                          "  deserialize [12 overloads]",
                                           "  concat(string&, string&) -> string",
                                           fmt::format("  create_a() -> {}", type_name_or_id(r.env, a_type)),
                                           "  pow(i32) -> i32",

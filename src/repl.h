@@ -11,7 +11,6 @@ struct Repl {
   Env env;
   anyf::TaskExecutor executor;
   Map<std::string, Binding> bindings;
-  std::vector<std::tuple<std::string, TypeID, anyf::Future>> outstanding_writes;
 };
 
 std::vector<std::string> step_repl(Repl&, std::string_view line);

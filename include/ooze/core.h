@@ -24,21 +24,12 @@ struct Binding {
   anyf::BorrowedFuture borrowed_future;
 };
 
-std::pair<Env, std::vector<std::string>>
-parse_script(Env, std::string_view script, std::function<Result<Any>(const Env&, const std::string&)> load);
+std::pair<Env, std::vector<std::string>> parse_script(Env, std::string_view script);
 
 std::pair<std::unordered_map<std::string, Binding>, Result<std::vector<Binding>>>
-run(const Env&,
-    anyf::TaskExecutor&,
-    std::string_view assignment_or_expr,
-    std::unordered_map<std::string, Binding>,
-    std::function<Result<Any>(const Env&, const std::string&)> load);
-
-Result<std::vector<std::byte>> save(const Env&, const Any&);
+run(const Env&, anyf::TaskExecutor&, std::string_view assignment_or_expr, std::unordered_map<std::string, Binding>);
 
 std::vector<std::string> to_string(const Env&, anyf::TaskExecutor&, std::vector<Binding>);
-
-Result<Any> load(const Env&, Span<std::byte>, const std::string&);
 
 int main(int argc, char* argv[], Env);
 

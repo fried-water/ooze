@@ -43,16 +43,12 @@ struct GraphContext {
   Map<std::string, Term> bindings;
 };
 
-Result<std::vector<Term>>
-add_expr(GraphContext&, const Expr&, const Env&, std::function<Result<Any>(const Env&, const std::string&)>);
+Result<std::vector<Term>> add_expr(GraphContext&, const Expr&, const Env&);
 
-Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx,
-                                           const std::vector<Expr>& exprs,
-                                           const Env& e,
-                                           std::function<Result<Any>(const Env&, const std::string&)> load) {
+Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx, const std::vector<Expr>& exprs, const Env& e) {
   auto [terms, errors] =
     accumulate<std::pair<std::vector<Term>, std::vector<std::string>>>(exprs, [&](auto acc, const Expr& expr) {
-      if(auto terms = add_expr(ctx, expr, e, load); terms) {
+      if(auto terms = add_expr(ctx, expr, e); terms) {
         acc.first.insert(acc.first.end(), terms->begin(), terms->end());
       } else {
         acc.second.insert(acc.second.end(), terms.error().begin(), terms.error().end());
@@ -63,44 +59,27 @@ Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx,
   return errors.empty() ? Result<std::vector<Term>>{std::move(terms)} : tl::unexpected{std::move(errors)};
 }
 
-Result<std::vector<Term>> add_expr(GraphContext& ctx,
-                                   const Expr& expr,
-                                   const Env& e,
-                                   std::function<Result<Any>(const Env&, const std::string&)> load) {
+Result<std::vector<Term>> add_expr(GraphContext& ctx, const Expr& expr, const Env& e) {
   return std::visit(
     Overloaded{
       [&](const Indirect<Call>& call) -> Result<std::vector<Term>> {
-        if(call->name == "load") {
-          if(call->parameters.size() != 1) {
-            return err(fmt::format("load expects a string literal, given {} arg(s)", call->parameters.size()));
-          } else if(auto literal_ptr = std::get_if<Literal>(&call->parameters.front().v); !literal_ptr) {
-            return err(fmt::format("load expects a string literal"));
-          } else if(auto string_ptr = std::get_if<std::string>(literal_ptr); !string_ptr) {
-            return err(fmt::format("load expects a string literal"));
-          } else {
-            return load(e, *string_ptr).and_then([&](Any value) {
-              return ctx.cg.add(AnyFunction(std::move(value)), {}).map_error(to_graph_error(e, *string_ptr));
+        return accumulate_exprs(ctx, call->parameters, e)
+          .map_error([&](std::vector<std::string> errors) {
+            if(e.functions.find(call->name) == e.functions.end()) {
+              errors.push_back(fmt::format("use of undeclared function '{}'", call->name));
+            }
+            return errors;
+          })
+          .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
+            std::vector<TypeProperties> types;
+            std::transform(
+              terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) { return ctx.cg.type(term); });
+            return overload_resolution(e, call->name, types).and_then([&](EnvFunction f) {
+              return std::visit(
+                [&](auto f) { return ctx.cg.add(std::move(f), terms).map_error(to_graph_error(e, call->name)); },
+                std::move(f));
             });
-          }
-        } else {
-          return accumulate_exprs(ctx, call->parameters, e, load)
-            .map_error([&](std::vector<std::string> errors) {
-              if(e.functions.find(call->name) == e.functions.end()) {
-                errors.push_back(fmt::format("use of undeclared function '{}'", call->name));
-              }
-              return errors;
-            })
-            .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
-              std::vector<TypeProperties> types;
-              std::transform(
-                terms.begin(), terms.end(), std::back_inserter(types), [&](Term term) { return ctx.cg.type(term); });
-              return overload_resolution(e, call->name, types).and_then([&](EnvFunction f) {
-                return std::visit(
-                  [&](auto f) { return ctx.cg.add(std::move(f), terms).map_error(to_graph_error(e, call->name)); },
-                  std::move(f));
-              });
-            });
-        }
+          });
       },
       [&](const std::string& identifier) {
         const auto it = ctx.bindings.find(identifier);
@@ -123,8 +102,7 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx,
 
 } // namespace
 
-std::pair<Env, std::vector<std::string>>
-create_graphs(Env e, const AST& ast, std::function<Result<Any>(const Env&, const std::string&)> load) {
+std::pair<Env, std::vector<std::string>> create_graphs(Env e, const AST& ast) {
   Map<std::string, std::vector<std::string>> dependencies;
 
   for(const Function& function : ast) {
@@ -151,7 +129,7 @@ create_graphs(Env e, const AST& ast, std::function<Result<Any>(const Env&, const
     });
 
     if(it != ast.end()) {
-      auto graph_result = create_graph(e, *it, load);
+      auto graph_result = create_graph(e, *it);
 
       if(graph_result) {
         e.add_graph(it->name, std::move(*graph_result));
@@ -177,8 +155,7 @@ create_graphs(Env e, const AST& ast, std::function<Result<Any>(const Env&, const
   return {std::move(e), std::move(errors)};
 }
 
-Result<FunctionGraph>
-create_graph(const Env& e, const Function& f, std::function<Result<Any>(const Env&, const std::string&)> load) {
+Result<FunctionGraph> create_graph(const Env& e, const Function& f) {
   std::vector<TypeProperties> input_types;
   std::vector<std::string> errors;
 
@@ -208,25 +185,24 @@ create_graph(const Env& e, const Function& f, std::function<Result<Any>(const En
         f.assignments,
         [&](auto acc, const Assignment& assignment) {
           return std::move(acc).and_then([&](GraphContext ctx) {
-            return add_expr(ctx, assignment.expr, e, load)
-              .and_then([&](std::vector<Term> terms) -> Result<GraphContext> {
-                std::vector<TypeID> inputs(terms.size());
-                std::transform(
-                  terms.begin(), terms.end(), inputs.begin(), [&](const auto& t) { return ctx.cg.type(t).id; });
+            return add_expr(ctx, assignment.expr, e).and_then([&](std::vector<Term> terms) -> Result<GraphContext> {
+              std::vector<TypeID> inputs(terms.size());
+              std::transform(
+                terms.begin(), terms.end(), inputs.begin(), [&](const auto& t) { return ctx.cg.type(t).id; });
 
-                return type_check(e, assignment.bindings, inputs).map([&]() {
-                  for(int i = 0; i < terms.size(); i++) {
-                    ctx.bindings.insert_or_assign(assignment.bindings[i].name, terms[i]);
-                  }
-                  return std::move(ctx);
-                });
+              return type_check(e, assignment.bindings, inputs).map([&]() {
+                for(int i = 0; i < terms.size(); i++) {
+                  ctx.bindings.insert_or_assign(assignment.bindings[i].name, terms[i]);
+                }
+                return std::move(ctx);
               });
+            });
           });
         },
         std::move(ctx));
     })
     .and_then([&](GraphContext ctx) {
-      return accumulate_exprs(ctx, f.ret, e, load).and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
+      return accumulate_exprs(ctx, f.ret, e).and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
         if(terms.size() != f.result.size()) {
           return err(fmt::format("{} returns {} value(s), given {}", f.name, f.result.size(), terms.size()));
         }
@@ -247,10 +223,8 @@ create_graph(const Env& e, const Function& f, std::function<Result<Any>(const En
     });
 }
 
-Result<FunctionGraph> create_graph(const Env& e,
-                                   const ast::Expr& expr,
-                                   const std::vector<std::pair<std::string, TypeProperties>>& inputs,
-                                   std::function<Result<Any>(const Env&, const std::string&)> load) {
+Result<FunctionGraph>
+create_graph(const Env& e, const ast::Expr& expr, const std::vector<std::pair<std::string, TypeProperties>>& inputs) {
   std::vector<TypeProperties> input_types;
   Map<std::string, Term> bindings;
 
@@ -261,7 +235,7 @@ Result<FunctionGraph> create_graph(const Env& e,
 
   GraphContext ctx{std::get<0>(anyf::make_graph(input_types)), std::move(bindings)};
 
-  return add_expr(ctx, expr, e, load).and_then([&](std::vector<Term> terms) {
+  return add_expr(ctx, expr, e).and_then([&](std::vector<Term> terms) {
     return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, "return"));
   });
 }

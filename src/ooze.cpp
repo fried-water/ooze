@@ -109,44 +109,21 @@ auto cmd_parser() {
 }
 
 void run(const RunCommand& cmd, Env e) {
-  const auto load_callback = [](const Env& e, const std::string& name) {
-    return read_binary_file(name).and_then([&](const auto& bytes) { return load(e, bytes, name); });
-  };
-
   Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
 
   anyf::TaskExecutor executor;
 
-  script.map([&](const std::string& script) { return parse_script(std::move(e), script, load_callback); })
+  script.map([&](const std::string& script) { return parse_script(std::move(e), script); })
     .and_then([&](auto pair) mutable {
       return pair.second.empty() ? Result<Env>(std::move(pair.first)) : tl::unexpected{std::move(pair.second)};
     })
     .and_then([&](Env e) {
-      auto res = run(e, executor, cmd.expr, {}, load_callback).second;
+      auto res = run(e, executor, cmd.expr, {}).second;
       return merge(std::move(e), std::move(res));
     })
     .map([&](auto p) {
-      Env e = std::move(std::get<0>(p));
-      std::vector<Binding> outputs = std::move(std::get<1>(p));
-      if(cmd.output_prefix != "") {
-        for(size_t i = 0; i < outputs.size(); i++) {
-          borrow(outputs[i])
-            .then([&, i](const Any& any) {
-              return save(e, any)
-                .and_then([&](const std::vector<std::byte>& bytes) {
-                  return write_binary_file(outputs.size() == 1 ? fmt::format("{}", cmd.output_prefix)
-                                                               : fmt::format("{}_{}", cmd.output_prefix, i),
-                                           bytes);
-                })
-                .or_else(dump);
-            })
-            .wait();
-        }
-      }
-
-      if(cmd.output_prefix == "" || cmd.verbosity != 0) {
-        dump(to_string(e, executor, std::move(outputs)));
-      }
+      auto [e, outputs] = std::move(p);
+      dump(to_string(e, executor, std::move(outputs)));
     })
     .or_else(dump);
 }
@@ -212,60 +189,21 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 
 } // namespace
 
-Result<Any> load(const Env& e, Span<std::byte> bytes, const std::string& name) {
-  auto opt_type = knot::deserialize_partial<std::string>(bytes.begin(), bytes.end());
-
-  if(!opt_type.has_value()) {
-    return err(fmt::format("error determining type from {}", name));
-  }
-
-  const auto id_it = e.type_ids.find(opt_type->first);
-  if(id_it == e.type_ids.end()) {
-    return err(fmt::format("cannot find type {}", opt_type->first));
-  }
-
-  const auto ser_it = e.deserialize.find(id_it->second);
-  if(ser_it == e.deserialize.end()) {
-    return err(fmt::format("type {} is not deserializable", opt_type->first));
-  }
-
-  std::optional<Any> result = ser_it->second(Span<std::byte>(opt_type->second, bytes.end()));
-
-  return result.has_value() ? Result<Any>(std::move(*result))
-                            : err(fmt::format("error deserializing type {} from {}", opt_type->first, name));
-}
-
-Result<std::vector<std::byte>> save(const Env& e, const Any& v) {
-  const auto name_it = e.type_names.find(v.type());
-  if(name_it == e.type_names.end()) {
-    return err(fmt::format("cannot find {}", type_name_or_id(e, v.type())));
-  }
-
-  const auto ser_it = e.serialize.find(v.type());
-  if(ser_it == e.serialize.end()) {
-    return err(fmt::format("type {} is not serializable", name_it->second));
-  }
-
-  return ser_it->second(v, knot::serialize(name_it->second));
-}
-
-std::pair<Env, std::vector<std::string>>
-parse_script(Env e, std::string_view script, std::function<Result<Any>(const Env&, const std::string&)> load) {
+std::pair<Env, std::vector<std::string>> parse_script(Env e, std::string_view script) {
   auto result = parse(script)
                   .map_error([&](const ParseError& error) {
                     return std::vector<std::string>{generate_error_msg("<script>", error)};
                   })
-                  .map([&](AST ast) { return create_graphs(std::move(e), ast, load); });
+                  .map([&](AST ast) { return create_graphs(std::move(e), ast); });
 
   return result ? std::move(result.value()) : std::pair(std::move(e), std::move(result.error()));
 }
 
-Result<FunctionGraph>
-parse_expr(const Env& e, std::string_view expr, std::function<Result<Any>(const Env&, const std::string&)> load) {
+Result<FunctionGraph> parse_expr(const Env& e, std::string_view expr) {
   return parse_expr(expr)
     .map_error(
       [&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<cmdline expr>", error)}; })
-    .and_then([&](ast::Expr expr) { return create_graph(e, expr, {}, load); });
+    .and_then([&](ast::Expr expr) { return create_graph(e, expr, {}); });
 }
 
 Result<std::vector<std::pair<std::string, TypeProperties>>>
@@ -298,11 +236,10 @@ run_expr(const Env& e,
          anyf::TaskExecutor& executor,
          const ast::Expr& expr,
          std::unordered_map<std::string, Binding> bindings,
-         std::function<Result<Any>(const Env&, const std::string&)> load,
          std::optional<std::vector<ast::Binding>> expected_bindings = {}) {
   auto res = expr_inputs(e, bindings, expr)
                .and_then([&](auto inputs) {
-                 auto g = create_graph(e, expr, inputs, load).and_then([&](auto g) {
+                 auto g = create_graph(e, expr, inputs).and_then([&](auto g) {
                    return expected_bindings
                             ? type_check(e, *expected_bindings, output_types(g)).map([&]() { return std::move(g); })
                             : Result<FunctionGraph>{std::move(g)};
@@ -342,29 +279,27 @@ std::pair<std::unordered_map<std::string, Binding>, Result<std::vector<Binding>>
 run(const Env& e,
     anyf::TaskExecutor& executor,
     std::string_view assignment_or_expr,
-    std::unordered_map<std::string, Binding> bindings,
-    std::function<Result<Any>(const Env&, const std::string&)> load) {
+    std::unordered_map<std::string, Binding> bindings) {
   auto res =
     parse_repl(assignment_or_expr)
       .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<src>", error)}; })
       .map([&](std::variant<ast::Expr, ast::Assignment> var) {
-        return std::visit(
-          Overloaded{[&](ast::Assignment assignment) {
-                       Result<std::vector<Binding>> result;
-                       std::tie(bindings, result) =
-                         run_expr(e, executor, assignment.expr, std::move(bindings), load, assignment.bindings);
+        return std::visit(Overloaded{[&](ast::Assignment assignment) {
+                                       Result<std::vector<Binding>> result;
+                                       std::tie(bindings, result) = run_expr(
+                                         e, executor, assignment.expr, std::move(bindings), assignment.bindings);
 
-                       result = std::move(result).map([&](std::vector<Binding> results) {
-                         for(size_t i = 0; i < results.size(); i++) {
-                           bindings[assignment.bindings[i].name] = std::move(results[i]);
-                         }
-                         return std::vector<Binding>{};
-                       });
+                                       result = std::move(result).map([&](std::vector<Binding> results) {
+                                         for(size_t i = 0; i < results.size(); i++) {
+                                           bindings[assignment.bindings[i].name] = std::move(results[i]);
+                                         }
+                                         return std::vector<Binding>{};
+                                       });
 
-                       return std::pair(std::move(bindings), std::move(result));
-                     },
-                     [&](ast::Expr expr) { return run_expr(e, executor, expr, std::move(bindings), load); }},
-          std::move(var));
+                                       return std::pair(std::move(bindings), std::move(result));
+                                     },
+                                     [&](ast::Expr expr) { return run_expr(e, executor, expr, std::move(bindings)); }},
+                          std::move(var));
       });
 
   return res ? std::move(res.value()) : std::pair(std::move(bindings), tl::unexpected{std::move(res.error())});

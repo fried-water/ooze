@@ -35,8 +35,6 @@ inline const std::vector<TypeID>& output_types(const EnvFunction& f) {
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
   std::unordered_map<std::string, TypeID> type_ids;
-  std::unordered_map<TypeID, std::function<std::vector<std::byte>(const Any&, std::vector<std::byte>)>> serialize;
-  std::unordered_map<TypeID, std::function<std::optional<Any>(Span<std::byte>)>> deserialize;
   std::unordered_map<std::string, std::vector<EnvFunction>> functions;
 
   template <typename F>
@@ -74,16 +72,9 @@ void add_tieable_type(Env& e, const std::string& name) {
   e.add_type<T>(name);
 
   e.add_function("to_string", [](const T& t) { return knot::debug(t); });
-
-  e.serialize.emplace(type, [](const Any& t, std::vector<std::byte> bytes) {
-    knot::serialize(anyf::any_cast<T>(t), std::back_inserter(bytes));
-    return bytes;
-  });
-
-  e.deserialize.emplace(type, [](Span<std::byte> bytes) {
-    std::optional<T> opt = knot::deserialize<T>(bytes.begin(), bytes.end());
-    return opt ? std::optional(Any(std::move(*opt))) : std::nullopt;
-  });
+  e.add_function("serialize", [](const T& t) { return knot::serialize(t); });
+  e.add_function("deserialize",
+                 [](const std::vector<std::byte>& bytes) { return knot::deserialize<T>(bytes.begin(), bytes.end()); });
 
   if constexpr(std::is_aggregate_v<T>) {
     std::string create_name = "create_";
