@@ -11,51 +11,52 @@ namespace {
 template <typename T>
 void pretty_print(std::ostream&, const std::vector<T>&, bool allow_short = false);
 
-void pretty_print(std::ostream& os, const std::string& s) { os << s; }
+void pretty_print(std::ostream& os, const NamedType& t) { os << t.name; }
 
-void pretty_print(std::ostream& os, const Parameter& t) {
+void pretty_print(std::ostream& os, const Parameter<NamedType>& t) {
   os << t.name << ": ";
 
   if(t.borrow) {
     os << '&';
   }
-  os << t.type;
+  os << t.type.name;
 }
 
-void pretty_print(std::ostream& os, const Binding& b) {
+void pretty_print(std::ostream& os, const Binding<NamedType>& b) {
   os << b.name;
 
   if(b.type) {
-    os << ": " << *b.type;
+    os << ": " << b.type->name;
   }
 }
 
-void pretty_print(std::ostream&, const Expr&);
+void pretty_print(std::ostream&, const Expr<NamedFunction>&);
 
-void pretty_print(std::ostream& os, const Call& c) { pretty_print(os << c.name, c.parameters); }
+void pretty_print(std::ostream& os, const Call<NamedFunction>& c) { pretty_print(os << c.function.name, c.parameters); }
 
 struct ExprPrettyPrinter {
   std::ostream& os;
 
-  void operator()(const std::vector<Expr>& exprs) const { pretty_print(os, exprs, true); }
-  void operator()(const Indirect<Call>& call) const { pretty_print(os, *call); }
-  void operator()(const std::string& name) const { os << name; }
+  void operator()(const std::vector<Expr<NamedFunction>>& exprs) const { pretty_print(os, exprs, true); }
+
+  void operator()(const Indirect<Call<NamedFunction>>& call) const { pretty_print(os, *call); }
+  void operator()(const std::string& ident) const { os << ident; }
   void operator()(const Literal& l) const { os << to_string(l); }
 };
 
-void pretty_print(std::ostream& os, const Expr& e) { std::visit(ExprPrettyPrinter{os}, e.v); }
+void pretty_print(std::ostream& os, const Expr<NamedFunction>& e) { std::visit(ExprPrettyPrinter{os}, e.v); }
 
-void pretty_print(std::ostream& os, const Assignment& a) {
+void pretty_print(std::ostream& os, const UnTypedAssignment& a) {
   pretty_print(os << "let ", a.bindings, true);
   pretty_print(os << " = ", a.expr);
 }
 
-void pretty_print(std::ostream& os, const Function& f) {
+void pretty_print(std::ostream& os, const UnTypedFunction& f) {
   pretty_print(os << "fn " << f.name, f.parameters);
   pretty_print(os << " -> ", f.result, true);
   os << " {\n";
 
-  for(const Assignment& a : f.assignments) {
+  for(const auto& a : f.assignments) {
     pretty_print(os << "  ", a);
     os << "\n";
   }
@@ -80,12 +81,19 @@ void pretty_print(std::ostream& os, const std::vector<T>& v, bool allow_short) {
   }
 }
 
+template <typename T>
+std::string pretty_print_gen(const T& t) {
+  std::stringstream ss;
+  pretty_print(ss, t);
+  return std::move(ss).str();
+}
+
 } // namespace
 
 std::string pretty_print(const AST& ast) {
   std::stringstream ss;
 
-  for(const Function& f : ast) {
+  for(const auto& f : ast) {
     pretty_print(ss, f);
     ss << "\n";
   }
@@ -93,16 +101,11 @@ std::string pretty_print(const AST& ast) {
   return std::move(ss).str();
 }
 
-std::string pretty_print(const ast::Expr& expr) {
-  std::stringstream ss;
-  pretty_print(ss, expr);
-  return std::move(ss).str();
-}
-
-std::string pretty_print(const ast::Assignment& asgn) {
-  std::stringstream ss;
-  pretty_print(ss, asgn);
-  return std::move(ss).str();
-}
+std::string pretty_print(const Expr<NamedFunction>& expr) { return pretty_print_gen(expr); }
+std::string pretty_print(const Call<NamedFunction>& c) { return pretty_print_gen(c); }
+std::string pretty_print(const UnTypedFunction& f) { return pretty_print_gen(f); }
+std::string pretty_print(const UnTypedAssignment& asgn) { return pretty_print_gen(asgn); }
+std::string pretty_print(const Parameter<NamedType>& p) { return pretty_print_gen(p); }
+std::string pretty_print(const Binding<NamedType>& b) { return pretty_print_gen(b); }
 
 } // namespace ooze

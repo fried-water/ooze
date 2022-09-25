@@ -4,62 +4,88 @@
 #include "literal.h"
 
 namespace ooze {
-
 namespace ast {
 
+template <typename F>
 struct Call;
 
+template <typename F>
 struct Expr {
-  std::variant<Indirect<Call>, std::string, Literal> v;
+  std::variant<Indirect<Call<F>>, std::string, Literal> v;
 
-  KNOT_COMPAREABLE(Expr);
+  friend constexpr auto names(knot::Type<Expr>) { return knot::Names("Expr", {"v"}); }
+
+  KNOT_ORDERED(Expr);
 };
 
+template <typename F>
+struct Call {
+  F function;
+  std::vector<Expr<F>> parameters;
+
+  friend constexpr auto names(knot::Type<Call>) { return knot::Names("Call", {"function", "parameters"}); }
+
+  KNOT_ORDERED(Call);
+};
+
+template <typename T>
 struct Parameter {
   std::string name;
-  std::string type;
+  T type;
   bool borrow = false;
 
-  KNOT_COMPAREABLE(Parameter);
+  KNOT_ORDERED(Parameter);
 };
 
+template <typename T>
 struct Binding {
   std::string name;
-  std::optional<std::string> type;
+  std::optional<T> type;
 
-  KNOT_COMPAREABLE(Binding);
+  KNOT_ORDERED(Binding);
 };
 
-struct Call {
-  std::string name;
-  std::vector<Expr> parameters;
-
-  KNOT_COMPAREABLE(Call);
-};
-
+template <typename T, typename F>
 struct Assignment {
-  std::vector<Binding> bindings;
-  Expr expr;
+  std::vector<Binding<T>> bindings;
+  Expr<F> expr;
 
-  KNOT_COMPAREABLE(Assignment);
-};
-
-struct Function {
-  std::string name;
-  std::vector<Parameter> parameters;
-  std::vector<std::string> result;
-  std::vector<Assignment> assignments;
-  std::vector<Expr> ret;
-
-  KNOT_COMPAREABLE(Function);
+  KNOT_ORDERED(Assignment);
 };
 
 } // namespace ast
 
-using AST = std::vector<ast::Function>;
+struct NamedType {
+  std::string name;
+  KNOT_ORDERED(NamedType);
+};
+
+struct NamedFunction {
+  std::string name;
+  KNOT_ORDERED(NamedFunction);
+};
+
+using UnTypedExpr = ast::Expr<NamedFunction>;
+using UnTypedAssignment = ast::Assignment<NamedType, NamedFunction>;
+
+struct UnTypedFunction {
+  std::string name;
+  std::vector<ast::Parameter<NamedType>> parameters;
+  std::vector<NamedType> result;
+  std::vector<UnTypedAssignment> assignments;
+  std::vector<UnTypedExpr> ret;
+
+  KNOT_ORDERED(UnTypedFunction);
+};
+
+using AST = std::vector<UnTypedFunction>;
 
 std::string pretty_print(const AST&);
-std::string pretty_print(const ast::Expr&);
-std::string pretty_print(const ast::Assignment&);
+std::string pretty_print(const UnTypedFunction&);
+std::string pretty_print(const UnTypedAssignment&);
+std::string pretty_print(const ast::Expr<NamedFunction>&);
+std::string pretty_print(const ast::Call<NamedFunction>&);
+std::string pretty_print(const ast::Parameter<NamedType>&);
+std::string pretty_print(const ast::Binding<NamedType>&);
 
 } // namespace ooze

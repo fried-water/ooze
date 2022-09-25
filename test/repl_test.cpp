@@ -42,27 +42,19 @@ BOOST_AUTO_TEST_CASE(repl_missing_binding) {
 
   r.env.add_function("identity", [](int x) { return x; });
 
-  const std::vector<std::string> expected{"Identifier x not found"};
+  const std::vector<std::string> expected{"use of undeclared binding 'x'"};
   BOOST_CHECK(expected == step_repl(r, "x"));
   BOOST_CHECK(expected == step_repl(r, "identity(x)"));
 }
 
-BOOST_AUTO_TEST_CASE(repl_missing_function_bindings) {
-  Repl r{create_primative_env()};
-
-  const std::vector<std::string> expected{
-    "Identifier x not found", "Identifier y not found", "use of undeclared function 'missing'"};
-
-  BOOST_CHECK(expected == step_repl(r, "missing(x, y)"));
-}
-
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
   Repl r{create_primative_env()};
+  r.env.add_type<std::unique_ptr<int>>("unique_int");
 
   r.env.add_function("make_ptr", [](int x) { return std::make_unique<int>(x); });
   r.env.add_function("take_ptr", [](std::unique_ptr<int> x) { return *x; });
 
-  BOOST_CHECK(step_repl(r, "let x = make_ptr(5)").empty());
+  BOOST_REQUIRE(step_repl(r, "let x = make_ptr(5)").empty());
 
   const std::vector<std::string> expected{"5"};
   BOOST_CHECK(expected == step_repl(r, "take_ptr(x)"));

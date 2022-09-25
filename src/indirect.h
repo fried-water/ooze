@@ -27,7 +27,10 @@ public:
   const T* operator->() const { return _ptr.get(); }
   T* operator->() { return _ptr.get(); }
 
-  operator bool() const { return _ptr != nullptr; }
+  const T* get() const { return _ptr.get(); }
+  T* get() { return _ptr.get(); }
+
+  explicit operator bool() const { return _ptr != nullptr; }
 
   friend auto as_tie(const Indirect& i) { return std::tie(*i); }
   friend auto as_tie(Indirect& i) { return std::tie(*i); }

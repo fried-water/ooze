@@ -15,8 +15,9 @@ struct ParseError {
 template <typename T>
 using ParseResult = tl::expected<T, ParseError>;
 
-ParseResult<ast::Expr> parse_expr(std::string_view);
-ParseResult<std::variant<ast::Expr, ast::Assignment>> parse_repl(std::string_view);
+ParseResult<UnTypedExpr> parse_expr(std::string_view);
+ParseResult<std::variant<UnTypedExpr, UnTypedAssignment>> parse_repl(std::string_view);
+ParseResult<UnTypedFunction> parse_function(std::string_view);
 ParseResult<AST> parse(std::string_view);
 
 inline std::string generate_error_msg(std::string_view src, const ParseError& error) {

@@ -39,6 +39,12 @@ std::string type_list_string(const Env& e, Span<TypeProperties> types) {
               [&](TypeProperties t) { return fmt::format("{}{}", type_name_or_id(e, t.id), t.value ? "" : "&"); });
 }
 
+std::string type_list_string(const Env& e, Span<std::optional<TypeProperties>> types) {
+  return join(types, [&](std::optional<TypeProperties> t) {
+    return t ? fmt::format("{}{}", type_name_or_id(e, t->id), t->value ? "" : "&") : "_";
+  });
+}
+
 std::string output_type_list_string(const Env& e, Span<TypeID> types) {
   return types.size() == 1 ? type_name_or_id(e, types.front()) : type_list_string(e, types);
 }
@@ -53,25 +59,6 @@ std::string function_string(const Env& e, std::string_view fn_name, const Functi
 
 std::string function_string(const Env& e, std::string_view fn_name, const AnyFunction& f) {
   return function_string(e, fn_name, f.input_types(), f.output_types());
-}
-
-Result<void> type_check(const Env& e, const std::vector<ast::Binding>& bindings, const std::vector<TypeID>& types) {
-  if(types.size() != bindings.size()) {
-    return err(fmt::format("Assignment expects {} value(s), given {}", bindings.size(), types.size()));
-  }
-
-  std::vector<std::string> errors;
-  for(int i = 0; i < types.size(); i++) {
-    if(bindings[i].type) {
-      const std::string given_type = type_name_or_id(e, types[i]);
-
-      if(given_type != bindings[i].type) {
-        errors.push_back(fmt::format("{} expects {}, given {}", bindings[i].name, *bindings[i].type, given_type));
-      }
-    }
-  }
-
-  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
 }
 
 } // namespace ooze

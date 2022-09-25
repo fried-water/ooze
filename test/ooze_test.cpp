@@ -12,11 +12,6 @@ namespace ooze {
 
 namespace {
 
-template <typename... Ts>
-auto errors(Ts... ts) {
-  return tl::unexpected{std::vector<std::string>{std::move(ts)...}};
-}
-
 Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view expr) {
   std::vector<std::string> errors;
   std::tie(e, errors) = parse_script(std::move(e), script);
@@ -76,37 +71,23 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
   BOOST_CHECK((Point{19, 16}) == anyf::any_cast<Point>(results->front()));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_wrong_count) {
-  const auto wrong_arg = "fn f(x: i32) -> u32 { identity() }";
-  const auto wrong_bind = "fn f(x: u32) -> u32 { let () = identity(x) x }";
-  const auto wrong_return = "fn f(x: u32) -> () { identity(x) }";
-
-  Env env = create_primative_env();
-  env.add_function("identity", [](u32 u) { return u; });
-
-  BOOST_CHECK(err("Assignment expects 0 value(s), given 1") == run(env, wrong_bind, "f()"));
-  BOOST_CHECK(err("f returns 0 value(s), given 1") == run(env, wrong_return, "f()"));
-}
-
-BOOST_AUTO_TEST_CASE(ooze_wrong_type) {
-  const auto wrong_arg = "fn f(x: i32) -> u32 { identity(x) }";
-  const auto wrong_bind = "fn f(x: u32) -> u32 { let x: i32 = identity(x) x }";
-  const auto wrong_return = "fn f(x: u32) -> i32 { identity(x) }";
-
-  Env env = create_primative_env();
-  env.add_function("identity", [](u32 u) { return u; });
-
-  BOOST_CHECK(err("x expects i32, given u32") == run(env, wrong_bind, "f()"));
-  BOOST_CHECK(err("f return element 0 expects i32, given u32") == run(env, wrong_return, "f()"));
-}
-
 BOOST_AUTO_TEST_CASE(ooze_already_move) {
   const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }";
 
   Env env = create_primative_env();
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
-  BOOST_CHECK(err("f return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
+
+  BOOST_CHECK(err("return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
+}
+
+BOOST_AUTO_TEST_CASE(ooze_cannot_copy) {
+  const auto script = "fn f(x: &unique_int) -> unique_int { x }";
+
+  Env env = create_primative_env();
+  env.add_type<std::unique_ptr<int>>("unique_int");
+  env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
+  BOOST_CHECK(err("Function input 0 of type unique_int cannot be copied") == run(env, script, "f(make_unique_int(0))"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_clone) {
@@ -135,23 +116,6 @@ BOOST_AUTO_TEST_CASE(ooze_rebind) {
   BOOST_CHECK_EQUAL(1, results->size());
   BOOST_REQUIRE(anyf::holds_alternative<int>(results->front()));
   BOOST_CHECK(4 == anyf::any_cast<int>(results->front()));
-}
-
-BOOST_AUTO_TEST_CASE(ooze_deduce_return, *boost::unit_test::disabled()) {
-  const auto script = "fn f() -> i32 { create() }";
-  const auto script2 = "fn f() -> f32 { let x: f32 = create() x }";
-
-  Env env = create_primative_env();
-  env.add_function("create", []() { return 1; });
-  env.add_function("create", []() { return 1.0f; });
-
-  std::vector<std::string> errors;
-
-  std::tie(env, errors) = parse_script(std::move(env), script);
-  BOOST_CHECK(errors.empty());
-
-  std::tie(env, errors) = parse_script(std::move(env), script2);
-  BOOST_CHECK(errors.empty());
 }
 
 } // namespace ooze

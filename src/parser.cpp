@@ -17,6 +17,18 @@ auto ident() {
     "identifier", [](Token t) { return t.type == TokenType::Ident ? std::optional(std::string(t.sv)) : std::nullopt; });
 }
 
+auto type_ident() {
+  return pc::transform_if("type identifier", [](Token t) {
+    return t.type == TokenType::Ident ? std::optional(NamedType{std::string(t.sv)}) : std::nullopt;
+  });
+}
+
+auto function_ident() {
+  return pc::transform_if("function identifier", [](Token t) {
+    return t.type == TokenType::Ident ? std::optional(NamedFunction{std::string(t.sv)}) : std::nullopt;
+  });
+}
+
 template <typename P>
 auto list(P p) {
   return pc::transform(
@@ -40,42 +52,44 @@ auto list_or_one(P p) {
 }
 
 auto parameter() {
-  return pc::transform(pc::seq(ident(), symbol(":"), pc::maybe(symbol("&")), ident()),
-                       [](std::string name, std::optional<std::tuple<>> opt, std::string type) {
-                         return ast::Parameter{std::move(name), std::move(type), opt.has_value()};
+  return pc::transform(pc::seq(ident(), symbol(":"), pc::maybe(symbol("&")), type_ident()),
+                       [](std::string name, std::optional<std::tuple<>> opt, NamedType type) {
+                         return ast::Parameter<NamedType>{std::move(name), std::move(type), opt.has_value()};
                        });
 }
 
-auto binding() { return pc::construct<ast::Binding>(seq(ident(), pc::maybe(seq(symbol(":"), ident())))); }
+auto binding() {
+  return pc::construct<ast::Binding<NamedType>>(seq(ident(), pc::maybe(seq(symbol(":"), type_ident()))));
+}
 
-pc::ParseResult<ast::Expr, Token> expr(Span<Token> s) {
+pc::ParseResult<UnTypedExpr, Token> expr(Span<Token> s) {
   return pc::transform(
     pc::choose(pc::seq(ident(), maybe(list(expr))), pc::transform_if("literal", to_literal)), [](auto v) {
       return std::visit(Overloaded{[](auto tuple) {
                                      return std::get<1>(tuple)
-                                              ? ast::Expr{Indirect{ast::Call{std::move(std::get<0>(tuple)),
-                                                                             std::move(*std::get<1>(tuple))}}}
-                                              : ast::Expr{std::move(std::get<0>(tuple))};
+                                              ? UnTypedExpr{Indirect{ast::Call<NamedFunction>{
+                                                  std::move(std::get<0>(tuple)), std::move(*std::get<1>(tuple))}}}
+                                              : UnTypedExpr{std::move(std::get<0>(tuple))};
                                    },
-                                   [](Literal l) { return ast::Expr{std::move(l)}; }},
+                                   [](Literal l) { return UnTypedExpr{std::move(l)}; }},
                         std::move(v));
     })(s);
 }
 
 auto assignment() {
-  return pc::construct<ast::Assignment>(pc::seq(keyword("let"), list_or_one(binding()), symbol("="), expr));
+  return pc::construct<UnTypedAssignment>(pc::seq(keyword("let"), list_or_one(binding()), symbol("="), expr));
 }
 
 auto function() {
-  return pc::construct<ast::Function>(pc::seq(keyword("fn"),
-                                              ident(),
-                                              list(parameter()),
-                                              symbol("->"),
-                                              list_or_one(ident()),
-                                              symbol("{"),
-                                              pc::n(assignment()),
-                                              list_or_one(expr),
-                                              symbol("}")));
+  return pc::construct<UnTypedFunction>(pc::seq(keyword("fn"),
+                                                ident(),
+                                                list(parameter()),
+                                                symbol("->"),
+                                                list_or_one(type_ident()),
+                                                symbol("{"),
+                                                pc::n(assignment()),
+                                                list_or_one(expr),
+                                                symbol("}")));
 }
 
 template <typename Parser>
@@ -114,11 +128,13 @@ ParseResult<pc::parser_result_t<Token, Parser>> parse_string(Parser p, const std
 
 } // namespace
 
-ParseResult<ast::Expr> parse_expr(std::string_view src) { return parse_string(expr, src); }
+ParseResult<UnTypedExpr> parse_expr(std::string_view src) { return parse_string(expr, src); }
 
-ParseResult<std::variant<ast::Expr, ast::Assignment>> parse_repl(std::string_view src) {
+ParseResult<std::variant<UnTypedExpr, UnTypedAssignment>> parse_repl(std::string_view src) {
   return parse_string(pc::choose(expr, assignment()), src);
 }
+
+ParseResult<UnTypedFunction> parse_function(std::string_view src) { return parse_string(function(), src); }
 
 ParseResult<AST> parse(std::string_view src) { return parse_string(pc::n(function()), src); }
 
