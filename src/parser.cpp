@@ -64,15 +64,27 @@ auto binding() {
 
 pc::ParseResult<UnTypedExpr, Token> expr(Span<Token> s) {
   return pc::transform(
-    pc::choose(pc::seq(ident(), maybe(list(expr))), pc::transform_if("literal", to_literal)), [](auto v) {
-      return std::visit(Overloaded{[](auto tuple) {
-                                     return std::get<1>(tuple)
-                                              ? UnTypedExpr{Indirect{ast::Call<NamedFunction>{
-                                                  std::move(std::get<0>(tuple)), std::move(*std::get<1>(tuple))}}}
-                                              : UnTypedExpr{std::move(std::get<0>(tuple))};
-                                   },
-                                   [](Literal l) { return UnTypedExpr{std::move(l)}; }},
-                        std::move(v));
+    pc::choose(pc::seq(ident(), pc::maybe(list(expr)), pc::n(pc::seq(symbol("."), ident(), list(expr)))),
+               pc::transform_if("literal", to_literal)),
+    [](auto v) {
+      return std::visit(
+        Overloaded{[](auto&& tuple) {
+                     auto&& [binding, parameters, chain] = std::move(tuple);
+
+                     UnTypedExpr acc =
+                       parameters
+                         ? UnTypedExpr{Indirect{ast::Call<NamedFunction>{std::move(binding), std::move(*parameters)}}}
+                         : UnTypedExpr{std::move(binding)};
+
+                     for(auto&& [binding, parameters] : chain) {
+                       parameters.insert(parameters.begin(), std::move(acc));
+                       acc = UnTypedExpr{Indirect{ast::Call<NamedFunction>{std::move(binding), std::move(parameters)}}};
+                     }
+
+                     return acc;
+                   },
+                   [](Literal l) { return UnTypedExpr{std::move(l)}; }},
+        std::move(v));
     })(s);
 }
 

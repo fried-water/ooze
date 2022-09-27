@@ -27,6 +27,7 @@ BOOST_AUTO_TEST_CASE(lexer_symbols) {
   BOOST_CHECK((Token{TokenType::Symbol, std::string_view("{")}) == lex_one("{"));
   BOOST_CHECK((Token{TokenType::Symbol, std::string_view("}")}) == lex_one("})"));
   BOOST_CHECK((Token{TokenType::Symbol, std::string_view(",")}) == lex_one(","));
+  BOOST_CHECK((Token{TokenType::Symbol, std::string_view(".")}) == lex_one("."));
   BOOST_CHECK((Token{TokenType::Symbol, std::string_view(":")}) == lex_one(":"));
   BOOST_CHECK((Token{TokenType::Symbol, std::string_view("=")}) == lex_one("="));
   BOOST_CHECK((Token{TokenType::Symbol, std::string_view("&")}) == lex_one("&"));
@@ -79,8 +80,8 @@ BOOST_AUTO_TEST_CASE(lexer_floats) {
   // TODO
   BOOST_CHECK((Token{TokenType::LiteralInt, std::string_view("1")}) == lex_one("1.f"));
   BOOST_CHECK((Token{TokenType::LiteralInt, std::string_view("1")}) == lex_one("1."));
-  BOOST_CHECK((Token{TokenType::Whitespace, std::string_view("")}) == lex_one(".1"));
-  BOOST_CHECK((Token{TokenType::Whitespace, std::string_view("")}) == lex_one(".1f"));
+  BOOST_CHECK((Token{TokenType::Symbol, std::string_view(".")}) == lex_one(".1"));
+  BOOST_CHECK((Token{TokenType::Symbol, std::string_view(".")}) == lex_one(".1f"));
 }
 
 BOOST_AUTO_TEST_CASE(lexer_other_literals) {

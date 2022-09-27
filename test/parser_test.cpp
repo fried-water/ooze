@@ -34,6 +34,8 @@ BOOST_AUTO_TEST_CASE(parser_fail) {
   BOOST_CHECK(!parse("fn f( -> T { 1 }"));
   BOOST_CHECK(!parse("fn f) -> T { 1 }"));
   BOOST_CHECK(!parse("fn f(a) -> T { 1 }"));
+  BOOST_CHECK(!parse("fn f() -> T { a.b }"));
+  BOOST_CHECK(!parse("fn f() -> T { a.1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_one_arg) {
@@ -105,6 +107,24 @@ BOOST_AUTO_TEST_CASE(parser_two_bindings) {
 BOOST_AUTO_TEST_CASE(parser_empty_binding) {
   const std::string_view script = "fn f() -> T { let () = abc 1 }";
   const AST expected{{"f", {}, {{{"T"}}}, {{{}, ident("abc")}}, {One}}};
+  BOOST_CHECK(expected == parse(script));
+}
+
+BOOST_AUTO_TEST_CASE(parser_ufcs) {
+  const std::string_view script = "fn f() -> T { a.b() }";
+  const AST expected{{"f", {}, {{{"T"}}}, {}, {call("b", {ident("a")})}}};
+  BOOST_CHECK(expected == parse(script));
+}
+
+BOOST_AUTO_TEST_CASE(parser_ufcs_function) {
+  const std::string_view script = "fn f() -> T { a().b() }";
+  const AST expected{{"f", {}, {{{"T"}}}, {}, {call("b", {call("a")})}}};
+  BOOST_CHECK(expected == parse(script));
+}
+
+BOOST_AUTO_TEST_CASE(parser_ufcs_multi_parameter) {
+  const std::string_view script = "fn f() -> T { a.b(1) }";
+  const AST expected{{"f", {}, {{{"T"}}}, {}, {call("b", {ident("a"), One})}}};
   BOOST_CHECK(expected == parse(script));
 }
 
