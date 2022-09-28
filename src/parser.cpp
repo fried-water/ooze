@@ -113,7 +113,7 @@ template <typename Parser>
 ParseResult<pc::parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
-  auto [parse_pos, value, errors] = p(pc::ParseState<std::string_view, Token>{src, Span<Token>{tokens}}, 0);
+  auto [parse_pos, value, errors] = p(pc::ParseState<std::string_view, Token>{src, tokens}, 0);
 
   if(value && parse_pos == tokens.size() && lex_end == src.size()) {
     return std::move(*value);

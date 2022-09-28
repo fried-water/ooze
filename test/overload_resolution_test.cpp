@@ -293,6 +293,13 @@ BOOST_AUTO_TEST_CASE(cp_param_borrow) {
     e, {{"f", 0}, {"g", 0}, {"f", 0}, {"g", 0}}, "fn t(x: i32) -> (i32, i32, i32, i32) { (f(x), g(x), f(x), g(x)) }");
 }
 
+BOOST_AUTO_TEST_CASE(cp_param_borrow_return) {
+  Env e = create_primative_env();
+  e.add_function("f", [](const i32&) { return i32(); });
+
+  test_or(e, {{"f", 0}, {"f", 0}}, "fn t(x: &i32) -> i32 { f(f(x)) }");
+}
+
 BOOST_AUTO_TEST_CASE(cp_single_overload) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });

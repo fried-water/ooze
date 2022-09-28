@@ -69,12 +69,11 @@ bool type_check(Span<TypeID> expected, Span<TypeID> given) {
   return true;
 }
 
-bool type_check(Span<TypeID> expected, Span<std::optional<TypeProperties>> given) {
+bool output_type_check(Span<TypeID> expected, Span<std::optional<TypeProperties>> given) {
   if(expected.size() != given.size()) return false;
 
   for(size_t i = 0; i < given.size(); i++) {
-    // Don't allow copies (take by value, given borrowed)
-    if(given[i] && (!given[i]->value || expected[i] != given[i]->id)) {
+    if(given[i] && expected[i] != given[i]->id) {
       return false;
     }
   }
@@ -121,7 +120,7 @@ overload_resolution(const Env& e,
 
   for(int i = 0; i < (int)fit->second.size(); i++) {
     const auto& fn = fit->second[i];
-    if(type_check(input_types(fn), inputs) && (outputs == nullptr || type_check(output_types(fn), *outputs))) {
+    if(type_check(input_types(fn), inputs) && (outputs == nullptr || output_type_check(output_types(fn), *outputs))) {
       results.emplace_back(i, &fn);
     }
   }
