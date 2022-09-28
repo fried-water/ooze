@@ -25,15 +25,15 @@ constexpr auto string_re = ctll::fixed_string{"^\".*\"|^'.*'"};
 template <auto& T>
 using matcher = ctre::regex_search_t<typename ctre::regex_builder<T>::type>;
 
-constexpr std::tuple MATCHERS = {std::tuple(matcher<whitespace_re>{}, TokenType::Whitespace),
-                                 std::tuple(matcher<comment_re>{}, TokenType::Comment),
-                                 std::tuple(matcher<keyword_re>{}, TokenType::Keyword),
-                                 std::tuple(matcher<symbol_re>{}, TokenType::Symbol),
-                                 std::tuple(matcher<float_re>{}, TokenType::LiteralFloat),
-                                 std::tuple(matcher<int_re>{}, TokenType::LiteralInt),
-                                 std::tuple(matcher<bool_re>{}, TokenType::LiteralBool),
-                                 std::tuple(matcher<string_re>{}, TokenType::LiteralString),
-                                 std::tuple(matcher<ident_re>{}, TokenType::Ident)};
+constexpr std::tuple MATCHERS = {std::tuple(TokenType::Whitespace, matcher<whitespace_re>{}),
+                                 std::tuple(TokenType::Comment, matcher<comment_re>{}),
+                                 std::tuple(TokenType::Keyword, matcher<keyword_re>{}),
+                                 std::tuple(TokenType::Symbol, matcher<symbol_re>{}),
+                                 std::tuple(TokenType::LiteralFloat, matcher<float_re>{}),
+                                 std::tuple(TokenType::LiteralInt, matcher<int_re>{}),
+                                 std::tuple(TokenType::LiteralBool, matcher<bool_re>{}),
+                                 std::tuple(TokenType::LiteralString, matcher<string_re>{}),
+                                 std::tuple(TokenType::Ident, matcher<ident_re>{})};
 
 template <typename T>
 std::optional<T> from_sv(std::string_view sv) {
@@ -43,29 +43,29 @@ std::optional<T> from_sv(std::string_view sv) {
 }
 
 template <typename... Ts>
-Token lex_one(const std::tuple<Ts...>& ts, std::string_view sv) {
-  const std::array<Token, sizeof...(Ts)> matches{
-    {{std::get<1>(std::get<Ts>(MATCHERS)), std::get<0>(std::get<Ts>(MATCHERS))(sv).to_view()}...}};
+auto lex_one(const std::tuple<Ts...>& ts, std::string_view sv) {
+  const std::array<std::pair<TokenType, u32>, sizeof...(Ts)> matches{
+    {{std::get<0>(std::get<Ts>(MATCHERS)), (u32)std::get<1>(std::get<Ts>(MATCHERS))(sv).to_view().size()}...}};
 
   return *std::max_element(
-    matches.begin(), matches.end(), [](const auto& a, const auto& b) { return a.sv.size() < b.sv.size(); });
+    matches.begin(), matches.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
 }
 
 } // namespace
 
-std::optional<Literal> to_literal(Token token) {
-  switch(token.type) {
+std::optional<Literal> to_literal(TokenType type, std::string_view sv) {
+  switch(type) {
   case TokenType::Whitespace:
   case TokenType::Comment:
   case TokenType::Keyword:
   case TokenType::Ident:
   case TokenType::Symbol: return std::nullopt;
   case TokenType::LiteralInt: {
-    const auto suffix_pos = std::distance(
-      token.sv.begin(), std::find_if(token.sv.begin(), token.sv.end(), [](char c) { return c == 'u' || c == 'i'; }));
+    const auto suffix_pos =
+      std::distance(sv.begin(), std::find_if(sv.begin(), sv.end(), [](char c) { return c == 'u' || c == 'i'; }));
 
-    const std::string_view number(token.sv.data(), suffix_pos);
-    const std::string_view suffix(token.sv.data() + suffix_pos, token.sv.size() - suffix_pos);
+    const std::string_view number(sv.data(), suffix_pos);
+    const std::string_view suffix(sv.data() + suffix_pos, sv.size() - suffix_pos);
 
     if(suffix == "i8") return Literal{*from_sv<i8>(number)};
     if(suffix == "i16") return Literal{*from_sv<i16>(number)};
@@ -79,34 +79,35 @@ std::optional<Literal> to_literal(Token token) {
     return Literal{*from_sv<i32>(number)};
   }
   case TokenType::LiteralFloat:
-    return token.sv.back() == 'f'
-             ? Literal{static_cast<f32>(atof(std::string(token.sv.begin(), token.sv.end() - 1).c_str()))}
-             : Literal{atof(std::string(token.sv.begin(), token.sv.end()).c_str())};
-  case TokenType::LiteralBool: return Literal{token.sv[0] == 't'};
-  case TokenType::LiteralString: return Literal{std::string(token.sv.begin() + 1, token.sv.end() - 1)};
+    return sv.back() == 'f' ? Literal{static_cast<f32>(atof(std::string(sv.begin(), sv.end() - 1).c_str()))}
+                            : Literal{atof(std::string(sv.begin(), sv.end()).c_str())};
+  case TokenType::LiteralBool: return Literal{sv[0] == 't'};
+  case TokenType::LiteralString: return Literal{std::string(sv.begin() + 1, sv.end() - 1)};
   }
 }
 
-Token lex_one(std::string_view sv) { return lex_one(MATCHERS, sv); }
+std::pair<TokenType, u32> lex_one(std::string_view sv) { return lex_one(MATCHERS, sv); }
 
-std::pair<std::vector<Token>, std::string_view> lex(std::string_view sv) {
+std::pair<std::vector<Token>, u32> lex(std::string_view sv) {
   std::vector<Token> tokens;
 
+  u32 offset = 0;
   while(!sv.empty()) {
-    const Token token = lex_one(sv);
+    const auto [type, size] = lex_one(sv);
 
-    if(token.sv.empty()) {
+    if(size == 0) {
       break;
     } else {
-      if(token.type != TokenType::Whitespace && token.type != TokenType::Comment) {
-        tokens.push_back(token);
+      if(type != TokenType::Whitespace && type != TokenType::Comment) {
+        tokens.push_back(Token{type, {offset, size}});
       }
 
-      sv.remove_prefix(token.sv.size());
+      offset += size;
+      sv.remove_prefix(size);
     }
   }
 
-  return {std::move(tokens), sv};
+  return {std::move(tokens), offset};
 }
 
 } // namespace ooze

@@ -59,13 +59,13 @@ auto r_opt_parser() { return pc::construct<ReturnOption>(pc::seq(pc::constant("-
 auto c_opt_parser() { return pc::construct<ContainOption>(pc::seq(pc::constant("-c", "-c"), pc::any())); }
 
 auto v_parser() {
-  return pc::transform(pc::constant("-v", "-v"), []() { return Verbose{}; });
+  return pc::transform(pc::constant("-v", "-v"), [](const auto&) { return Verbose{}; });
 }
 
 auto run_cmd_parser() {
   return pc::transform(
     pc::seq(pc::constant("run", "run"), pc::n(pc::choose(v_parser(), s_opt_parser(), o_opt_parser(), pc::any()))),
-    [](std::vector<std::variant<Verbose, ScriptOption, OutputOption, std::string>> args) {
+    [](const auto&, std::vector<std::variant<Verbose, ScriptOption, OutputOption, std::string>> args) {
       RunCommand cmd;
 
       for(auto&& arg : args) {
@@ -81,27 +81,29 @@ auto run_cmd_parser() {
 }
 
 auto function_query_cmd_parser() {
-  return pc::transform(pc::seq(pc::constant("functions", "functions"),
-                               pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
-                       [](std::vector<std::variant<TakeOption, ReturnOption, ContainOption, std::string>> args) {
-                         FunctionQueryCommand cmd;
+  return pc::transform(
+    pc::seq(pc::constant("functions", "functions"),
+            pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
+    [](const auto&, std::vector<std::variant<TakeOption, ReturnOption, ContainOption, std::string>> args) {
+      FunctionQueryCommand cmd;
 
-                         for(auto&& arg : args) {
-                           std::visit(Overloaded{[&](TakeOption o) { cmd.takes.push_back(std::move(o.value)); },
-                                                 [&](ReturnOption o) { cmd.returns.push_back(std::move(o.value)); },
-                                                 [&](ContainOption o) { cmd.contains.push_back(std::move(o.value)); },
-                                                 [&](std::string r) { cmd.regex = std::move(r); }},
-                                      std::move(arg));
-                         }
+      for(auto&& arg : args) {
+        std::visit(Overloaded{[&](TakeOption o) { cmd.takes.push_back(std::move(o.value)); },
+                              [&](ReturnOption o) { cmd.returns.push_back(std::move(o.value)); },
+                              [&](ContainOption o) { cmd.contains.push_back(std::move(o.value)); },
+                              [&](std::string r) { cmd.regex = std::move(r); }},
+                   std::move(arg));
+      }
 
-                         return cmd;
-                       });
+      return cmd;
+    });
 }
 
 auto type_query_cmd_parser() {
-  return pc::transform(
-    pc::seq(pc::constant("types", "types"), pc::maybe(pc::any())),
-    [](std::optional<std::string> regex) { return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{}; });
+  return pc::transform(pc::seq(pc::constant("types", "types"), pc::maybe(pc::any())),
+                       [](const auto&, std::optional<std::string> regex) {
+                         return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{};
+                       });
 }
 
 auto cmd_parser() {

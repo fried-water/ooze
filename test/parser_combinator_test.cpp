@@ -10,24 +10,18 @@ namespace {
 
 auto ch(char c) { return constant(std::string() + c, c); }
 auto pass(char c) {
-  return transform_if(std::string() + c, [=](char c2) { return c == c2 ? std::optional(c) : std::nullopt; });
+  return filter(any(), std::string() + c, [=](int x, char c2) { return c == c2; });
 }
 
 template <typename P, typename R>
 auto test_pass(
-  P parser, const std::string& str, R result, int remaining = 0, std::vector<std::pair<std::string, int>> errors = {}) {
+  P parser, const std::string& str, R result, int remaining = 0, std::vector<std::pair<std::string, u32>> errors = {}) {
   const Span<char> span(str.data(), str.size());
 
-  const auto actual = parser(span);
+  const auto actual = parser(ParseState<int, char>{0, span}, 0);
 
-  std::vector<std::pair<std::string, const char*>> expected_errors;
-
-  for(const auto& [str, offset] : errors) {
-    expected_errors.emplace_back(str, span.begin() + offset);
-  }
-
-  BOOST_CHECK_EQUAL(remaining, actual.tokens.size());
-  BOOST_CHECK(expected_errors == actual.errors);
+  BOOST_CHECK_EQUAL(remaining, span.size() - actual.pos);
+  BOOST_CHECK(errors == actual.errors);
   BOOST_CHECK(actual.value.has_value());
   BOOST_CHECK(!actual.value.has_value() || result == *actual.value);
 }
@@ -36,22 +30,16 @@ template <typename P>
 auto test_fail(P parser,
                const std::string& str,
                int remaining = 0,
-               std::vector<std::pair<std::string, int>> errors = {}) {
+               std::vector<std::pair<std::string, u32>> errors = {}) {
   const Span<char> span(str.data(), str.size());
 
-  const auto actual = parser(span);
+  const auto actual = parser(ParseState<int, char>{0, span}, 0);
 
-  std::vector<std::pair<std::string, const char*>> expected_errors;
-
-  for(const auto& [str, offset] : errors) {
-    expected_errors.emplace_back(str, span.begin() + offset);
-  }
-
-  BOOST_CHECK_EQUAL(remaining, actual.tokens.size());
+  BOOST_CHECK_EQUAL(actual.pos, str.size() - remaining);
   BOOST_CHECK(!actual.value.has_value());
-  BOOST_CHECK(expected_errors == actual.errors);
+  BOOST_CHECK(errors == actual.errors);
 
-  if(expected_errors != actual.errors) {
+  if(errors != actual.errors) {
     fmt::print("{}\n", knot::debug(actual.errors));
   }
 }
