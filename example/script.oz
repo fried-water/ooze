@@ -1,8 +1,8 @@
-fn double(p: Point) -> Point {
+fn double(p: &Point) -> Point {
   add(p, p)
 }
 
-fn triple(p: Point) -> Point {
+fn triple(p: &Point) -> Point {
   let x: Point = double(p)
   add(x, p)
 }
@@ -18,7 +18,7 @@ fn bind(x: i32) -> i32 {
   take_u(y)
 }
 
-fn main(p: Point, x: i32) -> (Box, Point) {
+fn main(p: &Point, x: i32) -> (Box, Point) {
   let p1 = create_point(sleep(bind(x)), sleep(nested(x)))
   let p2 = double(p)
   let p3 = triple(p)

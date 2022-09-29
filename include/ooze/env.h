@@ -74,7 +74,7 @@ void add_tieable_type(Env& e, const std::string& name) {
   e.add_function("to_string", [](const T& t) { return knot::debug(t); });
   e.add_function("serialize", [](const T& t) { return knot::serialize(t); });
   e.add_function("deserialize",
-                 [](const std::vector<std::byte>& bytes) { return knot::deserialize<T>(bytes.begin(), bytes.end()); });
+                 [](const std::vector<std::byte>& bytes) { return *knot::deserialize<T>(bytes.begin(), bytes.end()); });
 
   if constexpr(std::is_aggregate_v<T>) {
     std::string create_name = "create_";

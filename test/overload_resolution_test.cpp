@@ -185,7 +185,7 @@ BOOST_AUTO_TEST_CASE(overload_resolution_borrow) {
   e.add_function("f", [](i32 x) { return x; });
   e.add_function("g", [](const i32& x) { return x; });
 
-  const auto expected_errors = errors("no matching overload found for f(i32&) [1 candidate(s)]", "  f(i32) -> i32");
+  const auto expected_errors = errors("no matching overload found for f(&i32) [1 candidate(s)]", "  f(i32) -> i32");
 
   BOOST_CHECK(expected_errors == overload_resolution(e, "f", {{I}}));
   BOOST_CHECK(overload_resolution(e, "f", {{I, true}}).has_value());
@@ -200,7 +200,7 @@ BOOST_AUTO_TEST_CASE(overload_resolution_ambiguous) {
   e.add_function("f", [](const i32& x) { return x; });
 
   const auto expected_errors =
-    errors("function call is ambiguous f(i32) [2 candidate(s)]", "  f(i32) -> i32", "  f(i32&) -> i32");
+    errors("function call is ambiguous f(i32) [2 candidate(s)]", "  f(i32) -> i32", "  f(&i32) -> i32");
 
   BOOST_CHECK(expected_errors == overload_resolution(e, "f", {{I, true}}));
   BOOST_CHECK(overload_resolution(e, "f", {{I}}).has_value());
@@ -399,7 +399,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
   test_or_error(env, "fn f(x: i32) -> () { ref(x) }", {"parameter 'x' only borrowed but taken by value"});
   test_or_error(env,
                 "fn f(x: &i32) -> () { val(x) }",
-                {"no matching overload found, deduced val(i32&) -> () [1 candidate(s)]", "  val(i32) -> ()"});
+                {"no matching overload found, deduced val(&i32) -> () [1 candidate(s)]", "  val(i32) -> ()"});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_simple) {
