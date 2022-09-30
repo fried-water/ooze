@@ -8,13 +8,13 @@
 namespace ooze {
 
 BOOST_AUTO_TEST_CASE(repl_empty) {
-  Repl r;
+  RuntimeEnv r;
   BOOST_CHECK(step_repl(r, "").empty());
   BOOST_CHECK(r.bindings.empty());
 }
 
 BOOST_AUTO_TEST_CASE(repl_run_expr) {
-  Repl r{create_primative_env()};
+  RuntimeEnv r{create_primative_env()};
 
   const std::vector<std::string> expected{"3"};
   BOOST_CHECK(expected == step_repl(r, "3"));
@@ -28,7 +28,7 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_function) {
-  Repl r{create_primative_env()};
+  RuntimeEnv r{create_primative_env()};
 
   step_repl(r, "let x = 1");
 
@@ -38,7 +38,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_function) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_binding) {
-  Repl r{create_primative_env()};
+  RuntimeEnv r{create_primative_env()};
 
   r.env.add_function("identity", [](int x) { return x; });
 
@@ -48,7 +48,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
-  Repl r{create_primative_env()};
+  RuntimeEnv r{create_primative_env()};
   r.env.add_type<std::unique_ptr<int>>("unique_int");
 
   r.env.add_function("make_ptr", [](int x) { return std::make_unique<int>(x); });
@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings) {
-  Repl r;
+  RuntimeEnv r;
 
   const std::vector<std::string> no_bindings{"0 binding(s)"};
   BOOST_CHECK(no_bindings == step_repl(r, ":b"));
@@ -91,11 +91,23 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   BOOST_CHECK("abc" == anyf::any_cast<std::string>(std::move(r.bindings.at("y").future).wait()));
 }
 
+BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {
+  RuntimeEnv r{create_primative_env()};
+
+  BOOST_CHECK(step_repl(r, "let x = 5").empty());
+
+  const std::vector<std::string> result{"5"};
+  BOOST_CHECK(result == step_repl(r, "x"));
+
+  const std::vector<std::string> one_binding{"1 binding(s)", fmt::format("  x: i32")};
+  BOOST_CHECK(one_binding == step_repl(r, ":b"));
+}
+
 BOOST_AUTO_TEST_CASE(repl_types) {
   struct A {};
   struct B {};
 
-  Repl r;
+  RuntimeEnv r;
 
   add_tieable_type<int>(r.env, "i32");
 
@@ -112,7 +124,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_functions) {
-  Repl r{create_primative_env()};
+  RuntimeEnv r{create_primative_env()};
 
   struct A {};
 

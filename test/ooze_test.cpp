@@ -20,9 +20,9 @@ Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view ex
     return tl::unexpected{std::move(errors)};
   }
 
-  anyf::TaskExecutor executor;
+  RuntimeEnv r{std::move(e)};
 
-  return ooze::run(e, executor, expr, {}).second.map([](std::vector<Binding> bindings) {
+  return ooze::run(r, expr).map([](std::vector<Binding> bindings) {
     std::vector<Any> anys;
     for(Binding& b : bindings) {
       anys.push_back(take(std::move(b)).wait());

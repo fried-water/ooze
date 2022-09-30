@@ -72,7 +72,7 @@ auto parse_command(std::string_view line) {
   });
 }
 
-std::vector<std::string> run(Repl&, const HelpCmd& help) {
+std::vector<std::string> run(RuntimeEnv&, const HelpCmd& help) {
   return {{":h - This message"},
           {":b - List all bindings (* means they are not ready, & means they are borrowed)"},
           {":f - List all environment and script functions"},
@@ -81,7 +81,7 @@ std::vector<std::string> run(Repl&, const HelpCmd& help) {
           {":a bindings... - Await the given bindings or everything if unspecified"}};
 }
 
-std::vector<std::string> run(Repl& repl, BindingsCmd) {
+std::vector<std::string> run(RuntimeEnv& repl, BindingsCmd) {
   std::vector<std::string> output{fmt::format("{} binding(s)", repl.bindings.size())};
 
   std::vector<std::string> ordered;
@@ -101,7 +101,7 @@ std::vector<std::string> run(Repl& repl, BindingsCmd) {
   return output;
 }
 
-std::vector<std::string> run(Repl& repl, const EvalCmd& eval) {
+std::vector<std::string> run(RuntimeEnv& repl, const EvalCmd& eval) {
   return read_text_file(eval.file)
     .map([&](std::string script) {
       std::vector<std::string> errors;
@@ -112,7 +112,7 @@ std::vector<std::string> run(Repl& repl, const EvalCmd& eval) {
     .value();
 }
 
-std::vector<std::string> run(Repl& repl, const FunctionsCmd&) {
+std::vector<std::string> run(RuntimeEnv& repl, const FunctionsCmd&) {
   const Env& e = repl.env;
 
   std::vector<std::pair<std::string, std::string>> functions;
@@ -144,7 +144,7 @@ std::vector<std::string> run(Repl& repl, const FunctionsCmd&) {
   return output;
 }
 
-std::vector<std::string> run(Repl& repl, const TypesCmd&) {
+std::vector<std::string> run(RuntimeEnv& repl, const TypesCmd&) {
   const Env& e = repl.env;
 
   std::map<std::string, bool> types;
@@ -170,14 +170,14 @@ std::vector<std::string> run(Repl& repl, const TypesCmd&) {
   return output;
 }
 
-std::vector<std::string> run(Repl& repl, const ReleaseCmd& cmd) {
+std::vector<std::string> run(RuntimeEnv& repl, const ReleaseCmd& cmd) {
   return take(repl.bindings, cmd.var)
     .map([](const auto&) { return std::vector<std::string>{}; })
     .map_error(convert_errors)
     .value();
 }
 
-std::vector<std::string> run(Repl& repl, const AwaitCmd& cmd) {
+std::vector<std::string> run(RuntimeEnv& repl, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
     for(auto& [binding, entry] : repl.bindings) {
@@ -197,7 +197,7 @@ std::vector<std::string> run(Repl& repl, const AwaitCmd& cmd) {
 
 } // namespace
 
-std::vector<std::string> step_repl(Repl& repl, std::string_view line) {
+std::vector<std::string> step_repl(RuntimeEnv& repl, std::string_view line) {
   if(line.empty()) {
     return {};
   } else if(line[0] == ':') {
@@ -206,18 +206,12 @@ std::vector<std::string> step_repl(Repl& repl, std::string_view line) {
       .or_else(convert_errors)
       .value();
   } else {
-    Result<std::vector<Binding>> results;
-    std::tie(repl.bindings, results) = run(repl.env, repl.executor, line, std::move(repl.bindings));
-
-    return std::move(results)
-      .map([&](std::vector<Binding> bindings) { return to_string(repl.env, repl.executor, std::move(bindings)); })
-      .or_else(convert_errors)
-      .value();
+    return run_to_string_assign(repl, line).or_else(convert_errors).value();
   }
 }
 
 void run_repl(Env e) {
-  Repl repl{std::move(e)};
+  RuntimeEnv repl{std::move(e)};
 
   std::string line;
   fmt::print("Welcome to the ooze repl!\n");

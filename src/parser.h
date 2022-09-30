@@ -29,4 +29,9 @@ inline std::string generate_error_msg(std::string_view src, const ParseError& er
   return fmt::format("{}:{}:{} {}\n  {}\n  {}", src, error.line, error.pos, error.msg, error.error_line, highlight);
 }
 
+template <typename T>
+Result<T> convert_error(std::string_view src, ParseResult<T> result) {
+  return std::move(result).map_error([&](const auto& error) { return std::vector{generate_error_msg(src, error)}; });
+}
+
 } // namespace ooze

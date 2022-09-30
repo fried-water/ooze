@@ -539,52 +539,6 @@ UnTypedFunction untyped_sign(const std::variant<UnTypedExpr, UnTypedAssignment>&
 
 } // namespace
 
-Result<EnvFunction> overload_resolution(const Env& e,
-                                        const std::string& name,
-                                        Span<TypeProperties> inputs,
-                                        std::optional<Span<TypeID>> outputs) {
-  const auto it = e.functions.find(name);
-
-  if(it == e.functions.end()) {
-    return err(fmt::format("use of undeclared function '{}'", name));
-  }
-
-  std::vector<EnvFunction> results;
-
-  std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(results), [&](const auto& fn) {
-    return type_check(input_types(fn), inputs) && (!outputs || type_check(output_types(fn), *outputs));
-  });
-
-  if(results.size() == 1) {
-    return std::move(results.front());
-  } else if(results.empty()) {
-    std::vector<std::string> errors{outputs ? fmt::format("no matching overload found for {}{} -> {} [{} candidate(s)]",
-                                                          name,
-                                                          type_list_string(e, inputs),
-                                                          output_type_list_string(e, *outputs),
-                                                          it->second.size())
-                                            : fmt::format("no matching overload found for {}{} [{} candidate(s)]",
-                                                          name,
-                                                          type_list_string(e, inputs),
-                                                          it->second.size())};
-
-    for(const auto& function : it->second) {
-      errors.push_back(fmt::format("  {}", function_string(e, name, function)));
-    }
-
-    return tl::unexpected{std::move(errors)};
-  } else {
-    std::vector<std::string> errors{fmt::format(
-      "function call is ambiguous {}{} [{} candidate(s)]", name, type_list_string(e, inputs), results.size())};
-
-    for(const auto& function : results) {
-      errors.push_back(fmt::format("  {}", function_string(e, name, function)));
-    }
-
-    return tl::unexpected{std::move(errors)};
-  }
-}
-
 Result<TypedFunction> overload_resolution(const Env& e, const UnTypedFunction& f) {
   return calculate_propagation_caches(f).and_then([&](const PropagationCaches& pc) {
     auto candidates = append_parameter_candidates(e, f.parameters, pc.uses);

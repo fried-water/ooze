@@ -113,20 +113,15 @@ auto cmd_parser() {
 void run(const RunCommand& cmd, Env e) {
   Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
 
-  anyf::TaskExecutor executor;
-
   script.map([&](const std::string& script) { return parse_script(std::move(e), script); })
-    .and_then([&](auto pair) mutable {
+    .and_then([&](auto pair) {
       return pair.second.empty() ? Result<Env>(std::move(pair.first)) : tl::unexpected{std::move(pair.second)};
     })
     .and_then([&](Env e) {
-      auto res = run(e, executor, cmd.expr, {}).second;
-      return merge(std::move(e), std::move(res));
+      RuntimeEnv r{std::move(e)};
+      return run_to_string(r, cmd.expr);
     })
-    .map([&](auto p) {
-      auto [e, outputs] = std::move(p);
-      dump(to_string(e, executor, std::move(outputs)));
-    })
+    .map(dump)
     .or_else(dump);
 }
 
@@ -189,6 +184,52 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
   }
 }
 
+std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
+  std::vector<std::string> outputs;
+  for(Binding& binding : bindings) {
+    outputs.push_back(anyf::any_cast<std::string>(take(std::move(binding)).wait()));
+  }
+  return outputs;
+}
+
+Result<TypedFunction> overload_resolution(const RuntimeEnv& r, const std::variant<UnTypedExpr, UnTypedAssignment>& v) {
+  return overload_resolution(
+    r.env, v, knot::map<std::unordered_map<std::string, TypeID>>(r.bindings, [](const Binding& b) { return b.type; }));
+}
+
+UnTypedExpr to_string_wrap(UnTypedExpr expr) {
+  return {Indirect{ast::Call<NamedFunction>{{"to_string"}, {std::move(expr)}}}};
+}
+
+auto to_string_wrap(std::variant<UnTypedExpr, UnTypedAssignment> var) {
+  if(auto expr = std::get_if<UnTypedExpr>(&var); expr) {
+    var = to_string_wrap(std::move(*expr));
+  }
+  return var;
+}
+
+template <typename T>
+Result<T> check_and_wrap(const RuntimeEnv& r, T t) {
+  if(auto base_result = overload_resolution(r, t); base_result) {
+    return to_string_wrap(std::move(t));
+  } else {
+    return tl::unexpected{std::move(base_result.error())};
+  }
+}
+
+std::vector<Binding>
+assign_bindings(RuntimeEnv& r, const std::variant<UnTypedExpr, UnTypedAssignment>& var, std::vector<Binding> results) {
+  if(const auto assign = std::get_if<UnTypedAssignment>(&var); assign) {
+    for(size_t i = 0; i < results.size(); i++) {
+      r.bindings[assign->bindings[i].name] = std::move(results[i]);
+    }
+
+    results.clear();
+  }
+
+  return results;
+}
+
 } // namespace
 
 std::pair<Env, std::vector<std::string>> parse_script(Env e, std::string_view script) {
@@ -216,100 +257,59 @@ std::pair<Env, std::vector<std::string>> parse_script(Env e, std::string_view sc
   return result ? std::move(result.value()) : std::pair(std::move(e), std::move(result.error()));
 }
 
-std::pair<std::unordered_map<std::string, Binding>, std::vector<Binding>>
-run_function(const Env& e,
-             anyf::TaskExecutor& executor,
-             const std::vector<ast::Parameter<anyf::TypeID>>& parameters,
-             const FunctionGraph& g,
-             std::unordered_map<std::string, Binding> bindings) {
-  std::vector<anyf::Future> value_inputs;
-  std::vector<anyf::BorrowedFuture> borrowed_inputs;
+Result<std::vector<Binding>> run_function(RuntimeEnv& r, const TypedFunction& f) {
+  return create_graph(r.env, f).map([&](anyf::FunctionGraph g) {
+    std::vector<anyf::Future> value_inputs;
+    std::vector<anyf::BorrowedFuture> borrowed_inputs;
 
-  for(const auto& [name, type, borrowed] : parameters) {
-    if(borrowed) {
-      borrowed_inputs.push_back(borrow(bindings, name).value().second);
-    } else {
-      value_inputs.push_back(take(bindings, name).value().second);
+    for(const auto& [name, type, borrowed] : f.parameters) {
+      if(borrowed) {
+        borrowed_inputs.push_back(borrow(r.bindings, name).value().second);
+      } else {
+        value_inputs.push_back(take(r.bindings, name).value().second);
+      }
     }
-  }
 
-  auto futures = anyf::execute_graph(g, executor, std::move(value_inputs), std::move(borrowed_inputs));
+    auto futures = anyf::execute_graph(g, r.executor, std::move(value_inputs), std::move(borrowed_inputs));
 
-  std::vector<Binding> result_bindings;
-  result_bindings.reserve(futures.size());
-  for(size_t i = 0; i < futures.size(); i++) {
-    result_bindings.push_back({output_types(g)[i], std::move(futures[i])});
-  }
+    std::vector<Binding> result_bindings;
+    result_bindings.reserve(futures.size());
+    for(size_t i = 0; i < futures.size(); i++) {
+      result_bindings.push_back({output_types(g)[i], std::move(futures[i])});
+    }
 
-  return {std::move(bindings), std::move(result_bindings)};
+    return result_bindings;
+  });
 }
 
-std::pair<std::unordered_map<std::string, Binding>, Result<std::vector<Binding>>>
-run(const Env& e,
-    anyf::TaskExecutor& executor,
-    std::string_view assignment_or_expr,
-    std::unordered_map<std::string, Binding> bindings) {
-
-  std::unordered_map<std::string, TypeID> binding_types;
-  for(const auto& [name, binding] : bindings) {
-    binding_types.emplace(name, binding.type);
-  }
-
-  auto res =
-    parse_repl(assignment_or_expr)
-      .map_error([&](const ParseError& error) { return std::vector<std::string>{generate_error_msg("<src>", error)}; })
-      .and_then([&](auto var) { return merge(var, overload_resolution(e, var, binding_types)); })
-      .and_then([&](auto tup) {
-        const auto& [var, f] = tup;
-        return merge(var, f.parameters, create_graph(e, f));
-      })
-      .map([&](auto tup) {
-        const auto& [var, parameters, g] = tup;
-
-        auto [new_bindings, results] = run_function(e, executor, parameters, g, std::move(bindings));
-
-        if(const auto assign = std::get_if<UnTypedAssignment>(&var); assign) {
-          for(size_t i = 0; i < results.size(); i++) {
-            new_bindings[assign->bindings[i].name] = std::move(results[i]);
-          }
-
-          results.clear();
-        }
-
-        return std::pair(std::move(new_bindings), Result<std::vector<Binding>>{std::move(results)});
-      });
-
-  return res ? std::move(res.value()) : std::pair(std::move(bindings), tl::unexpected{std::move(res.error())});
+Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
+  return convert_error("<src>", parse_repl(assignment_or_expr))
+    .and_then([&](auto var) { return merge(var, overload_resolution(r, var)); })
+    .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })
+    .map([&](auto tup) { return assign_bindings(r, std::get<0>(tup), std::move(std::get<1>(tup))); });
 }
 
-std::vector<std::string> to_string(const Env& e, anyf::TaskExecutor& executor, std::vector<Binding> bindings) {
-  std::vector<std::pair<TypeID, Result<anyf::Future>>> results;
-  results.reserve(bindings.size());
+Result<std::vector<Binding>> run(RuntimeEnv& r, std::string_view expr) {
+  return convert_error("<src>", parse_expr(expr))
+    .and_then([&](UnTypedExpr e) { return overload_resolution(r, e); })
+    .and_then([&](TypedFunction f) { return run_function(r, f); });
+}
 
-  for(Binding& b : bindings) {
-    results.emplace_back(
-      b.type,
-      overload_resolution(e, "to_string", {{b.type, false}}, Span<TypeID>{anyf::type_id<std::string>()})
-        .map([&](EnvFunction f) {
-          return std::visit(
-            Overloaded{
-              [&](AnyFunction f) { return borrow(b).then([f = std::move(f)](Any any) { return f({&any}).front(); }); },
-              [&](const FunctionGraph& g) {
-                return std::move(anyf::execute_graph(g, executor, {}, {borrow(b)}).front());
-              }},
-            std::move(f));
-        }));
-  }
+Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view expr) {
+  return convert_error("<src>", parse_expr(expr))
+    .and_then([&](UnTypedExpr e) { return check_and_wrap(r, e); })
+    .and_then([&](UnTypedExpr e) { return overload_resolution(r, e); })
+    .and_then([&](TypedFunction f) { return run_function(r, f); })
+    .map(gather_binding_strings);
+}
 
-  std::vector<std::string> outputs;
-  outputs.reserve(bindings.size());
-
-  for(auto& [type, result] : results) {
-    outputs.push_back(result ? anyf::any_cast<std::string>(std::move(result.value()).wait())
-                             : fmt::format("[Object of {}]", type_name_or_id(e, type)));
-  }
-
-  return outputs;
+Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
+  return convert_error("<src>", parse_repl(assignment_or_expr))
+    .and_then([&](auto var) { return check_and_wrap(r, var); })
+    .and_then([&](auto var) { return merge(var, overload_resolution(r, var)); })
+    .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })
+    .map([&](auto tup) { return assign_bindings(r, std::get<0>(tup), std::move(std::get<1>(tup))); })
+    .map(gather_binding_strings);
 }
 
 int main(int argc, char* argv[], Env e) {

@@ -8,11 +8,6 @@
 
 namespace ooze {
 
-Result<EnvFunction> overload_resolution(const Env&,
-                                        const std::string& name,
-                                        Span<TypeProperties> inputs,
-                                        std::optional<Span<TypeID>> outputs = std::nullopt);
-
 Result<TypedFunction> overload_resolution(const Env&, const UnTypedFunction&);
 
 Result<TypedFunction> overload_resolution(const Env&,

@@ -24,12 +24,19 @@ struct Binding {
   anyf::BorrowedFuture borrowed_future;
 };
 
+struct RuntimeEnv {
+  Env env;
+  anyf::TaskExecutor executor;
+  std::unordered_map<std::string, Binding> bindings;
+};
+
 std::pair<Env, std::vector<std::string>> parse_script(Env, std::string_view script);
 
-std::pair<std::unordered_map<std::string, Binding>, Result<std::vector<Binding>>>
-run(const Env&, anyf::TaskExecutor&, std::string_view assignment_or_expr, std::unordered_map<std::string, Binding>);
+Result<std::vector<Binding>> run(RuntimeEnv&, std::string_view expr);
+Result<std::vector<std::string>> run_to_string(RuntimeEnv&, std::string_view expr);
 
-std::vector<std::string> to_string(const Env&, anyf::TaskExecutor&, std::vector<Binding>);
+Result<std::vector<Binding>> run_assign(RuntimeEnv&, std::string_view assignment_or_expr);
+Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv&, std::string_view assignment_or_expr);
 
 int main(int argc, char* argv[], Env);
 
