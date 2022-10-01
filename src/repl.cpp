@@ -103,11 +103,8 @@ std::vector<std::string> run(RuntimeEnv& repl, BindingsCmd) {
 
 std::vector<std::string> run(RuntimeEnv& repl, const EvalCmd& eval) {
   return read_text_file(eval.file)
-    .map([&](std::string script) {
-      std::vector<std::string> errors;
-      std::tie(repl.env, errors) = parse_script(std::move(repl.env), script);
-      return errors;
-    })
+    .and_then([&](std::string script) { return parse_script(repl.env, script); })
+    .map([]() { return std::vector<std::string>{}; })
     .or_else(convert_errors)
     .value();
 }

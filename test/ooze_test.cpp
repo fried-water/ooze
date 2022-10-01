@@ -13,22 +13,13 @@ namespace ooze {
 namespace {
 
 Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view expr) {
-  std::vector<std::string> errors;
-  std::tie(e, errors) = parse_script(std::move(e), script);
-
-  if(!errors.empty()) {
-    return tl::unexpected{std::move(errors)};
-  }
-
   RuntimeEnv r{std::move(e)};
 
-  return ooze::run(r, expr).map([](std::vector<Binding> bindings) {
-    std::vector<Any> anys;
-    for(Binding& b : bindings) {
-      anys.push_back(take(std::move(b)).wait());
-    }
-    return anys;
-  });
+  return parse_script(r.env, script)
+    .and_then([&]() { return ooze::run(r, expr); })
+    .map([](std::vector<Binding> bindings) {
+      return knot::map<std::vector<Any>>(std::move(bindings), [](Binding b) { return take(std::move(b)).wait(); });
+    });
 }
 
 } // namespace

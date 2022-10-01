@@ -30,7 +30,7 @@ struct RuntimeEnv {
   std::unordered_map<std::string, Binding> bindings;
 };
 
-std::pair<Env, std::vector<std::string>> parse_script(Env, std::string_view script);
+Result<void> parse_script(Env&, std::string_view script);
 
 Result<std::vector<Binding>> run(RuntimeEnv&, std::string_view expr);
 Result<std::vector<std::string>> run_to_string(RuntimeEnv&, std::string_view expr);

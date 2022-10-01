@@ -113,11 +113,8 @@ auto cmd_parser() {
 void run(const RunCommand& cmd, Env e) {
   Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
 
-  script.map([&](const std::string& script) { return parse_script(std::move(e), script); })
-    .and_then([&](auto pair) {
-      return pair.second.empty() ? Result<Env>(std::move(pair.first)) : tl::unexpected{std::move(pair.second)};
-    })
-    .and_then([&](Env e) {
+  script.and_then([&](const std::string& script) { return parse_script(e, script); })
+    .and_then([&]() {
       RuntimeEnv r{std::move(e)};
       return run_to_string(r, cmd.expr);
     })
@@ -185,11 +182,8 @@ void run(const TypeQueryCommand& cmd, const Env& e) {
 }
 
 std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
-  std::vector<std::string> outputs;
-  for(Binding& binding : bindings) {
-    outputs.push_back(anyf::any_cast<std::string>(take(std::move(binding)).wait()));
-  }
-  return outputs;
+  return knot::map<std::vector<std::string>>(
+    std::move(bindings), [](Binding b) { return anyf::any_cast<std::string>(take(std::move(b)).wait()); });
 }
 
 Result<TypedFunction> overload_resolution(const RuntimeEnv& r, const std::variant<UnTypedExpr, UnTypedAssignment>& v) {
@@ -232,29 +226,23 @@ assign_bindings(RuntimeEnv& r, const std::variant<UnTypedExpr, UnTypedAssignment
 
 } // namespace
 
-std::pair<Env, std::vector<std::string>> parse_script(Env e, std::string_view script) {
-  auto result = parse(script)
-                  .map_error([&](const ParseError& error) {
-                    return std::vector<std::string>{generate_error_msg("<script>", error)};
-                  })
-                  .map([&](AST ast) {
-                    std::vector<std::string> errors;
+Result<void> parse_script(Env& e, std::string_view script) {
+  return convert_error(script, parse(script)).and_then([&](AST ast) {
+    std::vector<std::string> errors;
 
-                    for(const auto& f : ast) {
-                      auto graph_result = overload_resolution(e, f).and_then(
-                        [&](const TypedFunction& typed_function) { return create_graph(e, typed_function); });
+    for(const auto& f : ast) {
+      auto graph_result = overload_resolution(e, f).and_then(
+        [&](const TypedFunction& typed_function) { return create_graph(e, typed_function); });
 
-                      if(graph_result) {
-                        e.add_graph(f.name, std::move(*graph_result));
-                      } else {
-                        errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
-                      }
-                    }
+      if(graph_result) {
+        e.add_graph(f.name, std::move(*graph_result));
+      } else {
+        errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
+      }
+    }
 
-                    return std::pair(std::move(e), std::move(errors));
-                  });
-
-  return result ? std::move(result.value()) : std::pair(std::move(e), std::move(result.error()));
+    return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
+  });
 }
 
 Result<std::vector<Binding>> run_function(RuntimeEnv& r, const TypedFunction& f) {

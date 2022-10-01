@@ -156,13 +156,10 @@ overload_resolution(const Env& e,
 
 Map<const UnTypedExpr*, const std::vector<Binding<NamedType>>*>
 find_expr_bindings(const std::vector<UnTypedAssignment>& assignments) {
-  Map<const UnTypedExpr*, const std::vector<Binding<NamedType>>*> expr_bindings;
-
-  for(const auto& [bindings, expr] : assignments) {
-    expr_bindings.emplace(&expr, &bindings);
-  }
-
-  return expr_bindings;
+  return knot::map<Map<const UnTypedExpr*, const std::vector<Binding<NamedType>>*>>(
+    assignments, [](const UnTypedAssignment& a) {
+      return std::pair<const UnTypedExpr* const, const std::vector<Binding<NamedType>>*>(&a.expr, &a.bindings);
+    });
 }
 
 Map<const UnTypedExpr*, const UnTypedExpr*> find_function_receivers(const UnTypedFunction& f) {
@@ -251,11 +248,10 @@ auto append_return_candidates(const Env& e,
   assert(f.ret.size() == 1 || f.ret.size() == f.result.size());
 
   if(f.ret.size() == 1) {
-    std::vector<std::optional<TypeProperties>> types;
-    for(const NamedType& output : f.result) {
-      types.push_back(get_type(e, output, false));
-    }
-    candidates.push_back({&f.ret.front(), std::move(types)});
+    candidates.push_back(
+      {&f.ret.front(), knot::map<std::vector<std::optional<TypeProperties>>>(f.result, [&](const NamedType& output) {
+         return get_type(e, output, false);
+       })});
   } else {
     for(size_t i = 0; i < f.ret.size(); i++) {
       candidates.push_back({&f.ret[i], {{get_type(e, f.result[i], false)}}});
@@ -269,11 +265,11 @@ auto append_assignment_hint_candidates(const Env& e,
                                        const std::vector<UnTypedAssignment>& assignments,
                                        std::vector<PropagationCandidate> candidates = {}) {
   for(const UnTypedAssignment& assign : assignments) {
-    std::vector<std::optional<TypeProperties>> types;
-    for(const Binding<NamedType>& binding : assign.bindings) {
-      types.push_back(binding.type ? get_type(e, *binding.type, false) : std::nullopt);
-    }
-    candidates.push_back({&assign.expr, std::move(types)});
+    candidates.push_back(
+      {&assign.expr,
+       knot::map<std::vector<std::optional<TypeProperties>>>(assign.bindings, [&](const Binding<NamedType>& binding) {
+         return binding.type ? get_type(e, *binding.type, false) : std::nullopt;
+       })});
   }
 
   return candidates;
@@ -335,12 +331,10 @@ propagate_function(const Env& e,
       to_visit.push_back({&parameter, {{inputs[i]}}});
     }
 
-    std::vector<std::optional<TypeProperties>> outputs;
-    for(const TypeID type : output_types(*std::get<1>(*function))) {
-      outputs.push_back(TypeProperties{type, true});
-    }
-
-    return outputs;
+    return knot::map<std::vector<std::optional<TypeProperties>>>(output_types(*std::get<1>(*function)),
+                                                                 [](TypeID type) {
+                                                                   return std::optional(TypeProperties{type, true});
+                                                                 });
   } else {
     return propagated_types;
   }
