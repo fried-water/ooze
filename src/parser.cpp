@@ -65,7 +65,7 @@ auto binding() {
   return pc::construct<ast::Binding<NamedType>>(seq(ident(), pc::maybe(seq(symbol(":"), type_ident()))));
 }
 
-pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>& s, u32 pos) {
+pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>& s, pc::ParseLocation loc) {
   return pc::transform(
     pc::choose(pc::seq(ident(), pc::maybe(list(expr)), pc::n(pc::seq(symbol("."), ident(), list(expr)))),
                pc::transform_if(pc::any(),
@@ -90,7 +90,7 @@ pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>&
                    },
                    [](Literal l) { return UnTypedExpr{std::move(l)}; }},
         std::move(v));
-    })(s, pos);
+    })(s, loc);
 }
 
 auto assignment() {
@@ -113,16 +113,18 @@ template <typename Parser>
 ParseResult<pc::parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
-  auto [parse_pos, value, errors] = p(pc::ParseState<std::string_view, Token>{src, tokens}, 0);
+  auto [parse_pos, value, errors] = p(pc::ParseState<std::string_view, Token>{src, tokens}, {});
 
   if(value && parse_pos == tokens.size() && lex_end == src.size()) {
     return std::move(*value);
   } else {
-    std::sort(errors.begin(), errors.end(), [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
+    std::sort(errors.begin(), errors.end(), [](const auto& lhs, const auto& rhs) {
+      return std::tuple(-lhs.second.pos, lhs.second.depth) < std::tuple(-rhs.second.pos, lhs.second.depth);
+    });
 
-    const SrcRef err_ref = (errors.empty() || errors.front().second == tokens.size())
+    const SrcRef err_ref = (errors.empty() || errors.front().second.pos == tokens.size())
                              ? SrcRef{lex_end, lex_end == src.size() ? 0u : 1u}
-                             : tokens[errors.front().second].ref;
+                             : tokens[errors.front().second.pos].ref;
 
     const auto pos = src.begin() + err_ref.offset;
     const auto is_newline = [](char c) { return c == '\n'; };
