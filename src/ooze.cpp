@@ -227,7 +227,7 @@ assign_bindings(RuntimeEnv& r, const std::variant<UnTypedExpr, UnTypedAssignment
 } // namespace
 
 Result<void> parse_script(Env& e, std::string_view script) {
-  return convert_error(script, parse(script)).and_then([&](AST ast) {
+  return parse(script).map_error(generate_error_msg).and_then([&](AST ast) {
     std::vector<std::string> errors;
 
     for(const auto& f : ast) {
@@ -271,20 +271,23 @@ Result<std::vector<Binding>> run_function(RuntimeEnv& r, const TypedFunction& f)
 }
 
 Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
-  return convert_error("<src>", parse_repl(assignment_or_expr))
+  return parse_repl(assignment_or_expr)
+    .map_error(generate_error_msg)
     .and_then([&](auto var) { return merge(var, overload_resolution(r, var)); })
     .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })
     .map([&](auto tup) { return assign_bindings(r, std::get<0>(tup), std::move(std::get<1>(tup))); });
 }
 
 Result<std::vector<Binding>> run(RuntimeEnv& r, std::string_view expr) {
-  return convert_error("<src>", parse_expr(expr))
+  return parse_expr(expr)
+    .map_error(generate_error_msg)
     .and_then([&](UnTypedExpr e) { return overload_resolution(r, e); })
     .and_then([&](TypedFunction f) { return run_function(r, f); });
 }
 
 Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view expr) {
-  return convert_error("<src>", parse_expr(expr))
+  return parse_expr(expr)
+    .map_error(generate_error_msg)
     .and_then([&](UnTypedExpr e) { return check_and_wrap(r, e); })
     .and_then([&](UnTypedExpr e) { return overload_resolution(r, e); })
     .and_then([&](TypedFunction f) { return run_function(r, f); })
@@ -292,7 +295,8 @@ Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view e
 }
 
 Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
-  return convert_error("<src>", parse_repl(assignment_or_expr))
+  return parse_repl(assignment_or_expr)
+    .map_error(generate_error_msg)
     .and_then([&](auto var) { return check_and_wrap(r, var); })
     .and_then([&](auto var) { return merge(var, overload_resolution(r, var)); })
     .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })

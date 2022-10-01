@@ -131,7 +131,7 @@ ParseResult<pc::parser_result_t<std::string_view, Token, Parser>> parse_string(P
       std::find_if(std::make_reverse_iterator(pos), std::make_reverse_iterator(src.begin()), is_newline).base();
 
     return tl::unexpected{
-      ParseError{errors.empty() ? fmt::format("Unknown token") : fmt::format("Error expected {}", errors.front().first),
+      ParseError{errors.empty() ? fmt::format("unknown token") : fmt::format("expected {}", errors.front().first),
                  std::string(src_sv(src, err_ref)),
                  std::string(line_begin, std::find_if(pos, src.end(), is_newline)),
                  static_cast<int>(std::count_if(src.begin(), line_begin, is_newline)) + 1,
