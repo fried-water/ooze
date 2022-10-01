@@ -30,9 +30,6 @@ struct Verbose {};
 
 using ScriptOption = Option<struct SOpt>;
 using OutputOption = Option<struct OOpt>;
-using TakeOption = Option<struct TOpt>;
-using ReturnOption = Option<struct ROpt>;
-using ContainOption = Option<struct COpt>;
 
 struct RunCommand {
   std::string script;
@@ -41,23 +38,8 @@ struct RunCommand {
   int verbosity = 0;
 };
 
-struct FunctionQueryCommand {
-  std::string regex = ".*";
-  std::vector<std::string> takes;
-  std::vector<std::string> returns;
-  std::vector<std::string> contains;
-};
-
-struct TypeQueryCommand {
-  std::string regex = ".*";
-};
-
 auto o_opt_parser() { return pc::construct<OutputOption>(pc::seq(pc::constant("-o", "-o"), pc::any())); }
 auto s_opt_parser() { return pc::construct<ScriptOption>(pc::seq(pc::constant("-s", "-s"), pc::any())); }
-auto t_opt_parser() { return pc::construct<TakeOption>(pc::seq(pc::constant("-t", "-t"), pc::any())); }
-auto r_opt_parser() { return pc::construct<ReturnOption>(pc::seq(pc::constant("-r", "-r"), pc::any())); }
-auto c_opt_parser() { return pc::construct<ContainOption>(pc::seq(pc::constant("-c", "-c"), pc::any())); }
-
 auto v_parser() {
   return pc::transform(pc::constant("-v", "-v"), [](const auto&) { return Verbose{}; });
 }
@@ -80,36 +62,6 @@ auto run_cmd_parser() {
     });
 }
 
-auto function_query_cmd_parser() {
-  return pc::transform(
-    pc::seq(pc::constant("functions", "functions"),
-            pc::n(pc::choose(t_opt_parser(), r_opt_parser(), c_opt_parser(), pc::any()))),
-    [](const auto&, std::vector<std::variant<TakeOption, ReturnOption, ContainOption, std::string>> args) {
-      FunctionQueryCommand cmd;
-
-      for(auto&& arg : args) {
-        std::visit(Overloaded{[&](TakeOption o) { cmd.takes.push_back(std::move(o.value)); },
-                              [&](ReturnOption o) { cmd.returns.push_back(std::move(o.value)); },
-                              [&](ContainOption o) { cmd.contains.push_back(std::move(o.value)); },
-                              [&](std::string r) { cmd.regex = std::move(r); }},
-                   std::move(arg));
-      }
-
-      return cmd;
-    });
-}
-
-auto type_query_cmd_parser() {
-  return pc::transform(pc::seq(pc::constant("types", "types"), pc::maybe(pc::any())),
-                       [](const auto&, std::optional<std::string> regex) {
-                         return regex ? TypeQueryCommand{std::move(*regex)} : TypeQueryCommand{};
-                       });
-}
-
-auto cmd_parser() {
-  return pc::maybe(pc::choose(run_cmd_parser(), type_query_cmd_parser(), function_query_cmd_parser()));
-}
-
 void run(const RunCommand& cmd, Env e) {
   Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
 
@@ -120,65 +72,6 @@ void run(const RunCommand& cmd, Env e) {
     })
     .map(dump)
     .or_else(dump);
-}
-
-void run(const FunctionQueryCommand& cmd, const Env& e) {
-  const std::regex re(cmd.regex);
-
-  std::vector<std::string> functions;
-  std::transform(
-    e.functions.begin(), e.functions.end(), std::back_inserter(functions), [](const auto& p) { return p.first; });
-
-  std::sort(functions.begin(), functions.end());
-
-  for(const std::string& fn_name : functions) {
-    for(const auto& f : e.functions.at(fn_name)) {
-      const auto find_type_id = [&](const std::string& type) {
-        if(const auto it = e.type_ids.find(type); it == e.type_ids.end()) {
-          fmt::print("type {} not found", type);
-          std::exit(1);
-        } else {
-          return it->second;
-        }
-      };
-
-      const auto doesnt_have =
-        Overloaded{[&](const std::vector<TypeProperties>& types, const std::string& type) {
-                     const TypeID exp = find_type_id(type);
-                     return std::none_of(types.begin(), types.end(), [&](auto t) { return t.id == exp; });
-                   },
-                   [&](const std::vector<TypeID>& types, const std::string& type) {
-                     return std::find(types.begin(), types.end(), find_type_id(type)) == types.end();
-                   }};
-
-      const auto doesnt_take = [&](const std::string& type) { return doesnt_have(input_types(f), type); };
-      const auto doesnt_return = [&](const std::string& type) { return doesnt_have(output_types(f), type); };
-      const auto doesnt_contain = [&](const std::string& type) { return doesnt_take(type) && doesnt_return(type); };
-
-      if(!std::regex_match(fn_name, re)) continue;
-      if(std::any_of(cmd.takes.begin(), cmd.takes.end(), doesnt_take)) continue;
-      if(std::any_of(cmd.returns.begin(), cmd.returns.end(), doesnt_return)) continue;
-      if(std::any_of(cmd.contains.begin(), cmd.contains.end(), doesnt_contain)) continue;
-
-      fmt::print("{}\n", function_string(e, fn_name, f));
-    }
-  }
-}
-
-void run(const TypeQueryCommand& cmd, const Env& e) {
-  const std::regex re(cmd.regex);
-
-  std::vector<std::string> types;
-  std::transform(
-    e.type_names.begin(), e.type_names.end(), std::back_inserter(types), [](const auto& p) { return p.second; });
-
-  std::sort(types.begin(), types.end());
-
-  for(const std::string& type : types) {
-    if(std::regex_match(type, re)) {
-      fmt::print("{}\n", type);
-    }
-  }
 }
 
 std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
@@ -311,18 +204,16 @@ int main(int argc, char* argv[], Env e) {
     args.push_back(argv[i]);
   }
 
-  const auto cmd_result = pc::parse(cmd_parser(), Span<std::string>{args});
+  const auto cmd_result = pc::parse(pc::maybe(run_cmd_parser()), Span<std::string>{args});
 
   if(!cmd_result) {
     const char* msg = "Usage:\n"
                       "  run [-s script] expr\n"
-                      "  repl [-s script]\n"
-                      "  types [regex]\n"
-                      "  functions [-t takes] [-r returns] [-c contains] [regex]\n";
+                      "  repl [-s script]\n";
 
     fmt::print("{}", msg);
   } else if(*cmd_result) {
-    std::visit([&](const auto& cmd) { run(cmd, std::move(e)); }, **cmd_result);
+    run(**cmd_result, std::move(e));
   } else {
     run_repl(e);
   }
