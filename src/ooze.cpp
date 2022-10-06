@@ -20,58 +20,47 @@
 namespace ooze {
 
 namespace {
-
-template <typename T>
-struct Option {
-  std::string value;
+struct Command {
+  bool run_main = false;
+  std::vector<std::string> filenames;
 };
 
-struct Verbose {};
+std::optional<Command> parse_cmd_line(int argc, const char** argv) {
+  if(argc <= 1) {
+    return Command{};
+  } else {
+    const std::string_view cmd = argv[1];
 
-using ScriptOption = Option<struct SOpt>;
-using OutputOption = Option<struct OOpt>;
+    std::vector<std::string> errors;
+    for(int i = 2; i < argc; i++) {
+      errors.push_back(argv[i]);
+    }
 
-struct RunCommand {
-  std::string script;
-  std::string expr;
-  std::string output_prefix;
-  int verbosity = 0;
-};
-
-auto o_opt_parser() { return pc::construct<OutputOption>(pc::seq(pc::constant("-o", "-o"), pc::any())); }
-auto s_opt_parser() { return pc::construct<ScriptOption>(pc::seq(pc::constant("-s", "-s"), pc::any())); }
-auto v_parser() {
-  return pc::transform(pc::constant("-v", "-v"), [](const auto&) { return Verbose{}; });
+    if(cmd == "run") {
+      return Command{true, std::move(errors)};
+    } else if(cmd == "repl") {
+      return Command{false, std::move(errors)};
+    } else {
+      return std::nullopt;
+    }
+  }
 }
 
-auto run_cmd_parser() {
-  return pc::transform(
-    pc::seq(pc::constant("run", "run"), pc::n(pc::choose(v_parser(), s_opt_parser(), o_opt_parser(), pc::any()))),
-    [](const auto&, std::vector<std::variant<Verbose, ScriptOption, OutputOption, std::string>> args) {
-      RunCommand cmd;
+Result<void> parse_scripts(Env& e, const std::vector<std::string>& filenames) {
+  return knot::accumulate<Result<void>>(filenames, [&](Result<void> acc, const std::string& filename) -> Result<void> {
+    auto result = read_text_file(filename).and_then([&](const std::string& script) { return parse_script(e, script); });
 
-      for(auto&& arg : args) {
-        std::visit(Overloaded{[&](ScriptOption o) { cmd.script = std::move(o.value); },
-                              [&](OutputOption o) { cmd.output_prefix = std::move(o.value); },
-                              [&](std::string expr) { cmd.expr = std::move(expr); },
-                              [&](Verbose) { cmd.verbosity++; }},
-                   std::move(arg));
-      }
-
-      return cmd;
-    });
-}
-
-void run(const RunCommand& cmd, Env e) {
-  Result<std::string> script = cmd.script.empty() ? std::string() : read_text_file(cmd.script);
-
-  script.and_then([&](const std::string& script) { return parse_script(e, script); })
-    .and_then([&]() {
-      RuntimeEnv r{std::move(e)};
-      return run_to_string(r, cmd.expr);
-    })
-    .map(dump)
-    .or_else(dump);
+    if(acc) {
+      return result;
+    } else if(result) {
+      return acc;
+    } else {
+      acc.error().insert(acc.error().end(),
+                         std::make_move_iterator(result.error().begin()),
+                         std::make_move_iterator(result.error().end()));
+      return acc;
+    }
+  });
 }
 
 std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
@@ -87,14 +76,31 @@ Result<CheckedFunction> overload_resolution(const RuntimeEnv& r, TypedBody b) {
 }
 
 Result<TypedBody> check_and_wrap(const RuntimeEnv& r, TypedBody b) {
-  if(auto base_result = overload_resolution(r, b); base_result) {
-    for(UnTypedExpr& expr : b.result) {
-      expr = UnTypedExpr{Indirect{ast::Call<NamedFunction>{{"to_string"}, {std::move(expr)}}}};
+  const auto to_string_wrap = [](TypedExpr e, TypeID t) {
+    return t == anyf::type_id<std::string>()
+             ? std::move(e)
+             : TypedExpr{Indirect{ast::Call<NamedFunction>{"to_string", {{std::move(e)}}}}};
+  };
+
+  return overload_resolution(r, b).map([&](CheckedFunction f) {
+    assert(b.assignments.size() == 0);
+    assert(b.result.size() == 1);
+
+    if(f.header.result.size() == 1) {
+      return TypedBody{{}, {to_string_wrap(std::move(b.result.front()), f.header.result.front())}};
+    } else {
+      TypedBody new_body{{{{}, std::move(b.result.front())}}, {}};
+
+      int i = 0;
+      for(TypeID type : f.header.result) {
+        const std::string var = std::to_string(i++);
+        new_body.assignments.back().bindings.push_back({var, type});
+        new_body.result.push_back(to_string_wrap({var}, type));
+      }
+
+      return new_body;
     }
-    return b;
-  } else {
-    return tl::unexpected{std::move(base_result.error())};
-  }
+  });
 }
 
 std::vector<Binding>
@@ -201,28 +207,36 @@ Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string
     .map(gather_binding_strings);
 }
 
-int main(int argc, char* argv[], Env e) {
+int main(int argc, const char** argv, Env e) {
 
-  std::vector<std::string> args;
-  for(int i = 1; i < argc; i++) {
-    args.push_back(argv[i]);
-  }
+  const std::optional<Command> cmd = parse_cmd_line(argc, argv);
 
-  const auto cmd_result = pc::parse(pc::maybe(run_cmd_parser()), Span<std::string>{args});
-
-  if(!cmd_result) {
+  if(!cmd) {
     const char* msg = "Usage:\n"
-                      "  run [-s script] expr\n"
-                      "  repl [-s script]\n";
+                      "  run [scripts...]\n"
+                      "  repl [scripts...]\n";
 
     fmt::print("{}", msg);
-  } else if(*cmd_result) {
-    run(**cmd_result, std::move(e));
-  } else {
-    run_repl(e);
+    return 1;
   }
 
-  return 0;
+  const auto& result = parse_scripts(e, cmd->filenames).and_then([&]() {
+    if(cmd->run_main) {
+      RuntimeEnv r{std::move(e)};
+      return run_to_string(r, "main()");
+    } else {
+      run_repl(std::move(e));
+      return Result<std::vector<std::string>>{};
+    }
+  });
+
+  if(result) {
+    dump(result.value());
+  } else {
+    dump(result.error());
+  }
+
+  return !result.has_value();
 }
 
 } // namespace ooze

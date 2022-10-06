@@ -38,6 +38,6 @@ Result<std::vector<std::string>> run_to_string(RuntimeEnv&, std::string_view exp
 Result<std::vector<Binding>> run_assign(RuntimeEnv&, std::string_view assignment_or_expr);
 Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv&, std::string_view assignment_or_expr);
 
-int main(int argc, char* argv[], Env);
+int main(int argc, const char** argv, Env);
 
 } // namespace ooze

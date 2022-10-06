@@ -47,7 +47,7 @@ ooze::Env create_env() {
 
 } // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char** argv) {
   try {
     return ooze::main(argc, argv, create_env());
   } catch(const std::exception& e) {
