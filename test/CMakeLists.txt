@@ -7,7 +7,7 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework system)
 add_executable(ooze_test
   test_main.cpp
   lexer_test.cpp
-  overload_resolution_test.cpp
+  type_check_test.cpp
   parser_test.cpp
   parser_combinator_test.cpp
   repl_test.cpp

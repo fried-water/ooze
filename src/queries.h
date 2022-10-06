@@ -15,6 +15,11 @@ inline std::string type_name_or_id(const Env& e, TypeID type) {
   return it != e.type_names.end() ? it->second : to_string(type);
 }
 
+inline std::string type_name_or_id(const Env& e, TypeProperties type) {
+  const auto it = e.type_names.find(type.id);
+  return fmt::format("{}{}", type.value ? "" : "&", it != e.type_names.end() ? it->second : to_string(type.id));
+}
+
 std::string type_list_string(const Env&, Span<TypeID>);
 std::string type_list_string(const Env&, Span<TypeProperties>);
 std::string type_list_string(const Env&, Span<std::optional<TypeProperties>>);

@@ -1,7 +1,6 @@
 #include "pch.h"
 
 #include "graph_construction.h"
-#include "overload_resolution.h"
 #include "queries.h"
 
 namespace ooze {
@@ -42,11 +41,11 @@ struct GraphContext {
   Map<std::string, Term> bindings;
 };
 
-Result<std::vector<Term>> add_expr(GraphContext&, const TypedExpr&, const Env&);
+Result<std::vector<Term>> add_expr(GraphContext&, const CheckedExpr&, const Env&);
 
-Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx, const std::vector<TypedExpr>& exprs, const Env& e) {
+Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx, const std::vector<CheckedExpr>& exprs, const Env& e) {
   auto [terms, errors] =
-    accumulate<std::pair<std::vector<Term>, std::vector<std::string>>>(exprs, [&](auto acc, const TypedExpr& expr) {
+    accumulate<std::pair<std::vector<Term>, std::vector<std::string>>>(exprs, [&](auto acc, const CheckedExpr& expr) {
       if(auto terms = add_expr(ctx, expr, e); terms) {
         acc.first.insert(acc.first.end(), terms->begin(), terms->end());
       } else {
@@ -58,7 +57,7 @@ Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx, const std::vector<
   return errors.empty() ? Result<std::vector<Term>>{std::move(terms)} : tl::unexpected{std::move(errors)};
 }
 
-Result<std::vector<Term>> add_expr(GraphContext& ctx, const TypedExpr& expr, const Env& e) {
+Result<std::vector<Term>> add_expr(GraphContext& ctx, const CheckedExpr& expr, const Env& e) {
   return std::visit(
     Overloaded{
       [&](const Indirect<ast::Call<EnvFunctionRef>>& call) -> Result<std::vector<Term>> {
@@ -93,11 +92,11 @@ Result<std::vector<Term>> add_expr(GraphContext& ctx, const TypedExpr& expr, con
 
 } // namespace
 
-Result<anyf::FunctionGraph> create_graph(const Env& e, const TypedFunction& f) {
+Result<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFunction& f) {
   std::vector<TypeProperties> input_types;
   std::vector<std::string> errors;
 
-  for(const auto& p : f.parameters) {
+  for(const auto& p : f.header.parameters) {
     input_types.push_back(TypeProperties{p.type, !p.borrow});
   }
 
@@ -109,15 +108,15 @@ Result<anyf::FunctionGraph> create_graph(const Env& e, const TypedFunction& f) {
       Map<std::string, Term> bindings;
 
       for(int i = 0; i < iterms.size(); i++) {
-        bindings.emplace(f.parameters[i].name, iterms[i]);
+        bindings.emplace(f.header.parameters[i].name, iterms[i]);
       }
 
       return GraphContext{std::move(cg), std::move(bindings)};
     })
     .and_then([&](GraphContext ctx) {
       return accumulate<Result<GraphContext>>(
-        f.assignments,
-        [&](auto acc, const TypedAssignment& assignment) {
+        f.body.assignments,
+        [&](auto acc, const CheckedAssignment& assignment) {
           return std::move(acc).and_then([&](GraphContext ctx) {
             return add_expr(ctx, assignment.expr, e).and_then([&](std::vector<Term> terms) -> Result<GraphContext> {
               std::vector<TypeID> inputs(terms.size());
@@ -134,7 +133,7 @@ Result<anyf::FunctionGraph> create_graph(const Env& e, const TypedFunction& f) {
         std::move(ctx));
     })
     .and_then([&](GraphContext ctx) {
-      return accumulate_exprs(ctx, f.ret, e).and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
+      return accumulate_exprs(ctx, f.body.result, e).and_then([&](std::vector<Term> terms) -> Result<FunctionGraph> {
         return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(e, fmt::format("return")));
       });
     });

@@ -7,6 +7,6 @@
 
 namespace ooze {
 
-Result<anyf::FunctionGraph> create_graph(const Env&, const TypedFunction&);
+Result<anyf::FunctionGraph> create_graph(const Env&, const CheckedFunction&);
 
 } // namespace ooze

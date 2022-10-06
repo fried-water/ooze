@@ -97,16 +97,16 @@ auto assignment() {
   return pc::construct<UnTypedAssignment>(pc::seq(keyword("let"), list_or_one(binding()), symbol("="), expr));
 }
 
+auto function_header() {
+  return pc::construct<UnTypedHeader>(pc::seq(list(parameter()), symbol("->"), list_or_one(type_ident())));
+}
+
+auto function_body() {
+  return pc::construct<UnTypedBody>(pc::seq(symbol("{"), pc::n(assignment()), list_or_one(expr), symbol("}")));
+}
+
 auto function() {
-  return pc::construct<UnTypedFunction>(pc::seq(keyword("fn"),
-                                                ident(),
-                                                list(parameter()),
-                                                symbol("->"),
-                                                list_or_one(type_ident()),
-                                                symbol("{"),
-                                                pc::n(assignment()),
-                                                list_or_one(expr),
-                                                symbol("}")));
+  return pc::construct<UnTypedFunction>(pc::seq(keyword("fn"), ident(), function_header(), function_body()));
 }
 
 template <typename Parser>

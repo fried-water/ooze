@@ -11,15 +11,29 @@ struct EnvFunctionRef {
   KNOT_ORDERED(EnvFunctionRef);
 };
 
-using TypedExpr = ast::Expr<EnvFunctionRef>;
-using TypedAssignment = ast::Assignment<anyf::TypeID, EnvFunctionRef>;
+// Replace type names with type id
+using TypedExpr = UnTypedExpr;
+using TypedHeader = ast::FunctionHeader<anyf::TypeID>;
+using TypedAssignment = ast::Assignment<anyf::TypeID, NamedFunction>;
+using TypedBody = ast::FunctionBody<anyf::TypeID, NamedFunction>;
+
+// Replace function names with specific function overloads
+using CheckedExpr = ast::Expr<EnvFunctionRef>;
+using CheckedAssignment = ast::Assignment<anyf::TypeID, EnvFunctionRef>;
+using CheckedBody = ast::FunctionBody<anyf::TypeID, EnvFunctionRef>;
 
 struct TypedFunction {
-  std::vector<ast::Parameter<anyf::TypeID>> parameters;
-  std::vector<TypedAssignment> assignments;
-  std::vector<TypedExpr> ret;
+  TypedHeader header;
+  TypedBody body;
 
   KNOT_ORDERED(TypedFunction);
+};
+
+struct CheckedFunction {
+  TypedHeader header;
+  CheckedBody body;
+
+  KNOT_ORDERED(CheckedFunction);
 };
 
 } // namespace ooze

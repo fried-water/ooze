@@ -4,7 +4,6 @@
 #include "graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
-#include "overload_resolution.h"
 #include "parser.h"
 #include "parser_combinators.h"
 #include "queries.h"

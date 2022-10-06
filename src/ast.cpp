@@ -51,18 +51,27 @@ void pretty_print(std::ostream& os, const UnTypedAssignment& a) {
   pretty_print(os << " = ", a.expr);
 }
 
-void pretty_print(std::ostream& os, const UnTypedFunction& f) {
-  pretty_print(os << "fn " << f.name, f.parameters);
-  pretty_print(os << " -> ", f.result, true);
+void pretty_print(std::ostream& os, const UnTypedHeader& h) {
+  pretty_print(os, h.parameters);
+  pretty_print(os << " -> ", h.result, true);
+}
+
+void pretty_print(std::ostream& os, const UnTypedBody& b) {
   os << " {\n";
 
-  for(const auto& a : f.assignments) {
+  for(const auto& a : b.assignments) {
     pretty_print(os << "  ", a);
     os << "\n";
   }
 
-  pretty_print(os << "  ", f.ret);
-  os << "\n}\n";
+  pretty_print(os << "  ", b.result);
+  os << "\n}";
+}
+
+void pretty_print(std::ostream& os, const UnTypedFunction& f) {
+  pretty_print(os << "fn " << f.name, f.header);
+  pretty_print(os, f.body);
+  os << "\n";
 }
 
 template <typename T>

@@ -78,7 +78,8 @@ BOOST_AUTO_TEST_CASE(ooze_cannot_copy) {
   Env env = create_primative_env();
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
-  BOOST_CHECK(err("Function input 0 of type unique_int cannot be copied") == run(env, script, "f(make_unique_int(0))"));
+
+  BOOST_CHECK(err("attempting to return borrowed parameter 'x'") == run(env, script, "f(make_unique_int(0))"));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_clone) {

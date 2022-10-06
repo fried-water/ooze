@@ -74,18 +74,28 @@ inline Result<std::vector<std::string>> convert_errors(std::vector<std::string> 
 inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string>{std::move(msg)}}; }
 
 template <typename T>
+Result<T> value_or_errors(T t, std::vector<std::string> errors) {
+  return errors.empty() ? Result<T>{std::move(t)} : tl::unexpected{std::move(errors)};
+}
+
+template <typename T>
 Result<T> success(T t) {
   return Result<T>{std::move(t)};
 }
 
+template <typename E>
+std::tuple<> get_value(tl::expected<void, E>&&) {
+  return {};
+}
+
 template <typename T, typename E>
-T&& get_value(tl::expected<T, E>&& e) {
-  return std::move(e.value());
+std::tuple<T> get_value(tl::expected<T, E>&& e) {
+  return std::tuple(std::move(e.value()));
 }
 
 template <typename T>
-T&& get_value(T&& t) {
-  return std::move(t);
+std::tuple<T> get_value(T&& t) {
+  return std::tuple(std::move(t));
 }
 
 template <typename T, typename E>
@@ -103,7 +113,7 @@ auto merge(Ts... ts) {
   std::vector<std::string> errors;
   (append_errors(errors, std::move(ts)), ...);
 
-  return errors.empty() ? success(std::tuple(get_value(std::move(ts))...)) : tl::unexpected{std::move(errors)};
+  return errors.empty() ? success(std::tuple_cat(get_value(std::move(ts))...)) : tl::unexpected{std::move(errors)};
 }
 
 } // namespace ooze

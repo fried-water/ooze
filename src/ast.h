@@ -53,6 +53,22 @@ struct Assignment {
   KNOT_ORDERED(Assignment);
 };
 
+template <typename T>
+struct FunctionHeader {
+  std::vector<Parameter<T>> parameters;
+  std::vector<T> result;
+
+  KNOT_ORDERED(FunctionHeader);
+};
+
+template <typename T, typename F>
+struct FunctionBody {
+  std::vector<Assignment<T, F>> assignments;
+  std::vector<Expr<F>> result;
+
+  KNOT_ORDERED(FunctionBody);
+};
+
 } // namespace ast
 
 struct NamedType {
@@ -67,13 +83,13 @@ struct NamedFunction {
 
 using UnTypedExpr = ast::Expr<NamedFunction>;
 using UnTypedAssignment = ast::Assignment<NamedType, NamedFunction>;
+using UnTypedHeader = ast::FunctionHeader<NamedType>;
+using UnTypedBody = ast::FunctionBody<NamedType, NamedFunction>;
 
 struct UnTypedFunction {
   std::string name;
-  std::vector<ast::Parameter<NamedType>> parameters;
-  std::vector<NamedType> result;
-  std::vector<UnTypedAssignment> assignments;
-  std::vector<UnTypedExpr> ret;
+  UnTypedHeader header;
+  UnTypedBody body;
 
   KNOT_ORDERED(UnTypedFunction);
 };
