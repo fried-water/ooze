@@ -72,16 +72,6 @@ BOOST_AUTO_TEST_CASE(ooze_already_move) {
   BOOST_CHECK(err("return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_cannot_copy) {
-  const auto script = "fn f(x: &unique_int) -> unique_int { x }";
-
-  Env env = create_primative_env();
-  env.add_type<std::unique_ptr<int>>("unique_int");
-  env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
-
-  BOOST_CHECK(err("attempting to return borrowed parameter 'x'") == run(env, script, "f(make_unique_int(0))"));
-}
-
 BOOST_AUTO_TEST_CASE(ooze_clone) {
   Env env;
   env.add_type<std::string>("string");

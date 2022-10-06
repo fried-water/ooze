@@ -16,7 +16,7 @@ struct PropagationCaches {
   Map<const TypedExpr*, const std::vector<Binding<TypeID>>*> expr_bindings;
 
   Map<BindingRef, std::vector<const TypedExpr*>> uses;
-  Map<BindingRef, const TypedExpr*> binding_src;
+  Map<BindingRef, std::tuple<const TypedExpr*, int, int>> binding_src;
   Map<const TypedExpr*, BindingRef> binding_of;
 };
 
@@ -174,7 +174,7 @@ PropagationCaches calculate_propagation_caches(const TypedBody& b) {
   Map<std::string, const Binding<TypeID>*> binding_names;
 
   Map<BindingRef, std::vector<const TypedExpr*>> uses;
-  Map<BindingRef, const TypedExpr*> binding_src;
+  Map<BindingRef, std::tuple<const TypedExpr*, int, int>> binding_src;
   Map<const TypedExpr*, BindingRef> binding_of;
 
   const auto visit_expr = [&](const TypedExpr& root) {
@@ -194,15 +194,17 @@ PropagationCaches calculate_propagation_caches(const TypedBody& b) {
   for(const TypedAssignment& assign : b.assignments) {
     visit_expr(assign.expr);
 
+    int i = 0;
     for(const Binding<TypeID>& b : assign.bindings) {
       binding_names[b.name] = &b;
-      binding_src.emplace(&b, &assign.expr);
+      binding_src.emplace(&b, std::tuple(&assign.expr, i++, (int)assign.bindings.size()));
     }
   }
 
   for(const TypedExpr& e : b.result) {
     visit_expr(e);
   }
+
   return PropagationCaches{find_function_receivers(b),
                            find_expr_bindings(b.assignments),
                            std::move(uses),
@@ -391,7 +393,11 @@ auto constraint_propagation(const Env& e, const PropagationCaches& pc, std::vect
         }
 
         if(const auto sit = pc.binding_src.find(bit->second); sit != pc.binding_src.end()) {
-          to_visit.push_back({sit->second, types});
+          assert(types.size() == 1);
+          const auto& [expr, idx, size] = sit->second;
+          std::vector<std::optional<TypeProperties>> binding_types(size);
+          binding_types[idx] = types.front();
+          to_visit.push_back({expr, binding_types});
         }
       }
     }

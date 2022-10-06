@@ -201,6 +201,13 @@ BOOST_AUTO_TEST_CASE(cp_param_borrow_return) {
   test_or(e, {{"f", 0}, {"f", 0}}, "fn t(x: &i32) -> i32 { f(f(x)) }");
 }
 
+BOOST_AUTO_TEST_CASE(cp_multi_bind) {
+  Env e = create_primative_env();
+  e.add_function("f", []() { return std::tuple(i32(), f32()); });
+
+  test_or(e, {{"f", 0}}, "fn t() -> (i32, f32) { let (x, y) = f() (x, y) }");
+}
+
 BOOST_AUTO_TEST_CASE(cp_single_overload) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
