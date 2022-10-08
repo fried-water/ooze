@@ -13,8 +13,6 @@ template <typename F>
 struct Expr {
   std::variant<Indirect<Call<F>>, std::string, Literal> v;
 
-  friend constexpr auto names(knot::Type<Expr>) { return knot::Names("Expr", {"v"}); }
-
   KNOT_ORDERED(Expr);
 };
 
@@ -22,8 +20,6 @@ template <typename F>
 struct Call {
   F function;
   std::vector<Expr<F>> parameters;
-
-  friend constexpr auto names(knot::Type<Call>) { return knot::Names("Call", {"function", "parameters"}); }
 
   KNOT_ORDERED(Call);
 };

@@ -9,7 +9,7 @@ namespace ooze {
 
 namespace {
 
-auto src_sv(std::string_view src, SrcRef r) { return std::string_view(src.begin() + r.offset, r.size); }
+auto src_sv(std::string_view src, Slice s) { return std::string_view(src.begin() + s.offset, s.size); }
 
 auto token_parser(TokenType type) {
   return pc::transform(pc::filter(pc::any(), "token", [=](std::string_view src, Token t) { return t.type == type; }),
@@ -122,9 +122,9 @@ ParseResult<pc::parser_result_t<std::string_view, Token, Parser>> parse_string(P
       return std::tuple(-lhs.second.pos, lhs.second.depth) < std::tuple(-rhs.second.pos, lhs.second.depth);
     });
 
-    const SrcRef err_ref = (errors.empty() || errors.front().second.pos == tokens.size())
-                             ? SrcRef{lex_end, lex_end == src.size() ? 0u : 1u}
-                             : tokens[errors.front().second.pos].ref;
+    const Slice err_ref = (errors.empty() || errors.front().second.pos == tokens.size())
+                            ? Slice{lex_end, lex_end == src.size() ? 0u : 1u}
+                            : tokens[errors.front().second.pos].ref;
 
     const auto pos = src.begin() + err_ref.offset;
     const auto is_newline = [](char c) { return c == '\n'; };

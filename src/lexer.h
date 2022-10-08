@@ -16,16 +16,9 @@ enum class TokenType {
   LiteralString
 };
 
-struct SrcRef {
-  u32 offset = 0;
-  u32 size = 0;
-
-  KNOT_COMPAREABLE(SrcRef);
-};
-
 struct Token {
   TokenType type = {};
-  SrcRef ref;
+  Slice ref;
 
   KNOT_COMPAREABLE(Token);
 };
