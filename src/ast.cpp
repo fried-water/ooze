@@ -39,7 +39,7 @@ struct ExprPrettyPrinter {
 
   void operator()(const std::vector<Expr<NamedFunction>>& exprs) const { pretty_print(os, exprs, true); }
 
-  void operator()(const Indirect<Call<NamedFunction>>& call) const { pretty_print(os, *call); }
+  void operator()(const Call<NamedFunction>& call) const { pretty_print(os, call); }
   void operator()(const std::string& ident) const { os << ident; }
   void operator()(const Literal& l) const { os << to_string(l); }
 };

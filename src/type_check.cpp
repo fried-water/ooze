@@ -80,7 +80,7 @@ overload_resolution(const Env& e,
                     const TypedExpr* expr,
                     const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types,
                     const std::optional<std::vector<std::optional<TypeProperties>>>& propagated_outputs) {
-  const auto& call = *std::get<Indirect<Call<NamedFunction>>>(expr->v);
+  const auto& call = std::get<Call<NamedFunction>>(expr->v);
 
   std::vector<std::string> errors;
   const auto fit = e.functions.find(call.function.name);
@@ -160,8 +160,8 @@ Map<const TypedExpr*, const TypedExpr*> find_function_receivers(const TypedBody&
   Map<const TypedExpr*, const TypedExpr*> function_receivers;
 
   knot::preorder(b, [&](const TypedExpr& expr) {
-    if(const auto* call = std::get_if<Indirect<Call<NamedFunction>>>(&expr.v); call) {
-      for(const TypedExpr& parameter_expr : (*call)->parameters) {
+    if(const auto* call = std::get_if<Call<NamedFunction>>(&expr.v); call) {
+      for(const TypedExpr& parameter_expr : call->parameters) {
         function_receivers.emplace(&parameter_expr, &expr);
       }
     }
@@ -264,8 +264,8 @@ auto append_body_candidates(const Env& e, const TypedBody& b, std::vector<Propag
 
   // Append function calls with a single overload
   knot::preorder(b, [&](const TypedExpr& expr) {
-    if(const auto* call = std::get_if<Indirect<Call<NamedFunction>>>(&expr.v); call) {
-      if(const auto it = e.functions.find((*call)->function.name); it != e.functions.end() && it->second.size() == 1) {
+    if(const auto* call = std::get_if<Call<NamedFunction>>(&expr.v); call) {
+      if(const auto it = e.functions.find(call->function.name); it != e.functions.end() && it->second.size() == 1) {
         candidates.push_back({&expr, std::nullopt});
       }
     }
@@ -297,7 +297,7 @@ propagate_function(const Env& e,
   const auto function = overload_resolution(e, expr, expr_types, propagated_types);
 
   if(function) {
-    const auto& call = *std::get<Indirect<Call<NamedFunction>>>(expr->v);
+    const auto& call = std::get<Call<NamedFunction>>(expr->v);
 
     const auto& inputs = input_types(*std::get<1>(*function));
     for(size_t i = 0; i < inputs.size(); i++) {
@@ -343,7 +343,7 @@ auto constraint_propagation(const Env& e, const PropagationCaches& pc, std::vect
     PropagationCandidate c = std::move(to_visit.front());
     to_visit.erase(to_visit.begin());
 
-    if(std::holds_alternative<Indirect<Call<NamedFunction>>>(c.expr->v)) {
+    if(std::holds_alternative<Call<NamedFunction>>(c.expr->v)) {
       c.types = propagate_function(e, c.expr, expr_types, std::move(c.types), to_visit);
     }
 
@@ -414,8 +414,8 @@ find_overloads(const Env& e,
   Map<const NamedFunction*, Result<std::tuple<int, const EnvFunction*>>> overloads;
 
   knot::preorder(b, [&](const TypedExpr& expr) {
-    if(const auto* call = std::get_if<Indirect<Call<NamedFunction>>>(&expr.v); call) {
-      overloads.emplace(&(*call)->function, overload_resolution(e, &expr, expr_types, std::nullopt));
+    if(const auto* call = std::get_if<Call<NamedFunction>>(&expr.v); call) {
+      overloads.emplace(&call->function, overload_resolution(e, &expr, expr_types, std::nullopt));
     }
   });
 

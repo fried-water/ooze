@@ -60,15 +60,15 @@ Result<std::vector<Term>> accumulate_exprs(GraphContext& ctx, const std::vector<
 Result<std::vector<Term>> add_expr(GraphContext& ctx, const CheckedExpr& expr, const Env& e) {
   return std::visit(
     Overloaded{
-      [&](const Indirect<ast::Call<EnvFunctionRef>>& call) -> Result<std::vector<Term>> {
-        return accumulate_exprs(ctx, call->parameters, e)
+      [&](const ast::Call<EnvFunctionRef>& call) -> Result<std::vector<Term>> {
+        return accumulate_exprs(ctx, call.parameters, e)
           .and_then([&](std::vector<Term> terms) -> Result<std::vector<Term>> {
-            const auto it = e.functions.find(call->function.name);
-            assert(it != e.functions.end() && call->function.overload_idx < it->second.size());
+            const auto it = e.functions.find(call.function.name);
+            assert(it != e.functions.end() && call.function.overload_idx < it->second.size());
 
             return std::visit(
-              [&](const auto& f) { return ctx.cg.add(f, terms).map_error(to_graph_error(e, call->function.name)); },
-              it->second[call->function.overload_idx]);
+              [&](const auto& f) { return ctx.cg.add(f, terms).map_error(to_graph_error(e, call.function.name)); },
+              it->second[call.function.overload_idx]);
           });
       },
       [&](const std::string& identifier) -> Result<std::vector<Term>> {

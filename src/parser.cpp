@@ -74,24 +74,22 @@ pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>&
                                 "literal",
                                 [](std::string_view src, Token t) { return to_literal(t.type, src_sv(src, t.ref)); })),
     [](auto v) {
-      return std::visit(
-        Overloaded{[](auto&& tuple) {
-                     auto&& [binding, parameters, chain] = std::move(tuple);
+      return std::visit(Overloaded{[](auto&& tuple) {
+                                     auto&& [binding, parameters, chain] = std::move(tuple);
 
-                     UnTypedExpr acc =
-                       parameters
-                         ? UnTypedExpr{Indirect{ast::Call<NamedFunction>{std::move(binding), std::move(*parameters)}}}
-                         : UnTypedExpr{std::move(binding)};
+                                     UnTypedExpr acc = parameters ? UnTypedExpr{ast::Call<NamedFunction>{
+                                                                      std::move(binding), std::move(*parameters)}}
+                                                                  : UnTypedExpr{std::move(binding)};
 
-                     for(auto&& [binding, parameters] : chain) {
-                       parameters.insert(parameters.begin(), std::move(acc));
-                       acc = UnTypedExpr{Indirect{ast::Call<NamedFunction>{binding, std::move(parameters)}}};
-                     }
+                                     for(auto&& [binding, parameters] : chain) {
+                                       parameters.insert(parameters.begin(), std::move(acc));
+                                       acc = UnTypedExpr{ast::Call<NamedFunction>{binding, std::move(parameters)}};
+                                     }
 
-                     return acc;
-                   },
-                   [](Literal l) { return UnTypedExpr{std::move(l)}; }},
-        std::move(v));
+                                     return acc;
+                                   },
+                                   [](Literal l) { return UnTypedExpr{std::move(l)}; }},
+                        std::move(v));
     })(s, loc);
 }
 

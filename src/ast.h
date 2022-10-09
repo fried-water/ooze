@@ -1,20 +1,12 @@
 #pragma once
 
-#include "indirect.h"
 #include "literal.h"
 
 namespace ooze {
 namespace ast {
 
 template <typename F>
-struct Call;
-
-template <typename F>
-struct Expr {
-  std::variant<Indirect<Call<F>>, std::string, Literal> v;
-
-  KNOT_ORDERED(Expr);
-};
+struct Expr;
 
 template <typename F>
 struct Call {
@@ -22,6 +14,13 @@ struct Call {
   std::vector<Expr<F>> parameters;
 
   KNOT_ORDERED(Call);
+};
+
+template <typename F>
+struct Expr {
+  std::variant<Call<F>, std::string, Literal> v;
+
+  KNOT_ORDERED(Expr);
 };
 
 template <typename T>

@@ -77,9 +77,8 @@ Result<CheckedFunction> overload_resolution(const RuntimeEnv& r, TypedBody b) {
 
 Result<TypedBody> check_and_wrap(const RuntimeEnv& r, TypedBody b) {
   const auto to_string_wrap = [](TypedExpr e, TypeID t) {
-    return t == anyf::type_id<std::string>()
-             ? std::move(e)
-             : TypedExpr{Indirect{ast::Call<NamedFunction>{"to_string", {{std::move(e)}}}}};
+    return t == anyf::type_id<std::string>() ? std::move(e)
+                                             : TypedExpr{ast::Call<NamedFunction>{"to_string", {{std::move(e)}}}};
   };
 
   return overload_resolution(r, b).map([&](CheckedFunction f) {

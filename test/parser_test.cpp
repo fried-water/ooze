@@ -22,7 +22,7 @@ void parse_error(std::string_view src, std::vector<std::string> expected) {
 }
 
 UnTypedExpr call(std::string name, std::vector<UnTypedExpr> args = {}) {
-  return {Indirect{Call<NamedFunction>{std::move(name), std::move(args)}}};
+  return {Call<NamedFunction>{std::move(name), std::move(args)}};
 }
 
 UnTypedExpr ident(std::string name) { return {std::move(name)}; }
