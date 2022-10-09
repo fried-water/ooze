@@ -99,7 +99,7 @@ std::pair<std::vector<Token>, u32> lex(std::string_view sv) {
       break;
     } else {
       if(type != TokenType::Whitespace && type != TokenType::Comment) {
-        tokens.push_back(Token{type, {offset, size}});
+        tokens.push_back(Token{type, {offset, offset + size}});
       }
 
       offset += size;

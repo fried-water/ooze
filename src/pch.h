@@ -41,11 +41,13 @@ using f64 = double;
 using anyf::Span;
 
 struct Slice {
-  u32 offset = 0;
-  u32 size = 0;
+  u32 begin = 0;
+  u32 end = 0;
 
   KNOT_COMPAREABLE(Slice);
 };
+
+inline u32 size(Slice s) { return s.end - s.begin; }
 
 template <class... Ts>
 struct Overloaded : Ts... {
