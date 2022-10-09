@@ -11,6 +11,13 @@ struct ParseState {
   Span<Token> tokens;
 };
 
+template <typename Token>
+struct ParseState<void, Token> {
+  using token_type = Token;
+
+  Span<Token> tokens;
+};
+
 struct ParseLocation {
   u32 pos = 0;
   u32 depth = 0;
@@ -20,7 +27,7 @@ struct ParseLocation {
 
 template <typename Result>
 struct ParseResult {
-  u32 pos = {};
+  Slice slice = {};
   std::optional<Result> value;
   std::vector<std::pair<std::string, ParseLocation>> errors;
 
@@ -36,13 +43,13 @@ std::vector<T> merge(std::vector<T> a, std::vector<T> b) {
 }
 
 template <typename R>
-ParseResult<R> passing_result(u32 pos, R r, std::vector<std::pair<std::string, ParseLocation>> errors = {}) {
-  return {pos, std::move(r), std::move(errors)};
+ParseResult<R> passing_result(Slice s, R r, std::vector<std::pair<std::string, ParseLocation>> errors = {}) {
+  return {s, std::move(r), std::move(errors)};
 }
 
 template <typename R>
-ParseResult<R> failing_result(u32 pos, std::vector<std::pair<std::string, ParseLocation>> errors) {
-  return {pos, std::nullopt, std::move(errors)};
+ParseResult<R> failing_result(Slice s, std::vector<std::pair<std::string, ParseLocation>> errors) {
+  return {s, std::nullopt, std::move(errors)};
 }
 
 template <typename State, typename Token, typename P>
@@ -51,45 +58,45 @@ using parser_result_t = std::decay_t<decltype(*std::declval<P>()(ParseState<Stat
 namespace details {
 
 template <typename S, typename R, typename T>
-auto seq_helper(const ParseState<S, T>&, u32, ParseResult<R> res) {
+auto seq_helper(const ParseState<S, T>&, u32, ParseResult<R> r) {
   if constexpr(std::tuple_size_v<R> == 1) {
     using R2 = std::tuple_element_t<0, R>;
-    return res ? passing_result(res.pos, std::move(std::get<0>(*res.value)), std::move(res.errors))
-               : failing_result<R2>(res.pos, std::move(res.errors));
+    return r ? passing_result(r.slice, std::move(std::get<0>(*r.value)), std::move(r.errors))
+             : failing_result<R2>(r.slice, std::move(r.errors));
   } else {
-    return res;
+    return r;
   }
 }
 
 template <typename S, typename R, typename T, typename P, typename... Ps>
-auto seq_helper(const ParseState<S, T>& s, u32 depth, ParseResult<R> res, P p, Ps... ps) {
+auto seq_helper(const ParseState<S, T>& s, u32 depth, ParseResult<R> r, P p, Ps... ps) {
   if constexpr(std::is_same_v<std::tuple<>, std::decay_t<decltype(*p(s, ParseLocation{}).value)>>) {
-    if(res) {
-      auto opt = p(s, {res.pos, depth + 1});
+    if(r) {
+      auto r2 = p(s, {r.slice.offset + r.slice.size, depth + 1});
       return seq_helper(s,
                         depth,
-                        ParseResult<R>{opt.pos,
-                                       opt ? std::move(res.value) : std::nullopt,
-                                       merge(std::move(res.errors), std::move(opt.errors))},
+                        ParseResult<R>{{r.slice.offset, r.slice.size + r2.slice.size},
+                                       r2 ? std::move(r.value) : std::nullopt,
+                                       merge(std::move(r.errors), std::move(r2.errors))},
                         ps...);
     } else {
-      return seq_helper(s, depth, std::move(res), ps...);
+      return seq_helper(s, depth, std::move(r), ps...);
     }
   } else {
-    using R2 = decltype(std::tuple_cat(std::tuple(*res.value), std::tuple(*p(s, ParseLocation{}).value)));
+    using R2 = decltype(std::tuple_cat(std::tuple(*r.value), std::tuple(*p(s, ParseLocation{}).value)));
 
-    if(res) {
-      auto opt = p(s, {res.pos, depth + 1});
+    if(r) {
+      auto r2 = p(s, {r.slice.offset + r.slice.size, depth + 1});
       return seq_helper(s,
                         depth,
-                        ParseResult<R2>{opt.pos,
-                                        opt ? std::optional(std::tuple_cat(std::tuple(std::move(*res.value)),
-                                                                           std::tuple(std::move(*opt.value))))
-                                            : std::nullopt,
-                                        merge(std::move(res.errors), std::move(opt.errors))},
+                        ParseResult<R2>{{r.slice.offset, r.slice.size + r2.slice.size},
+                                        r2 ? std::optional(std::tuple_cat(std::tuple(std::move(*r.value)),
+                                                                          std::tuple(std::move(*r2.value))))
+                                           : std::nullopt,
+                                        merge(std::move(r.errors), std::move(r2.errors))},
                         ps...);
     } else {
-      return seq_helper(s, depth, failing_result<R2>(res.pos, std::move(res.errors)), ps...);
+      return seq_helper(s, depth, failing_result<R2>(r.slice, std::move(r.errors)), ps...);
     }
   }
 }
@@ -98,7 +105,7 @@ template <typename R, typename S, typename T>
 auto choose_helper(const ParseState<S, T>&,
                    ParseLocation loc,
                    std::vector<std::pair<std::string, ParseLocation>> errs) {
-  return failing_result<R>(loc.pos, std::move(errs));
+  return failing_result<R>({loc.pos, 0}, std::move(errs));
 }
 
 template <typename R, typename S, typename T, typename P, typename... Ps>
@@ -107,9 +114,9 @@ auto choose_helper(const ParseState<S, T>& s,
                    std::vector<std::pair<std::string, ParseLocation>> errs,
                    P p,
                    Ps... ps) {
-  auto opt = p(s, {loc.pos, loc.depth + 1});
-  return opt ? passing_result(opt.pos, R{std::move(*opt.value)}, std::move(opt.errors))
-             : choose_helper<R>(s, loc, merge(std::move(errs), std::move(opt.errors)), ps...);
+  auto r = p(s, {loc.pos, loc.depth + 1});
+  return r ? passing_result(r.slice, R{std::move(*r.value)}, std::move(r.errors))
+           : choose_helper<R>(s, loc, merge(std::move(errs), std::move(r.errors)), ps...);
 }
 
 } // namespace details
@@ -117,7 +124,7 @@ auto choose_helper(const ParseState<S, T>& s,
 template <typename... Ps>
 auto seq(Ps... ps) {
   return [=](const auto& s, ParseLocation loc) {
-    return details::seq_helper(s, loc.depth, passing_result(loc.pos, std::tuple()), ps...);
+    return details::seq_helper(s, loc.depth, passing_result({loc.pos, 0}, std::tuple()), ps...);
   };
 }
 
@@ -133,18 +140,20 @@ auto n(P p) {
   return [=](const auto& s, ParseLocation loc) {
     using T = typename std::decay_t<decltype(s)>::token_type;
 
+    Slice slice = {loc.pos, 0};
+
     std::vector<std::decay_t<decltype(*p(s, loc).value)>> results;
     std::vector<std::pair<std::string, ParseLocation>> errs;
 
     while(true) {
-      auto opt = p(s, {loc.pos, loc.depth + 1});
-      errs = merge(std::move(errs), std::move(opt.errors));
-      if(!opt) break;
-      results.push_back(std::move(*opt.value));
-      loc.pos = opt.pos;
+      auto r = p(s, {slice.offset + slice.size, loc.depth + 1});
+      errs = merge(std::move(errs), std::move(r.errors));
+      if(!r) break;
+      results.push_back(std::move(*r.value));
+      slice.size += r.slice.size;
     }
 
-    return passing_result(loc.pos, std::move(results), std::move(errs));
+    return passing_result(slice, std::move(results), std::move(errs));
   };
 }
 
@@ -152,41 +161,40 @@ inline auto any() {
   return [](const auto& s, ParseLocation loc) {
     using T = typename std::decay_t<decltype(s)>::token_type;
 
-    return loc.pos == s.tokens.size() ? failing_result<T>(loc.pos, {{"anything", loc}})
-                                      : passing_result(loc.pos + 1, std::move(s.tokens[loc.pos]));
+    return loc.pos == s.tokens.size() ? failing_result<T>({loc.pos}, {{"anything", loc}})
+                                      : passing_result({loc.pos, 1}, std::move(s.tokens[loc.pos]));
   };
 }
 
 template <typename P>
 auto maybe(P p) {
   return [=](const auto& s, ParseLocation loc) {
-    auto opt = p(s, {loc.pos, loc.depth + 1});
+    auto r = p(s, {loc.pos, loc.depth + 1});
 
     using T = typename std::decay_t<decltype(s)>::token_type;
-    using R = std::optional<std::decay_t<decltype(*opt.value)>>;
+    using R = std::optional<std::decay_t<decltype(*r.value)>>;
 
-    return opt ? passing_result(opt.pos, std::optional(std::move(*opt.value)), std::move(opt.errors))
-               : passing_result(loc.pos, std::optional(R{}), std::move(opt.errors));
+    return r ? passing_result(r.slice, std::optional(std::move(*r.value)), std::move(r.errors))
+             : passing_result({loc.pos, 0}, std::optional(R{}), std::move(r.errors));
   };
 }
 
 template <typename P, typename F>
 auto transform(P p, F f) {
   return [=](const auto& s, ParseLocation loc) {
-    auto opt = p(s, {loc.pos, loc.depth + 1});
+    auto r = p(s, {loc.pos, loc.depth + 1});
 
     using T = typename std::decay_t<decltype(s)>::token_type;
 
-    if constexpr(knot::is_tuple_like(decay(knot::Type<decltype(*opt.value)>{}))) {
-      using R = std::decay_t<decltype(std::apply(f, std::tuple_cat(std::tie(s.state), std::move(*opt.value))))>;
-      return opt ? passing_result(opt.pos,
-                                  std::apply(f, std::tuple_cat(std::tie(s.state), std::move(*opt.value))),
-                                  std::move(opt.errors))
-                 : failing_result<R>(opt.pos, std::move(opt.errors));
+    if constexpr(knot::is_tuple_like(decay(knot::Type<decltype(*r.value)>{}))) {
+      using R = std::decay_t<decltype(std::apply(f, std::tuple_cat(std::tie(s.state), std::move(*r.value))))>;
+      return r ? passing_result(
+                   r.slice, std::apply(f, std::tuple_cat(std::tie(s.state), std::move(*r.value))), std::move(r.errors))
+               : failing_result<R>(r.slice, std::move(r.errors));
     } else {
-      using R = std::decay_t<decltype(std::invoke(f, s.state, std::move(*opt.value)))>;
-      return opt ? passing_result(opt.pos, std::invoke(f, s.state, std::move(*opt.value)), std::move(opt.errors))
-                 : failing_result<R>(opt.pos, std::move(opt.errors));
+      using R = std::decay_t<decltype(std::invoke(f, s.state, std::move(*r.value)))>;
+      return r ? passing_result(r.slice, std::invoke(f, s.state, std::move(*r.value)), std::move(r.errors))
+               : failing_result<R>(r.slice, std::move(r.errors));
     }
   };
 }
@@ -194,29 +202,29 @@ auto transform(P p, F f) {
 template <typename P, typename F>
 auto filter(P p, std::string msg, F f) {
   return [=](const auto& s, ParseLocation loc) {
-    auto opt = p(s, {loc.pos, loc.depth + 1});
+    auto r = p(s, {loc.pos, loc.depth + 1});
 
-    return opt && f(s.state, *opt.value) ? opt : decltype(opt){loc.pos, std::nullopt, {{msg, loc}}};
+    return r && f(s.state, *r.value) ? r : decltype(r){{loc.pos, 0}, std::nullopt, {{msg, loc}}};
   };
 }
 
 template <typename P, typename F>
 auto transform_if(P p, std::string msg, F f) {
   return [=](const auto& s, ParseLocation loc) {
-    auto opt = p(s, {loc.pos, loc.depth + 1});
+    auto r = p(s, {loc.pos, loc.depth + 1});
 
-    using R = std::decay_t<decltype(*f(s.state, *opt.value))>;
+    using R = std::decay_t<decltype(*f(s.state, *r.value))>;
 
-    if(opt) {
-      ParseResult<R> r{opt.pos, f(s.state, *opt.value), std::move(opt.errors)};
+    if(r) {
+      ParseResult<R> r2{r.slice, f(s.state, *r.value), std::move(r.errors)};
 
-      if(!r) {
-        r.errors.emplace_back(msg, loc);
+      if(!r2) {
+        r2.errors.emplace_back(msg, loc);
       }
 
-      return r;
+      return r2;
     } else {
-      return failing_result<R>(opt.pos, std::move(opt.errors));
+      return failing_result<R>(r.slice, std::move(r.errors));
     }
   };
 }
@@ -224,9 +232,9 @@ auto transform_if(P p, std::string msg, F f) {
 template <typename P>
 auto nullify(P p) {
   return [=](const auto& s, ParseLocation loc) {
-    auto opt = p(s, {loc.pos, loc.depth + 1});
-    return opt ? passing_result(opt.pos, std::tuple(), std::move(opt.errors))
-               : failing_result<std::tuple<>>(opt.pos, std::move(opt.errors));
+    auto r = p(s, {loc.pos, loc.depth + 1});
+    return r ? passing_result(r.slice, std::tuple(), std::move(r.errors))
+             : failing_result<std::tuple<>>(r.slice, std::move(r.errors));
   };
 }
 
@@ -240,20 +248,13 @@ auto constant(std::string msg, T t) {
   return nullify(filter(any(), std::move(msg), [t = std::move(t)](const auto&, const auto& t2) { return t == t2; }));
 }
 
-template <typename Token, typename Parser, typename State = int>
-auto parse(const Parser& p, Span<Token> tokens, State state = {}) {
-  auto res = p(ParseState<State, Token>{std::move(state), tokens}, ParseLocation{});
-
-  using R = std::decay_t<decltype(*res.value)>;
-
-  std::sort(
-    res.errors.begin(), res.errors.end(), [](const auto& lhs, const auto& rhs) { return lhs.second < rhs.second; });
-
-  res.errors.erase(std::unique(res.errors.begin(), res.errors.end()), res.errors.end());
-
-  return (res && res.pos == tokens.size())
-           ? tl::expected<R, std::vector<std::pair<std::string, ParseLocation>>>{std::move(*res.value)}
-           : tl::unexpected{std::move(res.errors)};
+template <typename P, typename T, typename S = int>
+auto parse(P p, Span<T> tokens, S s = {}) {
+  auto r = p(ParseState<S, T>{s, tokens}, {});
+  return r && r.slice.size == tokens.size()
+           ? tl::expected<parser_result_t<S, T, P>, std::vector<std::pair<std::string, ParseLocation>>>{std::move(
+               *r.value)}
+           : tl::unexpected{std::move(r.errors)};
 }
 
 } // namespace ooze::pc

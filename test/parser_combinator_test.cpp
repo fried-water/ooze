@@ -13,128 +13,118 @@ auto pass(char c) {
   return filter(any(), std::string() + c, [=](int x, char c2) { return c == c2; });
 }
 
-template <typename P, typename R>
-auto test_pass(P parser,
-               const std::string& str,
-               R result,
-               int remaining = 0,
-               std::vector<std::pair<std::string, ParseLocation>> errors = {}) {
-  const Span<char> span(str.data(), str.size());
+template <typename R, typename P>
+auto test(P parser, std::string_view str, ParseResult<R> expected) {
+  const auto actual = parser(ParseState<int, char>{0, Span<char>(str.data(), str.size())}, {});
 
-  const auto actual = parser(ParseState<int, char>{0, span}, {});
-
-  BOOST_CHECK_EQUAL(remaining, span.size() - actual.pos);
-  BOOST_CHECK(errors == actual.errors);
-  BOOST_CHECK(actual.value.has_value());
-  BOOST_CHECK(!actual.value.has_value() || result == *actual.value);
-
-  if(errors != actual.errors) {
-    fmt::print("Actual:   {}\n", knot::debug(actual.errors));
-    fmt::print("Expected: {}\n", knot::debug(errors));
+  if(actual != expected) {
+    fmt::print("E {} {}\n", expected.value.has_value(), knot::debug(expected));
+    fmt::print("A {} {}\n", actual.value.has_value(), knot::debug(actual));
   }
-}
 
-template <typename P>
-auto test_fail(P parser,
-               const std::string& str,
-               int remaining = 0,
-               std::vector<std::pair<std::string, ParseLocation>> errors = {}) {
-  const Span<char> span(str.data(), str.size());
-
-  const auto actual = parser(ParseState<int, char>{0, span}, {});
-
-  BOOST_CHECK_EQUAL(actual.pos, str.size() - remaining);
-  BOOST_CHECK(!actual.value.has_value());
-  BOOST_CHECK(errors == actual.errors);
-
-  if(errors != actual.errors) {
-    fmt::print("Actual:   {}\n", knot::debug(actual.errors));
-    fmt::print("Expected: {}\n", knot::debug(errors));
-  }
+  BOOST_CHECK(expected == actual);
 }
 
 } // namespace
 
 BOOST_AUTO_TEST_CASE(pc_constant) {
-  test_pass(ch('a'), "a", std::tuple(), 0);
-  test_pass(ch('a'), "ab", std::tuple(), 1);
-  test_pass(ch('a'), "abc", std::tuple(), 2);
+  test(ch('a'), "a", passing_result({0, 1}, std::tuple()));
+  test(ch('a'), "ab", passing_result({0, 1}, std::tuple()));
+  test(ch('a'), "abc", passing_result({0, 1}, std::tuple()));
 
-  test_fail(ch('a'), "b", 1, {{"a", {0, 1}}});
-  test_fail(ch('a'), "", 0, {{"a", {0, 1}}});
+  test(ch('a'), "b", failing_result<std::tuple<>>({0, 0}, {{"a", {0, 1}}}));
+  test(ch('a'), "", failing_result<std::tuple<>>({0, 0}, {{"a", {0, 1}}}));
 }
 
 BOOST_AUTO_TEST_CASE(pc_any) {
-  test_pass(any(), "a", 'a', 0);
-  test_pass(any(), "b", 'b', 0);
-  test_pass(any(), "ab", 'a', 1);
+  test(any(), "a", passing_result({0, 1}, 'a'));
+  test(any(), "b", passing_result({0, 1}, 'b'));
+  test(any(), "ab", passing_result({0, 1}, 'a'));
 
-  test_fail(any(), "", 0, {{"anything", {0, 0}}});
+  test(any(), "", failing_result<char>({0, 0}, {{"anything", {0, 0}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pc_transform_if) {
-  test_pass(pass('a'), "a", 'a', 0);
-  test_pass(pass('b'), "b", 'b', 0);
-  test_pass(pass('a'), "ab", 'a', 1);
+BOOST_AUTO_TEST_CASE(pc_filter) {
+  test(pass('a'), "a", passing_result({0, 1}, 'a'));
+  test(pass('b'), "b", passing_result({0, 1}, 'b'));
+  test(pass('a'), "ab", passing_result({0, 1}, 'a'));
 
-  test_fail(pass('a'), "", 0, {{"a", {0, 0}}});
-  test_fail(pass('a'), "b", 1, {{"a", {0, 0}}});
+  test(pass('a'), "", failing_result<char>({0, 0}, {{"a", {0, 0}}}));
+  test(pass('a'), "b", failing_result<char>({0, 0}, {{"a", {0, 0}}}));
 }
 
 BOOST_AUTO_TEST_CASE(pc_maybe) {
-  test_pass(maybe(ch('a')), "a", std::tuple(), 0);
-  test_pass(maybe(ch('a')), "ab", std::tuple(), 1);
-  test_pass(maybe(ch('a')), "abc", std::tuple(), 2);
+  test(maybe(ch('a')), "a", passing_result({0, 1}, std::optional(std::tuple())));
+  test(maybe(ch('a')), "ab", passing_result({0, 1}, std::optional(std::tuple())));
+  test(maybe(ch('a')), "abc", passing_result({0, 1}, std::optional(std::tuple())));
 
-  test_pass(maybe(ch('a')), "b", std::nullopt, 1, {{"a", {0, 2}}});
-  test_pass(maybe(ch('a')), "", std::nullopt, 0, {{"a", {0, 2}}});
+  test(maybe(ch('a')), "", passing_result<std::optional<std::tuple<>>>({0, 0}, std::nullopt, {{"a", {0, 2}}}));
+  test(maybe(ch('a')), "b", passing_result<std::optional<std::tuple<>>>({0, 0}, std::nullopt, {{"a", {0, 2}}}));
 }
 
 BOOST_AUTO_TEST_CASE(pc_n) {
-  test_pass(n(ch('a')), "", std::vector<std::tuple<>>{}, 0, {{"a", {0, 2}}});
-  test_pass(n(ch('a')), "a", std::vector<std::tuple<>>{{}}, 0, {{"a", {1, 2}}});
-  test_pass(n(ch('a')), "aa", std::vector<std::tuple<>>{{}, {}}, 0, {{"a", {2, 2}}});
-  test_pass(n(ch('a')), "aab", std::vector<std::tuple<>>{{}, {}}, 1, {{"a", {2, 2}}});
-  test_pass(n(ch('a')), "b", std::vector<std::tuple<>>{}, 1, {{"a", {0, 2}}});
+  test(n(ch('a')), "", passing_result({0, 0}, std::vector<std::tuple<>>{}, {{"a", {0, 2}}}));
+  test(n(ch('a')), "a", passing_result({0, 1}, std::vector<std::tuple<>>{{}}, {{"a", {1, 2}}}));
+  test(n(ch('a')), "aa", passing_result({0, 2}, std::vector<std::tuple<>>{{}, {}}, {{"a", {2, 2}}}));
+  test(n(ch('a')), "aab", passing_result({0, 2}, std::vector<std::tuple<>>{{}, {}}, {{"a", {2, 2}}}));
+  test(n(ch('a')), "b", passing_result({0, 0}, std::vector<std::tuple<>>{}, {{"a", {0, 2}}}));
 }
 
 BOOST_AUTO_TEST_CASE(pc_seq) {
-  test_pass(seq(), "", std::tuple(), 0);
-  test_pass(seq(), "a", std::tuple(), 1);
+  test(seq(), "", passing_result({0, 0}, std::tuple()));
+  test(seq(), "a", passing_result({0, 0}, std::tuple()));
 
-  test_pass(seq(ch('a')), "a", std::tuple(), 0);
-  test_pass(seq(ch('a'), ch('b')), "ab", std::tuple(), 0);
+  test(seq(ch('a')), "a", passing_result({0, 1}, std::tuple()));
+  test(seq(ch('a'), ch('b')), "ab", passing_result({0, 2}, std::tuple()));
 
-  test_pass(seq(pass('a'), ch('b')), "ab", 'a', 0);
-  test_pass(seq(ch('a'), pass('b')), "ab", 'b', 0);
-  test_pass(seq(pass('a'), pass('b')), "ab", std::tuple('a', 'b'), 0);
+  test(seq(pass('a'), ch('b')), "ab", passing_result({0, 2}, 'a'));
+  test(seq(ch('a'), pass('b')), "ab", passing_result({0, 2}, 'b'));
+  test(seq(pass('a'), pass('b')), "ab", passing_result({0, 2}, std::tuple('a', 'b')));
 
-  test_pass(seq(pass('a'), pass('b'), pass('c')), "abc", std::tuple('a', 'b', 'c'), 0);
-  test_pass(seq(ch('a'), pass('b'), ch('c')), "abc", 'b', 0);
-  test_pass(seq(pass('a'), ch('b'), pass('c')), "abc", std::tuple('a', 'c'), 0);
+  test(seq(pass('a'), pass('b'), pass('c')), "abc", passing_result({0, 3}, std::tuple('a', 'b', 'c')));
+  test(seq(ch('a'), pass('b'), ch('c')), "abc", passing_result({0, 3}, 'b'));
+  test(seq(pass('a'), ch('b'), pass('c')), "abc", passing_result({0, 3}, std::tuple('a', 'c')));
 
-  test_fail(seq(ch('a')), "", 0, {{"a", {0, 2}}});
-  test_fail(seq(ch('a')), "b", 1, {{"a", {0, 2}}});
-  test_fail(seq(ch('a'), ch('b')), "a", 0, {{"b", {1, 2}}});
-  test_fail(seq(ch('a'), ch('b')), "aa", 1, {{"b", {1, 2}}});
+  test(seq(ch('a')), "", failing_result<std::tuple<>>({0, 0}, {{"a", {0, 2}}}));
+  test(seq(ch('a')), "b", failing_result<std::tuple<>>({0, 0}, {{"a", {0, 2}}}));
+  test(seq(ch('a'), ch('b')), "a", failing_result<std::tuple<>>({0, 1}, {{"b", {1, 2}}}));
+  test(seq(ch('a'), ch('b')), "aa", failing_result<std::tuple<>>({0, 1}, {{"b", {1, 2}}}));
 
-  test_pass(seq(maybe(ch('a'))), "", std::nullopt, 0, {{"a", {0, 3}}});
-  test_pass(seq(maybe(ch('a'))), "a", std::tuple(), 0);
+  test(seq(maybe(ch('a'))), "", passing_result<std::optional<std::tuple<>>>({0, 0}, {}, {{"a", {0, 3}}}));
+  test(seq(maybe(ch('a'))), "a", passing_result({0, 1}, std::optional(std::tuple())));
 
-  test_pass(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
-            "c",
-            std::tuple(std::nullopt, std::nullopt),
-            0,
-            {{"a", {0, 3}}, {"b", {0, 3}}});
-  test_pass(
-    seq(maybe(ch('a')), maybe(ch('b')), ch('c')), "bc", std::tuple(std::nullopt, std::tuple()), 0, {{"a", {0, 3}}});
-  test_pass(
-    seq(maybe(ch('a')), maybe(ch('b')), ch('c')), "ac", std::tuple(std::tuple(), std::nullopt), 0, {{"b", {1, 3}}});
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "c",
+       passing_result({0, 1},
+                      std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>(std::nullopt, std::nullopt),
+                      {{"a", {0, 3}}, {"b", {0, 3}}}));
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "bc",
+       passing_result({0, 2},
+                      std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>(std::nullopt, std::tuple()),
+                      {{"a", {0, 3}}}));
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "ac",
+       passing_result({0, 2},
+                      std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>(std::tuple(), std::nullopt),
+                      {{"b", {1, 3}}}));
 
-  test_fail(seq(maybe(ch('a')), maybe(ch('b')), ch('c')), "a", 0, {{"b", {1, 3}}, {"c", {1, 2}}});
-  test_fail(seq(maybe(ch('a')), maybe(ch('b')), ch('c')), "b", 0, {{"a", {0, 3}}, {"c", {1, 2}}});
-  test_fail(seq(maybe(ch('a')), maybe(ch('b')), ch('c')), "", 0, {{"a", {0, 3}}, {"b", {0, 3}}, {"c", {0, 2}}});
-  test_fail(seq(maybe(ch('a')), maybe(ch('b')), ch('c')), "d", 1, {{"a", {0, 3}}, {"b", {0, 3}}, {"c", {0, 2}}});
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "a",
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
+         {0, 1}, {{"b", {1, 3}}, {"c", {1, 2}}}));
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "b",
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
+         {0, 1}, {{"a", {0, 3}}, {"c", {1, 2}}}));
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "",
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
+         {0, 0}, {{"a", {0, 3}}, {"b", {0, 3}}, {"c", {0, 2}}}));
+  test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
+       "d",
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
+         {0, 0}, {{"a", {0, 3}}, {"b", {0, 3}}, {"c", {0, 2}}}));
 }
 
 struct CH1 {
@@ -143,11 +133,13 @@ struct CH1 {
 };
 
 BOOST_AUTO_TEST_CASE(pc_choose) {
-  test_pass(choose(pass('a')), "a", std::variant<char>('a'), 0);
-  test_pass(choose(pass('a'), construct<CH1>(pass('b'))), "b", std::variant<char, CH1>(CH1{'b'}), 0);
-  test_pass(choose(pass('a'), construct<CH1>(pass('a'))), "a", std::variant<char, CH1>('a'), 0);
+  test(choose(pass('a')), "a", passing_result({0, 1}, std::variant<char>('a')));
+  test(choose(pass('a'), construct<CH1>(pass('b'))), "b", passing_result({0, 1}, std::variant<char, CH1>(CH1{'b'})));
+  test(choose(pass('a'), construct<CH1>(pass('b'))), "a", passing_result({0, 1}, std::variant<char, CH1>('a')));
 
-  test_fail(choose(pass('a'), construct<CH1>(pass('b'))), "c", 1, {{"a", {0, 1}}, {"b", {0, 2}}});
+  test(choose(pass('a'), construct<CH1>(pass('b'))),
+       "c",
+       failing_result<std::variant<char, CH1>>({0, 0}, {{"a", {0, 1}}, {"b", {0, 2}}}));
 }
 
 } // namespace ooze::pc
