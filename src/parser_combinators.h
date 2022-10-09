@@ -11,13 +11,6 @@ struct ParseState {
   Span<Token> tokens;
 };
 
-template <typename Token>
-struct ParseState<void, Token> {
-  using token_type = Token;
-
-  Span<Token> tokens;
-};
-
 struct ParseLocation {
   u32 pos = 0;
   u32 depth = 0;
@@ -180,21 +173,20 @@ auto maybe(P p) {
 }
 
 struct Invoker {
-  template <typename F, typename S, typename Arg>
-  auto operator()(F f, S s, Arg arg) {
-    if constexpr(knot::is_tuple_like(decay(knot::Type<Arg>{}))) {
-      if constexpr(std::is_invocable_v<F, decltype(std::tuple_cat(std::tie(s), arg))>) {
-        return std::apply(f, std::tuple_cat(std::tie(s), std::forward<Arg>(arg)));
-      } else {
-        return std::apply(f, std::forward<Arg>(arg));
-      }
+  template <typename F, typename S, typename Token, typename... Args>
+  auto operator()(F f, const S& s, Span<Token> tokens, Slice slice, Args... args) {
+    if constexpr(std::is_invocable_v<F, const S&, Span<Token>, Slice, Args...>) {
+      return f(s, tokens, slice, std::move(args)...);
+    } else if constexpr(std::is_invocable_v<F, const S&, Args...>) {
+      return f(s, std::move(args)...);
     } else {
-      if constexpr(std::is_invocable_v<F, S, Arg>) {
-        return f(s, std::forward<Arg>(arg));
-      } else {
-        return f(std::forward<Arg>(arg));
-      }
+      return f(std::move(args)...);
     }
+  }
+
+  template <typename F, typename S, typename Token, typename... Args>
+  auto operator()(F f, const S& s, Span<Token> tokens, Slice slice, std::tuple<Args...> arg) {
+    return std::apply(*this, std::tuple_cat(std::tuple(std::move(f), std::cref(s), tokens, slice), std::move(arg)));
   }
 };
 
@@ -202,8 +194,10 @@ template <typename P, typename F>
 auto transform(P p, F f) {
   return [=](const auto& s, ParseLocation loc) {
     auto r = p(s, {loc.pos, loc.depth + 1});
-    return r ? passing_result(r.slice, Invoker{}(f, s.state, std::move(*r.value)), std::move(r.errors))
-             : failing_result<decltype(Invoker{}(f, s.state, *r.value))>(r.slice, std::move(r.errors));
+    return r ? passing_result(
+                 r.slice, Invoker{}(f, s.state, s.tokens, r.slice, std::move(*r.value)), std::move(r.errors))
+             : failing_result<decltype(Invoker{}(f, s.state, s.tokens, r.slice, *r.value))>(r.slice,
+                                                                                            std::move(r.errors));
   };
 }
 
@@ -211,7 +205,9 @@ template <typename P, typename F>
 auto filter(P p, std::string msg, F f) {
   return [=](const auto& s, ParseLocation loc) {
     auto r = p(s, {loc.pos, loc.depth + 1});
-    return r && Invoker{}(f, s.state, *r.value) ? r : decltype(r){{loc.pos, 0}, std::nullopt, {{msg, loc}}};
+    return r && Invoker{}(f, s.state, s.tokens, r.slice, *r.value)
+             ? r
+             : decltype(r){{loc.pos, 0}, std::nullopt, {{msg, loc}}};
   };
 }
 
@@ -220,10 +216,10 @@ auto transform_if(P p, std::string msg, F f) {
   return [=](const auto& s, ParseLocation loc) {
     auto r = p(s, {loc.pos, loc.depth + 1});
 
-    using R = std::decay_t<decltype(*Invoker{}(f, s.state, *r.value))>;
+    using R = std::decay_t<decltype(*Invoker{}(f, s.state, s.tokens, r.slice, *r.value))>;
 
     if(r) {
-      ParseResult<R> r2{r.slice, Invoker{}(f, s.state, *r.value), std::move(r.errors)};
+      ParseResult<R> r2{r.slice, Invoker{}(f, s.state, s.tokens, r.slice, std::move(*r.value)), std::move(r.errors)};
 
       if(!r2) {
         r2.errors.emplace_back(msg, loc);
@@ -247,7 +243,7 @@ auto nullify(P p) {
 
 template <typename T, typename P>
 auto construct(P p) {
-  return transform(p, [](const auto&, auto&&... ts) { return T{std::forward<decltype(ts)>(ts)...}; });
+  return transform(p, [](const auto&, auto, Slice, auto&&... ts) { return T{std::forward<decltype(ts)>(ts)...}; });
 }
 
 template <typename T>
