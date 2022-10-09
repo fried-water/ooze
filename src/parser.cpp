@@ -12,20 +12,18 @@ namespace {
 auto src_sv(std::string_view src, Slice s) { return std::string_view(src.begin() + s.offset, s.size); }
 
 auto token_parser(TokenType type) {
-  return pc::transform(pc::filter(pc::any(), "token", [=](std::string_view src, Token t) { return t.type == type; }),
+  return pc::transform(pc::filter(pc::any(), "token", [=](Token t) { return t.type == type; }),
                        [](std::string_view src, Token t) { return src_sv(src, t.ref); });
 }
 
 auto symbol(std::string_view sv) {
-  return pc::nullify(pc::filter(token_parser(TokenType::Symbol),
-                                fmt::format("'{}'", sv),
-                                [=](std::string_view src, std::string_view t) { return t == sv; }));
+  return pc::nullify(
+    pc::filter(token_parser(TokenType::Symbol), fmt::format("'{}'", sv), [=](std::string_view t) { return t == sv; }));
 }
 
 auto keyword(std::string_view sv) {
-  return pc::nullify(pc::filter(token_parser(TokenType::Keyword),
-                                fmt::format("'{}'", sv),
-                                [=](std::string_view src, std::string_view t) { return t == sv; }));
+  return pc::nullify(
+    pc::filter(token_parser(TokenType::Keyword), fmt::format("'{}'", sv), [=](std::string_view t) { return t == sv; }));
 }
 
 auto ident() { return pc::construct<std::string>(token_parser(TokenType::Ident)); }
@@ -36,7 +34,7 @@ template <typename P>
 auto list(P p) {
   return pc::transform(
     pc::seq(symbol("("), pc::choose(symbol(")"), pc::seq(pc::n(pc::seq(p, symbol(","))), p, symbol(")")))),
-    [](auto, auto v) -> std::vector<pc::parser_result_t<std::string_view, Token, P>> {
+    [](auto v) -> std::vector<pc::parser_result_t<std::string_view, Token, P>> {
       if(v.index() == 0) {
         return {};
       } else {
@@ -49,14 +47,14 @@ auto list(P p) {
 
 template <typename P>
 auto list_or_one(P p) {
-  return pc::transform(pc::choose(list(p), p), [](auto, auto v) {
+  return pc::transform(pc::choose(list(p), p), [](auto v) {
     return v.index() == 0 ? std::get<0>(std::move(v)) : std::vector{std::move(std::get<1>(v))};
   });
 }
 
 auto parameter() {
   return pc::transform(pc::seq(ident(), symbol(":"), pc::maybe(symbol("&")), type_ident()),
-                       [](auto, std::string name, std::optional<std::tuple<>> opt, NamedType type) {
+                       [](std::string name, std::optional<std::tuple<>> opt, NamedType type) {
                          return ast::Parameter<NamedType>{std::move(name), std::move(type), opt.has_value()};
                        });
 }
@@ -71,7 +69,7 @@ pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>&
                pc::transform_if(pc::any(),
                                 "literal",
                                 [](std::string_view src, Token t) { return to_literal(t.type, src_sv(src, t.ref)); })),
-    [](const auto&, auto v) {
+    [](auto v) {
       return std::visit(
         Overloaded{[](auto&& tuple) {
                      auto&& [binding, parameters, chain] = std::move(tuple);
