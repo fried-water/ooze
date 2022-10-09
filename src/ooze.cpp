@@ -31,15 +31,15 @@ std::optional<Command> parse_cmd_line(int argc, const char** argv) {
   } else {
     const std::string_view cmd = argv[1];
 
-    std::vector<std::string> errors;
+    std::vector<std::string> filenames;
     for(int i = 2; i < argc; i++) {
-      errors.push_back(argv[i]);
+      filenames.push_back(argv[i]);
     }
 
     if(cmd == "run") {
-      return Command{true, std::move(errors)};
+      return Command{true, std::move(filenames)};
     } else if(cmd == "repl") {
-      return Command{false, std::move(errors)};
+      return Command{false, std::move(filenames)};
     } else {
       return std::nullopt;
     }
