@@ -143,7 +143,7 @@ Result<std::vector<Binding>> run_function(RuntimeEnv& r, const CheckedFunction& 
 } // namespace
 
 Result<void> parse_script(Env& e, std::string_view script) {
-  return parse(script).map_error(generate_error_msg).and_then([&](AST ast) {
+  return parse(script).and_then([&](AST ast) {
     std::vector<std::string> errors;
 
     for(const auto& f : ast) {
@@ -164,7 +164,6 @@ Result<void> parse_script(Env& e, std::string_view script) {
 
 Result<std::vector<Binding>> run(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
-    .map_error(generate_error_msg)
     .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_function_body(std::move(e))); })
     .and_then([&](TypedBody b) { return overload_resolution(r, std::move(b)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); });
@@ -172,7 +171,6 @@ Result<std::vector<Binding>> run(RuntimeEnv& r, std::string_view expr) {
 
 Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
-    .map_error(generate_error_msg)
     .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_function_body(var))); })
     .and_then(
       [&](auto tup) { return merge(std::move(std::get<0>(tup)), overload_resolution(r, std::move(std::get<1>(tup)))); })
@@ -182,7 +180,6 @@ Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignme
 
 Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
-    .map_error(generate_error_msg)
     .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_function_body(std::move(e))); })
     .and_then([&](TypedBody b) { return check_and_wrap(r, std::move(b)); })
     .and_then([&](TypedBody b) { return overload_resolution(r, std::move(b)); })
@@ -192,7 +189,6 @@ Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view e
 
 Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
-    .map_error(generate_error_msg)
     .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_function_body(var))); })
     .and_then([&](auto tup) {
       return std::holds_alternative<UnTypedAssignment>(std::get<0>(tup))

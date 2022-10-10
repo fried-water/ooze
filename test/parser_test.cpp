@@ -9,7 +9,7 @@ namespace ooze::ast {
 namespace {
 
 void parse_error(std::string_view src, std::vector<std::string> expected) {
-  const auto result = parse(src).map_error(generate_error_msg);
+  const auto result = parse(src);
 
   BOOST_REQUIRE(!result);
 
