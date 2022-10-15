@@ -66,28 +66,43 @@ auto parameter() {
 
 auto binding() { return construct<ast::Binding<NamedType>>(seq(ident(), maybe(seq(symbol(":"), type_ident())))); }
 
-ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
-  return transform(
-    choose(seq(ident(), maybe(list(expr)), n(seq(symbol("."), ident(), list(expr)))),
-           transform_if(
-             any(), "literal", [](std::string_view src, Token t) { return to_literal(t.type, src_sv(src, t.ref)); })),
-    [](auto v) {
-      return std::visit(Overloaded{[](auto&& tuple) {
-                                     auto&& [binding, parameters, chain] = std::move(tuple);
+auto literal_expr() {
+  return pc::transform_if(pc::any(), "literal", [](std::string_view src, Token t) {
+    auto opt_literal = to_literal(t.type, src_sv(src, t.ref));
+    return opt_literal ? std::optional(UnTypedExpr{std::move(*opt_literal), t.ref}) : std::nullopt;
+  });
+}
 
-                                     UnTypedExpr acc = parameters ? UnTypedExpr{ast::Call<NamedFunction>{
-                                                                      std::move(binding), std::move(*parameters)}}
-                                                                  : UnTypedExpr{std::move(binding)};
+auto binding_expr() {
+  return pc::transform(ident(), [](std::string_view src, Span<Token> tokens, Slice slice, std::string binding) {
+    return UnTypedExpr{std::move(binding), src_slice(tokens, slice)};
+  });
+}
 
-                                     for(auto&& [binding, parameters] : chain) {
-                                       parameters.insert(parameters.begin(), std::move(acc));
-                                       acc = UnTypedExpr{ast::Call<NamedFunction>{binding, std::move(parameters)}};
-                                     }
+pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>&, pc::ParseLocation);
 
-                                     return acc;
-                                   },
-                                   [](Literal l) { return UnTypedExpr{std::move(l)}; }},
-                        std::move(v));
+auto call_expr() {
+  return pc::transform(
+    pc::seq(ident(), list(expr)),
+    [](
+      std::string_view src, Span<Token> tokens, Slice slice, std::string binding, std::vector<UnTypedExpr> parameters) {
+      return UnTypedExpr{ast::Call<NamedFunction>{std::move(binding), std::move(parameters)}, src_slice(tokens, slice)};
+    });
+}
+
+pc::ParseResult<UnTypedExpr> expr(const pc::ParseState<std::string_view, Token>& s, pc::ParseLocation loc) {
+  return pc::transform(
+    pc::seq(pc::choose(call_expr(), binding_expr(), literal_expr()), pc::n(pc::seq(symbol("."), call_expr()))),
+    [](UnTypedExpr acc, std::vector<UnTypedExpr> chain) {
+      return accumulate(
+        std::move(chain),
+        [](UnTypedExpr acc, UnTypedExpr next) {
+          auto& params = std::get<ast::Call<NamedFunction>>(next.v).parameters;
+          params.insert(params.begin(), std::move(acc));
+          next.ref.begin = acc.ref.begin;
+          return next;
+        },
+        std::move(acc));
     })(s, loc);
 }
 

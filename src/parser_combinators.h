@@ -132,9 +132,8 @@ auto seq(Ps... ps) {
 template <typename... Ps>
 auto choose(Ps... ps) {
   return [=](const auto& s, ParseLocation loc) {
-    constexpr auto list = knot::TypeList<decltype(*ps(s, loc).value)...>{};
-    constexpr auto decayed_list = knot::map(list, [](auto t) { return decay(t); });
-    constexpr auto variant_type = as_variant(uniquify(decayed_list));
+    constexpr auto variant_type =
+      as_variant(uniquify(map(knot::TypeList<decltype(*ps(s, loc).value)...>{}, [](auto t) { return decay(t); })));
     return details::choose_helper<knot::type_t<decltype(variant_type)>>(s, loc, {}, ps...);
   };
 }
@@ -218,7 +217,7 @@ auto filter(P p, std::string msg, F f) {
     auto r = p(s, {loc.pos, loc.depth + 1});
     return r && Invoker{}(f, s.state, s.tokens, r.slice, *r.value)
              ? r
-             : decltype(r){{loc.pos, loc.pos}, std::nullopt, {{msg, loc}}};
+             : decltype(r){{loc.pos, loc.pos}, std::nullopt, merge(std::move(r.error), {{msg, loc}})};
   };
 }
 

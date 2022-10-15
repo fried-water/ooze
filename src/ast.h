@@ -19,6 +19,7 @@ struct Call {
 template <typename F>
 struct Expr {
   std::variant<Call<F>, std::string, Literal> v;
+  Slice ref;
 
   KNOT_ORDERED(Expr);
 };

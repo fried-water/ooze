@@ -6,7 +6,7 @@ template <typename... Ts, typename... Us>
 constexpr auto uniquify(knot::TypeList<Ts...> x, knot::TypeList<Us...> y) {
   if constexpr(size(y) == 0) {
     return x;
-  } else if constexpr(((knot::Type<Ts>{} == head(y)) || ...)) {
+  } else if constexpr(contains(x, head(y))) {
     return uniquify(x, tail(y));
   } else {
     return uniquify(knot::TypeList<Ts..., knot::type_t<decltype(head(y))>>{}, tail(y));
