@@ -22,6 +22,8 @@ struct ParseLocation {
 
 template <typename Result>
 struct ParseResult {
+  using value_type = Result;
+
   Slice slice = {};
   std::optional<Result> value;
   std::optional<std::pair<std::string, ParseLocation>> error;
@@ -53,8 +55,9 @@ ParseResult<R> failing_result(Slice s, std::optional<std::pair<std::string, Pars
   return {s, std::nullopt, std::move(error)};
 }
 
-template <typename State, typename Token, typename P>
-using parser_result_t = std::decay_t<decltype(*std::declval<P>()(ParseState<State, Token>{}, ParseLocation{}).value)>;
+template <typename S, typename T, typename P>
+using parser_result_t =
+  knot::type_t<decltype(value_type(invoke_result(knot::Type<P>{}, knot::TypeList<ParseState<S, T>, ParseLocation>{})))>;
 
 namespace details {
 
@@ -103,21 +106,23 @@ auto seq_helper(const ParseState<S, T>& s, u32 depth, ParseResult<R> r, P p, Ps.
 }
 
 template <typename R, typename S, typename T>
-auto choose_helper(const ParseState<S, T>&,
+auto choose_helper(knot::Type<R>,
+                   const ParseState<S, T>&,
                    ParseLocation loc,
                    std::optional<std::pair<std::string, ParseLocation>> err) {
   return failing_result<R>({loc.pos, loc.pos}, std::move(err));
 }
 
 template <typename R, typename S, typename T, typename P, typename... Ps>
-auto choose_helper(const ParseState<S, T>& s,
+auto choose_helper(knot::Type<R> result_type,
+                   const ParseState<S, T>& s,
                    ParseLocation loc,
                    std::optional<std::pair<std::string, ParseLocation>> err,
                    P p,
                    Ps... ps) {
   auto r = p(s, {loc.pos, loc.depth + 1});
   return r ? passing_result(r.slice, R{std::move(*r.value)}, merge(std::move(err), std::move(r.error)))
-           : choose_helper<R>(s, loc, merge(std::move(err), std::move(r.error)), ps...);
+           : choose_helper(result_type, s, loc, merge(std::move(err), std::move(r.error)), ps...);
 }
 
 } // namespace details
@@ -132,9 +137,12 @@ auto seq(Ps... ps) {
 template <typename... Ps>
 auto choose(Ps... ps) {
   return [=](const auto& s, ParseLocation loc) {
-    constexpr auto variant_type =
-      as_variant(uniquify(map(knot::TypeList<decltype(*ps(s, loc).value)...>{}, [](auto t) { return decay(t); })));
-    return details::choose_helper<knot::type_t<decltype(variant_type)>>(s, loc, {}, ps...);
+    return details::choose_helper(
+      as_variant(uniquify(map(knot::TypeList<decltype(*ps(s, loc).value)...>{}, [](auto t) { return decay(t); }))),
+      s,
+      loc,
+      {},
+      ps...);
   };
 }
 
@@ -244,11 +252,7 @@ auto transform_if(P p, std::string msg, F f) {
 
 template <typename P>
 auto nullify(P p) {
-  return [=](const auto& s, ParseLocation loc) {
-    auto r = p(s, {loc.pos, loc.depth + 1});
-    return r ? passing_result(r.slice, std::tuple(), std::move(r.error))
-             : failing_result<std::tuple<>>(r.slice, std::move(r.error));
-  };
+  return transform(p, [](const auto&) { return std::tuple(); });
 }
 
 template <typename T, typename P>
