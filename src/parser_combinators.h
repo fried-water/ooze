@@ -1,5 +1,7 @@
 #pragma once
 
+#include "traits.h"
+
 namespace ooze::pc {
 
 template <typename State, typename Token>
@@ -124,7 +126,10 @@ auto seq(Ps... ps) {
 template <typename... Ps>
 auto choose(Ps... ps) {
   return [=](const auto& s, ParseLocation loc) {
-    return details::choose_helper<std::variant<std::decay_t<decltype(*ps(s, loc).value)>...>>(s, loc, {}, ps...);
+    constexpr auto list = knot::TypeList<decltype(*ps(s, loc).value)...>{};
+    constexpr auto decayed_list = knot::map(list, [](auto t) { return decay(t); });
+    constexpr auto variant_type = as_variant(uniquify(decayed_list));
+    return details::choose_helper<knot::type_t<decltype(variant_type)>>(s, loc, {}, ps...);
   };
 }
 
