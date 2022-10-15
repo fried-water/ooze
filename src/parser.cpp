@@ -115,7 +115,7 @@ Result<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, 
     return std::move(*value);
   } else {
     std::sort(errors.begin(), errors.end(), [](const auto& lhs, const auto& rhs) {
-      return std::tuple(-lhs.second.pos, lhs.second.depth) < std::tuple(-rhs.second.pos, lhs.second.depth);
+      return std::tuple(-lhs.second.pos, lhs.second.depth) < std::tuple(-rhs.second.pos, rhs.second.depth);
     });
 
     return tl::unexpected{

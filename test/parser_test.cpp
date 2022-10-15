@@ -212,22 +212,16 @@ BOOST_AUTO_TEST_CASE(parser_bad_type_paren) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_unclosed) {
-  parse_error("fn f() -> T { a( }",
-              {"1:17 error: expected token", // ?
-               " | fn f() -> T { a( }",
-               " |                  ^"});
+  parse_error("fn f() -> T { a( }", {"1:17 error: expected ')'", " | fn f() -> T { a( }", " |                  ^"});
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_unopened) {
-  parse_error("fn f() -> T { a) }",
-              {"1:15 error: expected '('", // ?
-               " | fn f() -> T { a) }",
-               " |                ^"});
+  parse_error("fn f() -> T { a) }", {"1:15 error: expected '}'", " | fn f() -> T { a) }", " |                ^"});
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_bad_comma) {
   parse_error("fn f() -> T { a(1,) }",
-              {"1:18 error: expected token", // ?
+              {"1:18 error: expected literal", // ?
                " | fn f() -> T { a(1,) }",
                " |                   ^"});
 }
@@ -259,7 +253,7 @@ BOOST_AUTO_TEST_CASE(parser_let_no_var) {
 
 BOOST_AUTO_TEST_CASE(parser_let_no_expr) {
   parse_error("fn f() -> T { let x = }",
-              {"1:22 error: expected token", // ?
+              {"1:22 error: expected literal", // ?
                " | fn f() -> T { let x = }",
                " |                       ^"});
 }
