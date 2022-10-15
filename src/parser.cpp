@@ -11,8 +11,6 @@ using namespace pc;
 
 namespace {
 
-Slice src_slice(Span<Token> tokens, Slice s) { return Slice{tokens[s.begin].ref.begin, tokens[s.end - 1].ref.end}; }
-
 std::string_view src_sv(std::string_view src, Slice s) {
   return std::string_view(src.begin() + s.begin, s.end - s.begin);
 }
@@ -32,8 +30,15 @@ auto keyword(std::string_view sv) {
     filter(token_parser(TokenType::Keyword), fmt::format("'{}'", sv), [=](std::string_view t) { return t == sv; }));
 }
 
+template <typename T, typename P>
+auto construct_with_ref(P p) {
+  return transform(p, [](const auto&, auto tokens, Slice s, auto&&... ts) {
+    return T{std::forward<decltype(ts)>(ts)..., Slice{tokens[s.begin].ref.begin, tokens[s.end - 1].ref.end}};
+  });
+}
+
 auto ident() { return construct<std::string>(token_parser(TokenType::Ident)); }
-auto type_ident() { return construct<NamedType>(ident()); }
+auto type_ident() { return construct_with_ref<NamedType>(ident()); }
 auto function_ident() { return construct<NamedFunction>(ident()); }
 
 template <typename P>
@@ -73,21 +78,12 @@ auto literal_expr() {
   });
 }
 
-auto binding_expr() {
-  return transform(ident(), [](std::string_view src, Span<Token> tokens, Slice slice, std::string binding) {
-    return UnTypedExpr{std::move(binding), src_slice(tokens, slice)};
-  });
-}
+auto binding_expr() { return construct_with_ref<UnTypedExpr>(ident()); }
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>&, ParseLocation);
 
 auto call_expr() {
-  return transform(
-    seq(ident(), list(expr)),
-    [](
-      std::string_view src, Span<Token> tokens, Slice slice, std::string binding, std::vector<UnTypedExpr> parameters) {
-      return UnTypedExpr{ast::Call<NamedFunction>{std::move(binding), std::move(parameters)}, src_slice(tokens, slice)};
-    });
+  return construct_with_ref<UnTypedExpr>(construct<ast::Call<NamedFunction>>(seq(ident(), list(expr))));
 }
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {

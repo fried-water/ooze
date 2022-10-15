@@ -237,13 +237,9 @@ auto transform_if(P p, std::string msg, F f) {
     using R = std::decay_t<decltype(*Invoker{}(f, s.state, s.tokens, r.slice, *r.value))>;
 
     if(r) {
-      ParseResult<R> r2{r.slice, Invoker{}(f, s.state, s.tokens, r.slice, std::move(*r.value)), std::move(r.error)};
-
-      if(!r2) {
-        r2.error = merge(std::move(r2.error), {{msg, loc}});
-      }
-
-      return r2;
+      std::optional<R> result = Invoker{}(f, s.state, s.tokens, r.slice, std::move(*r.value));
+      return result ? passing_result(r.slice, std::move(*result), std::move(r.error))
+                    : failing_result<R>(r.slice, merge(std::move(r.error), {{msg, loc}}));
     } else {
       return failing_result<R>(r.slice, std::move(r.error));
     }
