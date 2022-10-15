@@ -134,8 +134,10 @@ struct CH1 {
 
 BOOST_AUTO_TEST_CASE(pc_choose) {
   test(choose(pass('a')), "a", passing_result({0, 1}, 'a'));
-  test(choose(pass('a'), pass('b')), "b", passing_result({0, 1}, 'b'));
-  test(choose(pass('a'), construct<CH1>(pass('b'))), "b", passing_result({0, 1}, std::variant<char, CH1>(CH1{'b'})));
+  test(choose(pass('a'), pass('b')), "b", passing_result({0, 1}, 'b', {{"a", {0, 1}}}));
+  test(choose(pass('a'), construct<CH1>(pass('b'))),
+       "b",
+       passing_result({0, 1}, std::variant<char, CH1>(CH1{'b'}), {{"a", {0, 1}}}));
   test(
     choose(pass('a'), pass('b'), construct<CH1>(pass('c'))), "a", passing_result({0, 1}, std::variant<char, CH1>('a')));
 

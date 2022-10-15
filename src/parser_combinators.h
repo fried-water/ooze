@@ -100,7 +100,7 @@ template <typename R, typename S, typename T>
 auto choose_helper(const ParseState<S, T>&,
                    ParseLocation loc,
                    std::vector<std::pair<std::string, ParseLocation>> errs) {
-  return failing_result<R>({loc.pos, 0}, std::move(errs));
+  return failing_result<R>({loc.pos, loc.pos}, std::move(errs));
 }
 
 template <typename R, typename S, typename T, typename P, typename... Ps>
@@ -110,7 +110,7 @@ auto choose_helper(const ParseState<S, T>& s,
                    P p,
                    Ps... ps) {
   auto r = p(s, {loc.pos, loc.depth + 1});
-  return r ? passing_result(r.slice, R{std::move(*r.value)}, std::move(r.errors))
+  return r ? passing_result(r.slice, R{std::move(*r.value)}, merge(std::move(errs), std::move(r.errors)))
            : choose_helper<R>(s, loc, merge(std::move(errs), std::move(r.errors)), ps...);
 }
 
