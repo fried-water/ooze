@@ -109,21 +109,18 @@ template <typename Parser>
 Result<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
-  auto [parse_slice, value, errors] = p(ParseState<std::string_view, Token>{src, tokens}, {});
+  auto [parse_slice, value, error] = p(ParseState<std::string_view, Token>{src, tokens}, {});
+
+  assert(value || error);
 
   if(value && size(parse_slice) == tokens.size() && lex_end == src.size()) {
     return std::move(*value);
   } else {
-    std::sort(errors.begin(), errors.end(), [](const auto& lhs, const auto& rhs) {
-      return std::tuple(-lhs.second.pos, lhs.second.depth) < std::tuple(-rhs.second.pos, rhs.second.depth);
-    });
-
-    return tl::unexpected{
-      contextualize(src,
-                    errors.empty() ? fmt::format("unknown token") : fmt::format("expected {}", errors.front().first),
-                    (errors.empty() || errors.front().second.pos == tokens.size())
-                      ? Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1}
-                      : tokens[errors.front().second.pos].ref)};
+    return tl::unexpected{contextualize(src,
+                                        error ? fmt::format("expected {}", error->first) : fmt::format("unknown token"),
+                                        (error && error->second.pos < tokens.size())
+                                          ? tokens[error->second.pos].ref
+                                          : Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1})};
   }
 }
 

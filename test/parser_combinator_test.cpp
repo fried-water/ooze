@@ -97,7 +97,7 @@ BOOST_AUTO_TEST_CASE(pc_seq) {
        "c",
        passing_result({0, 1},
                       std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>(std::nullopt, std::nullopt),
-                      {{"a", {0, 3}}, {"b", {0, 3}}}));
+                      {{"a", {0, 3}}}));
   test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
        "bc",
        passing_result({0, 2},
@@ -111,20 +111,16 @@ BOOST_AUTO_TEST_CASE(pc_seq) {
 
   test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
        "a",
-       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
-         {0, 1}, {{"b", {1, 3}}, {"c", {1, 2}}}));
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>({0, 1}, {{"c", {1, 2}}}));
   test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
        "b",
-       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
-         {0, 1}, {{"a", {0, 3}}, {"c", {1, 2}}}));
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>({0, 1}, {{"c", {1, 2}}}));
   test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
        "",
-       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
-         {0, 0}, {{"a", {0, 3}}, {"b", {0, 3}}, {"c", {0, 2}}}));
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>({0, 0}, {{"c", {0, 2}}}));
   test(seq(maybe(ch('a')), maybe(ch('b')), ch('c')),
        "d",
-       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>(
-         {0, 0}, {{"a", {0, 3}}, {"b", {0, 3}}, {"c", {0, 2}}}));
+       failing_result<std::tuple<std::optional<std::tuple<>>, std::optional<std::tuple<>>>>({0, 0}, {{"c", {0, 2}}}));
 }
 
 struct CH1 {
@@ -143,7 +139,7 @@ BOOST_AUTO_TEST_CASE(pc_choose) {
 
   test(choose(pass('a'), construct<CH1>(pass('b'))),
        "c",
-       failing_result<std::variant<char, CH1>>({0, 0}, {{"a", {0, 1}}, {"b", {0, 2}}}));
+       failing_result<std::variant<char, CH1>>({0, 0}, {{"a", {0, 1}}}));
 }
 
 } // namespace ooze::pc
