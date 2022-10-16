@@ -116,7 +116,7 @@ auto function_body() {
 auto function() { return construct<UnTypedFunction>(seq(keyword("fn"), ident(), function_header(), function_body())); }
 
 template <typename Parser>
-Result<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
+ContextualResult<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
   auto [parse_slice, value, error] = p(ParseState<std::string_view, Token>{src, tokens}, {});
@@ -126,46 +126,23 @@ Result<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, 
   if(value && size(parse_slice) == tokens.size() && lex_end == src.size()) {
     return std::move(*value);
   } else {
-    return tl::unexpected{contextualize(src,
-                                        error ? fmt::format("expected {}", error->first) : fmt::format("unknown token"),
-                                        (error && error->second.pos < tokens.size())
-                                          ? tokens[error->second.pos].ref
-                                          : Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1})};
+    return tl::unexpected{std::vector<ContextualError>{
+      {(error && error->second.pos < tokens.size()) ? tokens[error->second.pos].ref
+                                                    : Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1},
+       error ? fmt::format("expected {}", error->first) : fmt::format("unknown token")}}};
   }
 }
 
 } // namespace
 
-Result<UnTypedExpr> parse_expr(std::string_view src) { return parse_string(expr, src); }
+ContextualResult<UnTypedExpr> parse_expr(std::string_view src) { return parse_string(expr, src); }
 
-Result<std::variant<UnTypedExpr, UnTypedAssignment>> parse_repl(std::string_view src) {
+ContextualResult<std::variant<UnTypedExpr, UnTypedAssignment>> parse_repl(std::string_view src) {
   return parse_string(choose(expr, assignment()), src);
 }
 
-Result<UnTypedFunction> parse_function(std::string_view src) { return parse_string(function(), src); }
+ContextualResult<UnTypedFunction> parse_function(std::string_view src) { return parse_string(function(), src); }
 
-Result<AST> parse(std::string_view src) { return parse_string(n(function()), src); }
-
-std::vector<std::string> contextualize(std::string_view src, std::string_view msg, Slice slice) {
-  const auto pos = src.begin() + slice.begin;
-  const auto is_newline = [](char c) { return c == '\n'; };
-
-  const auto line_begin =
-    std::find_if(std::make_reverse_iterator(pos), std::make_reverse_iterator(src.begin()), is_newline).base();
-
-  const auto line_no = std::count_if(src.begin(), line_begin, is_newline) + 1;
-  const auto col_no = std::distance(line_begin, pos);
-
-  const std::string error_line(line_begin, std::find_if(pos, src.end(), is_newline));
-
-  std::string highlight = "";
-  for(int i = 0; i < col_no; i++) highlight += " ";
-  highlight += '^';
-  for(int i = 0; i < static_cast<int>(size(slice)) - 1; i++) highlight += "~";
-
-  return {fmt::format("{}:{} error: {}", line_no, col_no, msg),
-          fmt::format(" | {}", error_line),
-          fmt::format(" | {}", highlight)};
-}
+ContextualResult<AST> parse(std::string_view src) { return parse_string(n(function()), src); }
 
 } // namespace ooze

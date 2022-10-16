@@ -18,8 +18,9 @@ auto errors(Ts... ts) {
 }
 
 void test_or(const Env& e, const std::vector<EnvFunctionRef>& overloads, std::string_view f) {
-  const auto function_result =
-    parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+  const auto function_result = parse_function(f)
+                                 .map_error([&](auto errors) { return contextualize(f, std::move(errors)); })
+                                 .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(function_result.has_value());
 
   int f_idx = 0;
@@ -30,8 +31,9 @@ void test_or(const Env& e, const std::vector<EnvFunctionRef>& overloads, std::st
 }
 
 void test_or_error(const Env& e, std::string_view f, const std::vector<std::string>& expected_errors) {
-  const auto function_result =
-    parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+  const auto function_result = parse_function(f)
+                                 .map_error([&](auto errors) { return contextualize(f, std::move(errors)); })
+                                 .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(function_result.has_value());
 
   const auto result = overload_resolution(e, function_result.value());
@@ -53,9 +55,10 @@ void test_expr_or(const Env& e,
                   const std::vector<EnvFunctionRef>& overloads,
                   const std::unordered_map<std::string, TypeID>& bindings,
                   std::string_view expr_or_assign) {
-  const auto body_result = parse_repl(expr_or_assign).map(convert_to_function_body).and_then([&](const UnTypedBody& b) {
-    return type_name_resolution(e, b);
-  });
+  const auto body_result = parse_repl(expr_or_assign)
+                             .map_error([&](auto errors) { return contextualize(expr_or_assign, std::move(errors)); })
+                             .map(convert_to_function_body)
+                             .and_then([&](const UnTypedBody& b) { return type_name_resolution(e, b); });
   BOOST_REQUIRE(body_result.has_value());
 
   int f_idx = 0;
@@ -70,9 +73,10 @@ void test_expr_or_error(const Env& e,
                         std::string_view expr_or_assign,
                         const std::vector<std::string>& expected_errors,
                         const std::unordered_map<std::string, TypeID>& bindings = {}) {
-  const auto body_result = parse_repl(expr_or_assign).map(convert_to_function_body).and_then([&](const UnTypedBody& b) {
-    return type_name_resolution(e, b);
-  });
+  const auto body_result = parse_repl(expr_or_assign)
+                             .map_error([&](auto errors) { return contextualize(expr_or_assign, std::move(errors)); })
+                             .map(convert_to_function_body)
+                             .and_then([&](const UnTypedBody& b) { return type_name_resolution(e, b); });
   BOOST_REQUIRE(body_result.has_value());
 
   const auto result = overload_resolution(e, body_result.value(), bindings);

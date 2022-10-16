@@ -21,6 +21,7 @@ add_library(ooze
   src/graph_construction.cpp
   src/type_check.cpp
   src/repl.cpp
+  src/user_msg.cpp
   src/queries.cpp
   src/ooze.cpp)
 
