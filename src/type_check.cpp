@@ -75,18 +75,18 @@ bool output_type_check(Span<TypeID> expected, Span<std::optional<TypeProperties>
   return true;
 }
 
-Result<std::tuple<int, const EnvFunction*>>
+ContextualResult<std::tuple<int, const EnvFunction*>>
 overload_resolution(const Env& e,
                     const TypedExpr* expr,
                     const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types,
                     const std::optional<std::vector<std::optional<TypeProperties>>>& propagated_outputs) {
   const auto& call = std::get<Call<NamedFunction>>(expr->v);
 
-  std::vector<std::string> errors;
+  std::vector<ContextualError> errors;
   const auto fit = e.functions.find(call.function.name);
 
   if(fit == e.functions.end()) {
-    errors.push_back(fmt::format("use of undeclared function '{}'", call.function.name));
+    errors.push_back({{}, fmt::format("use of undeclared function '{}'", call.function.name)});
   }
 
   std::vector<std::optional<TypeProperties>> inputs;
@@ -97,7 +97,7 @@ overload_resolution(const Env& e,
     } else if(eit->second.size() == 1) {
       inputs.push_back(eit->second.front());
     } else {
-      errors.push_back(fmt::format("call to function {} takes an expr that returns a tuple", call.function.name));
+      errors.push_back({{}, fmt::format("call to function {} takes an expr that returns a tuple", call.function.name)});
     }
   }
 
@@ -122,29 +122,31 @@ overload_resolution(const Env& e,
   if(results.size() == 1) {
     return results.front();
   } else if(results.empty()) {
-    std::vector<std::string> errors{fmt::format("no matching overload found, deduced {}{} -> {} [{} candidate(s)]",
-                                                call.function.name,
-                                                type_list_string(e, inputs),
-                                                outputs ? type_list_string(e, *outputs) : "_",
-                                                fit->second.size())};
+    ContextualError error{{},
+                          fmt::format("no matching overload found, deduced {}{} -> {} [{} candidate(s)]",
+                                      call.function.name,
+                                      type_list_string(e, inputs),
+                                      outputs ? type_list_string(e, *outputs) : "_",
+                                      fit->second.size())};
 
     for(const auto& function : fit->second) {
-      errors.push_back(fmt::format("  {}", function_string(e, call.function.name, function)));
+      error.notes.push_back(fmt::format("  {}", function_string(e, call.function.name, function)));
     }
 
-    return tl::unexpected{std::move(errors)};
+    return tl::unexpected{std::vector<ContextualError>{std::move(error)}};
   } else {
-    std::vector<std::string> errors{fmt::format("function call is ambiguous, deduced {}{} -> {} [{} candidate(s)]",
-                                                call.function.name,
-                                                type_list_string(e, inputs),
-                                                outputs ? type_list_string(e, *outputs) : "_",
-                                                results.size())};
+    ContextualError error{{},
+                          fmt::format("function call is ambiguous, deduced {}{} -> {} [{} candidate(s)]",
+                                      call.function.name,
+                                      type_list_string(e, inputs),
+                                      outputs ? type_list_string(e, *outputs) : "_",
+                                      results.size())};
 
     for(const auto& [ref, function] : results) {
-      errors.push_back(fmt::format("  {}", function_string(e, call.function.name, *function)));
+      error.notes.push_back(fmt::format("  {}", function_string(e, call.function.name, *function)));
     }
 
-    return tl::unexpected{std::move(errors)};
+    return tl::unexpected{std::vector<ContextualError>{std::move(error)}};
   }
 }
 
@@ -406,12 +408,12 @@ auto constraint_propagation(const Env& e, const PropagationCaches& pc, std::vect
   return std::pair(std::move(expr_types), std::move(conflicting_types));
 }
 
-Result<CheckedBody>
+ContextualResult<CheckedBody>
 find_overloads(const Env& e,
                const TypedBody& b,
                const PropagationCaches& pc,
                const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types) {
-  Map<const NamedFunction*, Result<std::tuple<int, const EnvFunction*>>> overloads;
+  Map<const NamedFunction*, ContextualResult<std::tuple<int, const EnvFunction*>>> overloads;
 
   knot::preorder(b, [&](const TypedExpr& expr) {
     if(const auto* call = std::get_if<Call<NamedFunction>>(&expr.v); call) {
@@ -419,12 +421,12 @@ find_overloads(const Env& e,
     }
   });
 
-  std::vector<std::string> errors;
+  std::vector<ContextualError> errors;
 
   CheckedBody checked_body = knot::map<CheckedBody>(b, [&](const NamedFunction& f) {
     auto& result = overloads.at(&f);
     if(!result.has_value()) {
-      for(std::string& error : result.error()) {
+      for(auto& error : result.error()) {
         errors.push_back(std::move(error));
       }
     }
@@ -452,11 +454,11 @@ deduced_single_type(const std::vector<const TypedExpr*>& exprs,
   return p == TypeProperties{} ? std::nullopt : std::optional(p);
 }
 
-Result<TypedHeader>
+ContextualResult<TypedHeader>
 generate_header(const TypedBody& b,
                 const Map<BindingRef, std::vector<const TypedExpr*>>& uses,
                 const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types) {
-  std::vector<std::string> errors;
+  std::vector<ContextualError> errors;
 
   TypedHeader header;
 
@@ -466,7 +468,7 @@ generate_header(const TypedBody& b,
       if(const auto p = deduced_single_type(exprs, expr_types); p) {
         header.parameters.push_back(ast::Parameter<TypeID>{*name_ptr, p->id, !p->value});
       } else {
-        errors.push_back(fmt::format("unable to deduce type of '{}'", *name_ptr));
+        errors.push_back({{}, fmt::format("unable to deduce type of '{}'", *name_ptr)});
       }
     }
   }
@@ -477,33 +479,31 @@ generate_header(const TypedBody& b,
     if(const auto it = expr_types.find(&expr); it != expr_types.end()) {
       for(const auto& opt_type : it->second) {
         if(!opt_type) {
-          errors.push_back("unable to deduce return type");
+          errors.push_back({expr.ref, "unable to deduce return type"});
         } else {
           header.result.push_back(opt_type->id);
         }
       }
     } else {
-      errors.push_back("unable to deduce return type");
+      errors.push_back({expr.ref, "unable to deduce return type"});
     }
   }
 
   return value_or_errors(std::move(header), std::move(errors));
 }
 
-Result<void> extra_checks(const TypedFunction& f, const PropagationCaches& pc) {
-  std::vector<std::string> errors;
+ContextualResult<void> extra_checks(const TypedFunction& f, const PropagationCaches& pc) {
+  std::vector<ContextualError> errors;
 
   for(const auto& [name, exprs] : pc.uses) {
     if(const auto name_ptr = std::get_if<std::string>(&name); name_ptr) {
       const auto it = std::find_if(
         f.header.parameters.begin(), f.header.parameters.end(), [&](const auto& p) { return p.name == *name_ptr; });
       if(it == f.header.parameters.end()) {
-        errors.push_back(fmt::format("use of undeclared binding '{}'", *name_ptr));
+        errors.push_back({{}, fmt::format("use of undeclared binding '{}'", *name_ptr)});
       }
     }
   }
-
-  std::sort(errors.begin(), errors.end());
 
   for(const auto& result_expr : f.body.result) {
     if(const auto binding_it = pc.binding_of.find(&result_expr); binding_it != pc.binding_of.end()) {
@@ -511,65 +511,65 @@ Result<void> extra_checks(const TypedFunction& f, const PropagationCaches& pc) {
         const auto it = std::find_if(
           f.header.parameters.begin(), f.header.parameters.end(), [&](const auto& p) { return p.name == *name_ptr; });
         if(it != f.header.parameters.end() && it->borrow) {
-          errors.push_back(fmt::format("attempting to return borrowed parameter '{}'", *name_ptr));
+          errors.push_back({{}, fmt::format("attempting to return borrowed parameter '{}'", *name_ptr)});
         }
       }
     }
   }
 
   if(!f.header.result.empty() && f.body.result.size() != 1 && f.header.result.size() != f.body.result.size()) {
-    errors.push_back(
-      fmt::format("function header expects {} return values, given {}", f.header.result.size(), f.body.result.size()));
+    errors.push_back({{},
+                      fmt::format("function header expects {} return values, given {}",
+                                  f.header.result.size(),
+                                  f.body.result.size())});
   }
 
-  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
+  return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
 }
 
-Result<void> check_missing_bindings(const Map<BindingRef, std::vector<const TypedExpr*>>& uses,
-                                    const std::unordered_map<std::string, TypeID>& bindings) {
-  std::vector<std::string> errors;
+ContextualResult<void> check_missing_bindings(const Map<BindingRef, std::vector<const TypedExpr*>>& uses,
+                                              const std::unordered_map<std::string, TypeID>& bindings) {
+  std::vector<ContextualError> errors;
 
   for(const auto& [name, exprs] : uses) {
     if(const auto name_ptr = std::get_if<std::string>(&name); name_ptr) {
       if(const auto it = bindings.find(*name_ptr); it == bindings.end()) {
-        errors.push_back(fmt::format("use of undeclared binding '{}'", *name_ptr));
+        errors.push_back({{}, fmt::format("use of undeclared binding '{}'", *name_ptr)});
       }
     }
   }
 
-  std::sort(errors.begin(), errors.end());
-
-  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
+  return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
 }
 
-Result<void>
+ContextualResult<void>
 check_conflicting_errors(const Env& e,
                          const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types,
                          const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& conflicting_types) {
-  std::vector<std::string> errors;
+  std::vector<ContextualError> errors;
 
   for(const auto& [expr, types] : conflicting_types) {
     const auto& expected_types = expr_types.at(expr);
-    errors.push_back(fmt::format("expected {}, found {}",
-                                 expected_types.size() == 1 ? type_name_or_id(e, *expected_types.front())
-                                                            : type_list_string(e, expected_types),
-                                 types.size() == 1 ? type_name_or_id(e, *types.front()) : type_list_string(e, types)));
+    errors.push_back(
+      {{},
+       fmt::format("expected {}, found {}",
+                   expected_types.size() == 1 ? type_name_or_id(e, *expected_types.front())
+                                              : type_list_string(e, expected_types),
+                   types.size() == 1 ? type_name_or_id(e, *types.front()) : type_list_string(e, types))});
   }
 
-  std::sort(errors.begin(), errors.end());
-
-  return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
+  return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
 }
 
 template <typename Typed, typename Untyped>
-Result<Typed> type_name_resolution(const Env& e, const Untyped& u) {
-  std::vector<std::string> errors;
+ContextualResult<Typed> type_name_resolution(const Env& e, const Untyped& u) {
+  std::vector<ContextualError> errors;
 
   auto typed = knot::map<Typed>(u, [&](const NamedType& type) {
     if(const auto it = e.type_ids.find(type.name); it != e.type_ids.end()) {
       return it->second;
     } else {
-      errors.push_back(fmt::format("use of undefined type {}", type.name));
+      errors.push_back({type.ref, "undefined type"});
       return TypeID{};
     }
   });
@@ -593,14 +593,14 @@ UnTypedBody convert_to_function_body(std::variant<UnTypedExpr, UnTypedAssignment
                     std::move(v));
 }
 
-Result<TypedFunction> type_name_resolution(const Env& e, const UnTypedFunction& f) {
+ContextualResult<TypedFunction> type_name_resolution(const Env& e, const UnTypedFunction& f) {
   return type_name_resolution<TypedFunction>(e, std::tie(f.header, f.body));
 }
-Result<TypedBody> type_name_resolution(const Env& e, const UnTypedBody& b) {
+ContextualResult<TypedBody> type_name_resolution(const Env& e, const UnTypedBody& b) {
   return type_name_resolution<TypedBody>(e, b);
 }
 
-Result<CheckedFunction> overload_resolution(const Env& e, const TypedFunction& f) {
+ContextualResult<CheckedFunction> overload_resolution(const Env& e, const TypedFunction& f) {
   const PropagationCaches pc = calculate_propagation_caches(f.body);
 
   const auto [expr_types, conflicting_types] =
@@ -615,7 +615,7 @@ Result<CheckedFunction> overload_resolution(const Env& e, const TypedFunction& f
     });
 }
 
-Result<CheckedFunction>
+ContextualResult<CheckedFunction>
 overload_resolution(const Env& e, const TypedBody& body, const std::unordered_map<std::string, TypeID>& bindings) {
   const PropagationCaches pc = calculate_propagation_caches(body);
 

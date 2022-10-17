@@ -14,13 +14,12 @@ const TypeID F = anyf::type_id<f32>();
 
 template <typename... Ts>
 auto errors(Ts... ts) {
-  return tl::unexpected{std::vector<std::string>{std::move(ts)...}};
+  return tl::unexpected{std::vector<ContextualError>{std::move(ts)...}};
 }
 
 void test_or(const Env& e, const std::vector<EnvFunctionRef>& overloads, std::string_view f) {
-  const auto function_result = parse_function(f)
-                                 .map_error([&](auto errors) { return contextualize(f, std::move(errors)); })
-                                 .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+  const auto function_result =
+    parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(function_result.has_value());
 
   int f_idx = 0;
@@ -30,10 +29,9 @@ void test_or(const Env& e, const std::vector<EnvFunctionRef>& overloads, std::st
   BOOST_CHECK(expected == overload_resolution(e, function_result.value()));
 }
 
-void test_or_error(const Env& e, std::string_view f, const std::vector<std::string>& expected_errors) {
-  const auto function_result = parse_function(f)
-                                 .map_error([&](auto errors) { return contextualize(f, std::move(errors)); })
-                                 .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+void test_or_error(const Env& e, std::string_view f, const std::vector<ContextualError>& expected_errors) {
+  const auto function_result =
+    parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(function_result.has_value());
 
   const auto result = overload_resolution(e, function_result.value());
@@ -41,13 +39,10 @@ void test_or_error(const Env& e, std::string_view f, const std::vector<std::stri
   BOOST_REQUIRE(!result.has_value());
 
   if(expected_errors != result.error()) {
-    fmt::print("{}\n", knot::debug(result.error()));
+    fmt::print("E {}\n", knot::debug(expected_errors));
+    fmt::print("A {}\n", knot::debug(result.error()));
   }
-  BOOST_REQUIRE_EQUAL(expected_errors.size(), result.error().size());
-
-  for(size_t i = 0; i < result.error().size(); i++) {
-    BOOST_CHECK_EQUAL(expected_errors[i], result.error()[i]);
-  }
+  BOOST_CHECK(expected_errors == result.error());
 }
 
 void test_expr_or(const Env& e,
@@ -55,10 +50,9 @@ void test_expr_or(const Env& e,
                   const std::vector<EnvFunctionRef>& overloads,
                   const std::unordered_map<std::string, TypeID>& bindings,
                   std::string_view expr_or_assign) {
-  const auto body_result = parse_repl(expr_or_assign)
-                             .map_error([&](auto errors) { return contextualize(expr_or_assign, std::move(errors)); })
-                             .map(convert_to_function_body)
-                             .and_then([&](const UnTypedBody& b) { return type_name_resolution(e, b); });
+  const auto body_result = parse_repl(expr_or_assign).map(convert_to_function_body).and_then([&](const UnTypedBody& b) {
+    return type_name_resolution(e, b);
+  });
   BOOST_REQUIRE(body_result.has_value());
 
   int f_idx = 0;
@@ -71,12 +65,11 @@ void test_expr_or(const Env& e,
 
 void test_expr_or_error(const Env& e,
                         std::string_view expr_or_assign,
-                        const std::vector<std::string>& expected_errors,
+                        const std::vector<ContextualError>& expected_errors,
                         const std::unordered_map<std::string, TypeID>& bindings = {}) {
-  const auto body_result = parse_repl(expr_or_assign)
-                             .map_error([&](auto errors) { return contextualize(expr_or_assign, std::move(errors)); })
-                             .map(convert_to_function_body)
-                             .and_then([&](const UnTypedBody& b) { return type_name_resolution(e, b); });
+  const auto body_result = parse_repl(expr_or_assign).map(convert_to_function_body).and_then([&](const UnTypedBody& b) {
+    return type_name_resolution(e, b);
+  });
   BOOST_REQUIRE(body_result.has_value());
 
   const auto result = overload_resolution(e, body_result.value(), bindings);
@@ -86,11 +79,7 @@ void test_expr_or_error(const Env& e,
   if(expected_errors != result.error()) {
     fmt::print("{}\n", knot::debug(result.error()));
   }
-  BOOST_REQUIRE_EQUAL(expected_errors.size(), result.error().size());
-
-  for(size_t i = 0; i < result.error().size(); i++) {
-    BOOST_CHECK_EQUAL(expected_errors[i], result.error()[i]);
-  }
+  BOOST_CHECK(expected_errors == result.error());
 }
 
 } // namespace
@@ -226,49 +215,53 @@ BOOST_AUTO_TEST_CASE(cp_undeclared_function) {
 
   test_or_error(env,
                 "fn f() -> () { missing() }",
-                {
+                {{
+                  {},
                   "use of undeclared function 'missing'",
-                });
+                }});
 }
 
 BOOST_AUTO_TEST_CASE(cp_undeclared_binding) {
   Env env = create_primative_env();
   env.add_function("f", [](i32) {});
 
-  test_or_error(env, "fn f() -> () { f(x) }", {"use of undeclared binding 'x'"});
+  test_or_error(env, "fn f() -> () { f(x) }", {{{}, "use of undeclared binding 'x'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_arity_mismatch) {
   Env env = create_primative_env();
 
-  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {"function header expects 2 return values, given 3"});
+  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {{{}, "function header expects 2 return values, given 3"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_arg_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(env,
-                "fn f() -> i32 { identity() }",
-                {"no matching overload found, deduced identity() -> (i32) [1 candidate(s)]", "  identity(i32) -> i32"});
+  test_or_error(
+    env,
+    "fn f() -> i32 { identity() }",
+    {{{}, "no matching overload found, deduced identity() -> (i32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_bind_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(env,
-                "fn f(x: i32) -> i32 { let () = identity(x) x }",
-                {"no matching overload found, deduced identity(i32) -> () [1 candidate(s)]", "  identity(i32) -> i32"});
+  test_or_error(
+    env,
+    "fn f(x: i32) -> i32 { let () = identity(x) x }",
+    {{{}, "no matching overload found, deduced identity(i32) -> () [1 candidate(s)]", {"  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_return_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(env,
-                "fn f(x: i32) -> () { identity(x) }",
-                {"no matching overload found, deduced identity(i32) -> () [1 candidate(s)]", "  identity(i32) -> i32"});
+  test_or_error(
+    env,
+    "fn f(x: i32) -> () { identity(x) }",
+    {{{}, "no matching overload found, deduced identity(i32) -> () [1 candidate(s)]", {"  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_arg_type) {
@@ -278,7 +271,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_arg_type) {
   test_or_error(
     env,
     "fn f(x: u32) -> i32 { identity(x) }",
-    {"no matching overload found, deduced identity(u32) -> (i32) [1 candidate(s)]", "  identity(i32) -> i32"});
+    {{{}, "no matching overload found, deduced identity(u32) -> (i32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_bind_type) {
@@ -288,7 +281,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_bind_type) {
   test_or_error(
     env,
     "fn f(x: i32) -> i32 { let x: u32 = identity(x) x }",
-    {"no matching overload found, deduced identity(i32) -> (u32) [1 candidate(s)]", "  identity(i32) -> i32"});
+    {{{}, "no matching overload found, deduced identity(i32) -> (u32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_return_type) {
@@ -298,7 +291,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_return_type) {
   test_or_error(
     env,
     "fn f(x: i32) -> u32 { identity(x) }",
-    {"no matching overload found, deduced identity(i32) -> (u32) [1 candidate(s)]", "  identity(i32) -> i32"});
+    {{{}, "no matching overload found, deduced identity(i32) -> (u32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
@@ -307,26 +300,30 @@ BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
 
   test_or_error(env,
                 "fn f(x: &i32) -> () { val(x) }",
-                {"no matching overload found, deduced val(&i32) -> () [1 candidate(s)]", "  val(i32) -> ()"});
+                {{{}, "no matching overload found, deduced val(&i32) -> () [1 candidate(s)]", {"  val(i32) -> ()"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_type_no_functions) {
   Env env = create_primative_env();
 
-  // Todo add src context
-  test_or_error(env, "fn f(x: i32) -> f32 { x }", {"expected i32, found f32"});
-  test_or_error(env, "fn f(x: i32) -> f32 { let y = x y }", {"expected f32, found i32", "expected i32, found f32"});
+  test_or_error(env, "fn f(x: i32) -> f32 { x }", {{{}, "expected i32, found f32"}});
   test_or_error(
-    env, "fn f(x: i32) -> f32 { let y: i32 = x y }", {"expected f32, found i32", "expected i32, found f32"});
+    env, "fn f(x: i32) -> f32 { let y = x y }", {{{}, "expected i32, found f32"}, {{}, "expected f32, found i32"}});
+  test_or_error(env,
+                "fn f(x: i32) -> f32 { let y: i32 = x y }",
+                {{{}, "expected i32, found f32"}, {{}, "expected f32, found i32"}});
+  test_or_error(env,
+                "fn f(x: i32) -> f32 { let y: f32 = x y }",
+                {{{}, "expected f32, found i32"}, {{}, "expected i32, found f32"}});
+  test_or_error(env, "fn f() -> f32 { 1 }", {{{}, "expected f32, found i32"}});
   test_or_error(
-    env, "fn f(x: i32) -> f32 { let y: f32 = x y }", {"expected f32, found i32", "expected i32, found f32"});
-  test_or_error(env, "fn f() -> f32 { 1 }", {"expected f32, found i32"});
-  test_or_error(env, "fn f() -> f32 { let x = 1 x }", {"expected f32, found i32", "expected i32, found f32"});
-  test_or_error(env, "fn f() -> f32 { let x: f32 = 1 x }", {"expected f32, found i32"});
+    env, "fn f() -> f32 { let x = 1 x }", {{{}, "expected f32, found i32"}, {{}, "expected i32, found f32"}});
+  test_or_error(env, "fn f() -> f32 { let x: f32 = 1 x }", {{{}, "expected f32, found i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_copy_ref_arg) {
-  test_or_error(create_primative_env(), "fn f(x: &i32) -> i32 { x }", {"attempting to return borrowed parameter 'x'"});
+  test_or_error(
+    create_primative_env(), "fn f(x: &i32) -> i32 { x }", {{{}, "attempting to return borrowed parameter 'x'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_simple) {
@@ -381,16 +378,16 @@ BOOST_AUTO_TEST_CASE(cp_expr_deduced_binding_borrow) {
 BOOST_AUTO_TEST_CASE(cp_expr_undeclared_function) {
   Env env = create_primative_env();
 
-  test_expr_or_error(env, "missing()", {"use of undeclared function 'missing'"});
-  test_expr_or_error(env, "let x = missing()", {"use of undeclared function 'missing'"});
+  test_expr_or_error(env, "missing()", {{{}, "use of undeclared function 'missing'"}});
+  test_expr_or_error(env, "let x = missing()", {{{}, "use of undeclared function 'missing'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undeclared_binding) {
   Env env = create_primative_env();
   env.add_function("f", [](i32) {});
 
-  test_expr_or_error(env, "f(x)", {"use of undeclared binding 'x'"});
-  test_expr_or_error(env, "let y = f(x)", {"use of undeclared binding 'x'"});
+  test_expr_or_error(env, "f(x)", {{{}, "use of undeclared binding 'x'"}});
+  test_expr_or_error(env, "let y = f(x)", {{{}, "use of undeclared binding 'x'"}});
 }
 
 } // namespace ooze

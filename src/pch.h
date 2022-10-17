@@ -82,14 +82,14 @@ inline Result<std::vector<std::string>> convert_errors(std::vector<std::string> 
 
 inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string>{std::move(msg)}}; }
 
-template <typename T>
-Result<T> value_or_errors(T t, std::vector<std::string> errors) {
-  return errors.empty() ? Result<T>{std::move(t)} : tl::unexpected{std::move(errors)};
+template <typename T, typename E>
+tl::expected<T, std::vector<E>> value_or_errors(T t, std::vector<E> errors) {
+  return errors.empty() ? tl::expected<T, std::vector<E>>{std::move(t)} : tl::unexpected{std::move(errors)};
 }
 
-template <typename T>
-Result<T> success(T t) {
-  return Result<T>{std::move(t)};
+template <typename E, typename T>
+auto success(T t) {
+  return tl::expected<T, std::vector<E>>{std::move(t)};
 }
 
 template <typename E>
@@ -108,21 +108,50 @@ std::tuple<T> get_value(T&& t) {
 }
 
 template <typename T, typename E>
-void append_errors(std::vector<std::string>& errors, tl::expected<T, E>&& e) {
+void append_errors(std::vector<E>& errors, tl::expected<T, std::vector<E>>&& e) {
   if(!e) {
     errors.insert(errors.end(), std::make_move_iterator(e.error().begin()), std::make_move_iterator(e.error().end()));
   }
 }
 
+template <typename T, typename E>
+void append_errors(std::vector<E>&, T&&) {}
+
 template <typename T>
-void append_errors(std::vector<std::string>&, T&&) {}
+constexpr bool is_expected(knot::Type<T>) {
+  return false;
+}
+
+template <typename T, typename E>
+constexpr bool is_expected(knot::Type<tl::expected<T, E>>) {
+  return true;
+}
+
+template <typename T, typename E>
+constexpr auto error_type(knot::Type<tl::expected<T, E>>) {
+  return knot::Type<E>{};
+}
+
+template <typename... Ts>
+constexpr auto error_type(knot::TypeList<Ts...> tl) {
+  if constexpr(size(tl) == 0) {
+    return knot::NotAType{};
+  } else if constexpr(is_expected(head(tl))) {
+    return error_type(head(tl));
+  } else {
+    return error_type(tail(tl));
+  }
+}
 
 template <typename... Ts>
 auto merge(Ts... ts) {
-  std::vector<std::string> errors;
+  using error_type = knot::type_t<decltype(value_type(error_type(knot::TypeList<Ts...>{})))>;
+
+  std::vector<error_type> errors;
   (append_errors(errors, std::move(ts)), ...);
 
-  return errors.empty() ? success(std::tuple_cat(get_value(std::move(ts))...)) : tl::unexpected{std::move(errors)};
+  return errors.empty() ? success<error_type>(std::tuple_cat(get_value(std::move(ts))...))
+                        : tl::unexpected{std::move(errors)};
 }
 
 } // namespace ooze
