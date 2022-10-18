@@ -230,7 +230,7 @@ BOOST_AUTO_TEST_CASE(cp_undeclared_function) {
   test_or_error(env,
                 "fn f() -> () { missing() }",
                 {{
-                  {},
+                  {15, 24},
                   "use of undeclared function 'missing'",
                 }});
 }
@@ -239,82 +239,98 @@ BOOST_AUTO_TEST_CASE(cp_undeclared_binding) {
   Env env = create_primative_env();
   env.add_function("f", [](i32) {});
 
-  test_or_error(env, "fn f() -> () { f(x) }", {{{}, "use of undeclared binding 'x'"}});
+  test_or_error(env, "fn f() -> () { f(x) }", {{{17, 18}, "use of undeclared binding 'x'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_arity_mismatch) {
   Env env = create_primative_env();
 
-  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {{{}, "function header expects 2 return values, given 3"}});
+  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {{{}, "function expects 2 return values, given 3"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_arg_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env,
-    "fn f() -> i32 { identity() }",
-    {{{}, "no matching overload found, deduced identity() -> (i32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
+  test_or_error(env,
+                "fn f() -> i32 { identity() }",
+                {{{16, 26},
+                  "no matching overload found",
+                  {"deduced identity() -> (i32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_bind_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env,
-    "fn f(x: i32) -> i32 { let () = identity(x) x }",
-    {{{}, "no matching overload found, deduced identity(i32) -> () [1 candidate(s)]", {"  identity(i32) -> i32"}}});
+  test_or_error(env,
+                "fn f(x: i32) -> i32 { let () = identity(x) x }",
+                {{{31, 42},
+                  "no matching overload found",
+                  {"deduced identity(i32) -> () [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_return_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env,
-    "fn f(x: i32) -> () { identity(x) }",
-    {{{}, "no matching overload found, deduced identity(i32) -> () [1 candidate(s)]", {"  identity(i32) -> i32"}}});
+  test_or_error(env,
+                "fn f(x: i32) -> () { identity(x) }",
+                {{{21, 32},
+                  "no matching overload found",
+                  {"deduced identity(i32) -> () [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_arg_type) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env,
-    "fn f(x: u32) -> i32 { identity(x) }",
-    {{{}, "no matching overload found, deduced identity(u32) -> (i32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
+  test_or_error(env,
+                "fn f(x: u32) -> i32 { identity(x) }",
+                {{{22, 33},
+                  "no matching overload found",
+                  {"deduced identity(u32) -> (i32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_bind_type) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env,
-    "fn f(x: i32) -> i32 { let x: u32 = identity(x) x }",
-    {{{}, "no matching overload found, deduced identity(i32) -> (u32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
+  test_or_error(env,
+                "fn f(x: i32) -> i32 { let x: u32 = identity(x) x }",
+                {{{35, 46},
+                  "no matching overload found",
+                  {"deduced identity(i32) -> (u32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_return_type) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env,
-    "fn f(x: i32) -> u32 { identity(x) }",
-    {{{}, "no matching overload found, deduced identity(i32) -> (u32) [1 candidate(s)]", {"  identity(i32) -> i32"}}});
+  test_or_error(env,
+                "fn f(x: i32) -> u32 { identity(x) }",
+                {{{22, 33},
+                  "no matching overload found",
+                  {"deduced identity(i32) -> (u32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
   Env env = create_primative_env();
   env.add_function("val", [](i32 x) {});
 
-  test_or_error(env,
-                "fn f(x: &i32) -> () { val(x) }",
-                {{{}, "no matching overload found, deduced val(&i32) -> () [1 candidate(s)]", {"  val(i32) -> ()"}}});
+  test_or_error(
+    env,
+    "fn f(x: &i32) -> () { val(x) }",
+    {{{22, 28}, "no matching overload found", {"deduced val(&i32) -> () [1 candidate(s)]", "  val(i32) -> ()"}}});
+}
+
+BOOST_AUTO_TEST_CASE(cp_empty_tuple_as_arg) {
+  Env env = create_primative_env();
+  env.add_function("tup", []() { return std::tuple(); });
+  env.add_function("take", [](i32) {});
+
+  test_or_error(
+    env, "fn f() -> () { take(tup()) }", {{{20, 25}, "call to function take takes an expr that returns a tuple"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_type_no_functions) {
@@ -339,7 +355,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_type_no_functions) {
 
 BOOST_AUTO_TEST_CASE(cp_return_copy_ref_arg) {
   test_or_error(
-    create_primative_env(), "fn f(x: &i32) -> i32 { x }", {{{}, "attempting to return borrowed parameter 'x'"}});
+    create_primative_env(), "fn f(x: &i32) -> i32 { x }", {{{23, 24}, "attempting to return borrowed parameter 'x'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_return) {
@@ -412,16 +428,16 @@ BOOST_AUTO_TEST_CASE(cp_expr_deduced_binding_borrow) {
 BOOST_AUTO_TEST_CASE(cp_expr_undeclared_function) {
   Env env = create_primative_env();
 
-  test_expr_or_error(env, "missing()", {{{}, "use of undeclared function 'missing'"}});
-  test_expr_or_error(env, "let x = missing()", {{{}, "use of undeclared function 'missing'"}});
+  test_expr_or_error(env, "missing()", {{{0, 9}, "use of undeclared function 'missing'"}});
+  test_expr_or_error(env, "let x = missing()", {{{8, 17}, "use of undeclared function 'missing'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undeclared_binding) {
   Env env = create_primative_env();
   env.add_function("f", [](i32) {});
 
-  test_expr_or_error(env, "f(x)", {{{}, "use of undeclared binding 'x'"}});
-  test_expr_or_error(env, "let y = f(x)", {{{}, "use of undeclared binding 'x'"}});
+  test_expr_or_error(env, "f(x)", {{{2, 3}, "use of undeclared binding 'x'"}});
+  test_expr_or_error(env, "let y = f(x)", {{{10, 11}, "use of undeclared binding 'x'"}});
 }
 
 } // namespace ooze

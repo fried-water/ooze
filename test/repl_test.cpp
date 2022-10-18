@@ -32,9 +32,14 @@ BOOST_AUTO_TEST_CASE(repl_missing_function) {
 
   step_repl(r, "let x = 1");
 
-  const std::vector<std::string> expected{"error: use of undeclared function 'missing'"};
+  const std::vector<std::string> expected{
+    "1:0 error: use of undeclared function 'missing'", " | missing()", " | ^~~~~~~~~"};
   BOOST_CHECK(expected == step_repl(r, "missing()"));
-  BOOST_CHECK(expected == step_repl(r, "missing(x)"));
+
+  const std::vector<std::string> expected2{
+    "1:0 error: use of undeclared function 'missing'", " | missing(x)", " | ^~~~~~~~~~"};
+
+  BOOST_CHECK(expected2 == step_repl(r, "missing(x)"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_binding) {
@@ -42,9 +47,13 @@ BOOST_AUTO_TEST_CASE(repl_missing_binding) {
 
   r.env.add_function("identity", [](int x) { return x; });
 
-  const std::vector<std::string> expected{"error: use of undeclared binding 'x'"};
+  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
   BOOST_CHECK(expected == step_repl(r, "x"));
-  BOOST_CHECK(expected == step_repl(r, "identity(x)"));
+
+  const std::vector<std::string> expected2{
+    "1:9 error: use of undeclared binding 'x'", " | identity(x)", " |          ^"};
+
+  BOOST_CHECK(expected2 == step_repl(r, "identity(x)"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {

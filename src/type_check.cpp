@@ -86,7 +86,7 @@ overload_resolution(const Env& e,
   const auto fit = e.functions.find(call.function.name);
 
   if(fit == e.functions.end()) {
-    errors.push_back({{}, fmt::format("use of undeclared function '{}'", call.function.name)});
+    errors.push_back({expr->ref, fmt::format("use of undeclared function '{}'", call.function.name)});
   }
 
   std::vector<std::optional<TypeProperties>> inputs;
@@ -97,7 +97,8 @@ overload_resolution(const Env& e,
     } else if(eit->second.size() == 1) {
       inputs.push_back(eit->second.front());
     } else {
-      errors.push_back({{}, fmt::format("call to function {} takes an expr that returns a tuple", call.function.name)});
+      errors.push_back({parameter_expr.ref,
+                        fmt::format("call to function {} takes an expr that returns a tuple", call.function.name)});
     }
   }
 
@@ -122,25 +123,26 @@ overload_resolution(const Env& e,
   if(results.size() == 1) {
     return results.front();
   } else if(results.empty()) {
-    ContextualError error{{},
-                          fmt::format("no matching overload found, deduced {}{} -> {} [{} candidate(s)]",
-                                      call.function.name,
-                                      type_list_string(e, inputs),
-                                      outputs ? type_list_string(e, *outputs) : "_",
-                                      fit->second.size())};
-
+    ContextualError error{expr->ref,
+                          "no matching overload found",
+                          {fmt::format("deduced {}{} -> {} [{} candidate(s)]",
+                                       call.function.name,
+                                       type_list_string(e, inputs),
+                                       outputs ? type_list_string(e, *outputs) : "_",
+                                       fit->second.size())}};
     for(const auto& function : fit->second) {
       error.notes.push_back(fmt::format("  {}", function_string(e, call.function.name, function)));
     }
 
     return tl::unexpected{std::vector<ContextualError>{std::move(error)}};
   } else {
-    ContextualError error{{},
-                          fmt::format("function call is ambiguous, deduced {}{} -> {} [{} candidate(s)]",
-                                      call.function.name,
-                                      type_list_string(e, inputs),
-                                      outputs ? type_list_string(e, *outputs) : "_",
-                                      results.size())};
+    ContextualError error{expr->ref,
+                          "function call is ambiguous",
+                          {fmt::format("deduced {}{} -> {} [{} candidate(s)]",
+                                       call.function.name,
+                                       type_list_string(e, inputs),
+                                       outputs ? type_list_string(e, *outputs) : "_",
+                                       results.size())}};
 
     for(const auto& [ref, function] : results) {
       error.notes.push_back(fmt::format("  {}", function_string(e, call.function.name, *function)));
@@ -468,7 +470,9 @@ generate_header(const TypedBody& b,
       if(const auto p = deduced_single_type(exprs, expr_types); p) {
         header.parameters.push_back(ast::Parameter<TypeID>{*name_ptr, p->id, !p->value});
       } else {
-        errors.push_back({{}, fmt::format("unable to deduce type of '{}'", *name_ptr)});
+        for(auto expr : exprs) {
+          errors.push_back({expr->ref, "unable to deduce type"});
+        }
       }
     }
   }
@@ -500,7 +504,9 @@ ContextualResult<void> extra_checks(const TypedFunction& f, const PropagationCac
       const auto it = std::find_if(
         f.header.parameters.begin(), f.header.parameters.end(), [&](const auto& p) { return p.name == *name_ptr; });
       if(it == f.header.parameters.end()) {
-        errors.push_back({{}, fmt::format("use of undeclared binding '{}'", *name_ptr)});
+        for(auto expr : exprs) {
+          errors.push_back({expr->ref, fmt::format("use of undeclared binding '{}'", *name_ptr)});
+        }
       }
     }
   }
@@ -511,17 +517,15 @@ ContextualResult<void> extra_checks(const TypedFunction& f, const PropagationCac
         const auto it = std::find_if(
           f.header.parameters.begin(), f.header.parameters.end(), [&](const auto& p) { return p.name == *name_ptr; });
         if(it != f.header.parameters.end() && it->borrow) {
-          errors.push_back({{}, fmt::format("attempting to return borrowed parameter '{}'", *name_ptr)});
+          errors.push_back({result_expr.ref, fmt::format("attempting to return borrowed parameter '{}'", *name_ptr)});
         }
       }
     }
   }
 
   if(!f.header.result.empty() && f.body.result.size() != 1 && f.header.result.size() != f.body.result.size()) {
-    errors.push_back({{},
-                      fmt::format("function header expects {} return values, given {}",
-                                  f.header.result.size(),
-                                  f.body.result.size())});
+    errors.push_back(
+      {{}, fmt::format("function expects {} return values, given {}", f.header.result.size(), f.body.result.size())});
   }
 
   return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
@@ -534,7 +538,9 @@ ContextualResult<void> check_missing_bindings(const Map<BindingRef, std::vector<
   for(const auto& [name, exprs] : uses) {
     if(const auto name_ptr = std::get_if<std::string>(&name); name_ptr) {
       if(const auto it = bindings.find(*name_ptr); it == bindings.end()) {
-        errors.push_back({{}, fmt::format("use of undeclared binding '{}'", *name_ptr)});
+        for(auto expr : exprs) {
+          errors.push_back({expr->ref, fmt::format("use of undeclared binding '{}'", *name_ptr)});
+        }
       }
     }
   }
