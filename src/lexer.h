@@ -1,7 +1,5 @@
 #pragma once
 
-#include "literal.h"
-
 namespace ooze {
 
 enum class TokenType {
@@ -22,8 +20,6 @@ struct Token {
 
   KNOT_COMPAREABLE(Token);
 };
-
-std::optional<Literal> to_literal(TokenType, std::string_view);
 
 // Failure is represented with an empty whitespace token
 std::pair<TokenType, u32> lex_one(std::string_view);

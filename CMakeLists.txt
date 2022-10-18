@@ -16,6 +16,7 @@ add_library(ooze
   src/env.cpp
   src/ast.cpp
   src/lexer.cpp
+  src/literal.cpp
   src/io.cpp
   src/parser.cpp
   src/graph_construction.cpp

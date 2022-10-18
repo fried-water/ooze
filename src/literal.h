@@ -1,10 +1,14 @@
 #pragma once
 
+#include "lexer.h"
+
 #include <anyf/type.h>
 
 namespace ooze {
 
 using Literal = std::variant<bool, std::string, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64>;
+
+std::optional<Literal> to_literal(TokenType, std::string_view);
 
 inline anyf::TypeID type_of(const Literal& v) {
   return std::visit([](const auto& ele) { return anyf::type_id(knot::decay(knot::Type<decltype(ele)>{})); }, v);
