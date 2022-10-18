@@ -29,6 +29,7 @@ struct Parameter {
   std::string name;
   T type;
   bool borrow = false;
+  Slice ref;
 
   KNOT_ORDERED(Parameter);
 };
@@ -37,6 +38,7 @@ template <typename T>
 struct Binding {
   std::string name;
   std::optional<T> type;
+  Slice ref;
 
   KNOT_ORDERED(Binding);
 };

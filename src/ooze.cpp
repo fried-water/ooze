@@ -121,7 +121,7 @@ Result<std::vector<Binding>> run_function(RuntimeEnv& r, const CheckedFunction& 
     std::vector<anyf::Future> value_inputs;
     std::vector<anyf::BorrowedFuture> borrowed_inputs;
 
-    for(const auto& [name, type, borrowed] : f.header.parameters) {
+    for(const auto& [name, type, borrowed, ref] : f.header.parameters) {
       if(borrowed) {
         borrowed_inputs.push_back(borrow(r.bindings, name).value().second);
       } else {

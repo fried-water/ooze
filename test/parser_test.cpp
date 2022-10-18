@@ -52,17 +52,20 @@ BOOST_AUTO_TEST_CASE(parser_multiple_functions) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_one_arg) {
-  const AST expected{{"f", {{{"a", {"X", {8, 9}}}}, {{{"T", {14, 15}}}}}, {{}, {one(18)}}}};
+  const AST expected{{"f", {{{"a", {"X", {8, 9}}, false, {5, 9}}}, {{{"T", {14, 15}}}}}, {{}, {one(18)}}}};
   BOOST_CHECK(expected == parse("fn f(a: X) -> T { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_two_args) {
-  const AST expected{{"f", {{{"a", {"X", {8, 9}}}, {"b", {"Y", {14, 15}}}}, {{{"T", {20, 21}}}}}, {{}, {one(24)}}}};
+  const AST expected{
+    {"f",
+     {{{"a", {"X", {8, 9}}, false, {5, 9}}, {"b", {"Y", {14, 15}}, false, {11, 15}}}, {{{"T", {20, 21}}}}},
+     {{}, {one(24)}}}};
   BOOST_CHECK(expected == parse("fn f(a: X, b: Y) -> T { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_borrow_args) {
-  const AST expected{{"f", {{{"a", {"X", {9, 10}}, true}}, {{{"T", {15, 16}}}}}, {{}, {one(19)}}}};
+  const AST expected{{"f", {{{"a", {"X", {9, 10}}, true, {5, 10}}}, {{{"T", {15, 16}}}}}, {{}, {one(19)}}}};
   BOOST_CHECK(expected == parse("fn f(a: &X) -> T { 1 }"));
 }
 
@@ -89,27 +92,30 @@ BOOST_AUTO_TEST_CASE(parser_tuple_return_two_values) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_binding_no_type) {
-  const AST expected{{"f", {{}, {{{"T", {10, 11}}}}}, {{{{{"a"}}, call("f", {22, 25})}}, {one(26)}}}};
+  const AST expected{{"f", {{}, {{{"T", {10, 11}}}}}, {{{{{"a", {}, {18, 19}}}, call("f", {22, 25})}}, {one(26)}}}};
   BOOST_CHECK(expected == parse("fn f() -> T { let a = f() 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_binding_type) {
   const AST expected{
-    {"f", {{}, {{{"T", {10, 11}}}}}, {{{{{"a", {{"X", {21, 22}}}}}, call("f", {25, 28})}}, {one(29)}}}};
+    {"f", {{}, {{{"T", {10, 11}}}}}, {{{{{"a", {{"X", {21, 22}}}, {18, 22}}}, call("f", {25, 28})}}, {one(29)}}}};
   BOOST_CHECK(expected == parse("fn f() -> T { let a: X = f() 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_multi_binding) {
-  const AST expected{
-    {"f",
-     {{}, {{{"T", {10, 11}}}}},
-     {{{{{"a", {{"X", {22, 23}}}}, {"b", {{"Y", {28, 29}}}}, {"c"}}, call("f", {36, 39})}}, {one(40)}}}};
+  const AST expected{{"f",
+                      {{}, {{{"T", {10, 11}}}}},
+                      {{{{{"a", {{"X", {22, 23}}}, {19, 23}}, {"b", {{"Y", {28, 29}}}, {25, 29}}, {"c", {}, {31, 32}}},
+                         call("f", {36, 39})}},
+                       {one(40)}}}};
   BOOST_CHECK(expected == parse("fn f() -> T { let (a: X, b: Y, c) = f() 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_two_bindings) {
   const AST expected{
-    {"f", {{}, {{{"T", {10, 11}}}}}, {{{{{"a"}}, call("f", {22, 25})}, {{{"b"}}, ident("abc", 34)}}, {one(38)}}}};
+    {"f",
+     {{}, {{{"T", {10, 11}}}}},
+     {{{{{"a", {}, {18, 19}}}, call("f", {22, 25})}, {{{"b", {}, {30, 31}}}, ident("abc", 34)}}, {one(38)}}}};
   BOOST_CHECK(expected == parse("fn f() -> T { let a = f() let b = abc 1 }"));
 }
 

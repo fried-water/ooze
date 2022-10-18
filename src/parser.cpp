@@ -63,13 +63,16 @@ auto list_or_one(P p) {
 }
 
 auto parameter() {
-  return transform(seq(ident(), symbol(":"), maybe(symbol("&")), type_ident()),
-                   [](std::string name, std::optional<std::tuple<>> opt, NamedType type) {
-                     return ast::Parameter<NamedType>{std::move(name), std::move(type), opt.has_value()};
-                   });
+  return construct_with_ref<ast::Parameter<NamedType>>(
+    transform(seq(ident(), symbol(":"), maybe(symbol("&")), type_ident()),
+              [](std::string name, std::optional<std::tuple<>> opt, NamedType type) {
+                return std::tuple{std::move(name), std::move(type), opt.has_value()};
+              }));
 }
 
-auto binding() { return construct<ast::Binding<NamedType>>(seq(ident(), maybe(seq(symbol(":"), type_ident())))); }
+auto binding() {
+  return construct_with_ref<ast::Binding<NamedType>>(seq(ident(), maybe(seq(symbol(":"), type_ident()))));
+}
 
 auto literal_expr() {
   return transform_if(any(), "literal", [](std::string_view src, Token t) {
