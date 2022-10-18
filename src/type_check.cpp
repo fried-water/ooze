@@ -525,7 +525,8 @@ ContextualResult<void> extra_checks(const TypedFunction& f, const PropagationCac
 
   if(!f.header.result.empty() && f.body.result.size() != 1 && f.header.result.size() != f.body.result.size()) {
     errors.push_back(
-      {{}, fmt::format("function expects {} return values, given {}", f.header.result.size(), f.body.result.size())});
+      {f.header.ref,
+       fmt::format("function expects {} return values, given {}", f.header.result.size(), f.body.result.size())});
   }
 
   return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};

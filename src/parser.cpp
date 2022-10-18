@@ -109,7 +109,7 @@ auto assignment() {
 }
 
 auto function_header() {
-  return construct<UnTypedHeader>(seq(list(parameter()), symbol("->"), list_or_one(type_ident())));
+  return construct_with_ref<UnTypedHeader>(seq(list(parameter()), symbol("->"), list_or_one(type_ident())));
 }
 
 auto function_body() {

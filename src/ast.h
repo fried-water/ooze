@@ -55,6 +55,7 @@ template <typename T>
 struct FunctionHeader {
   std::vector<Parameter<T>> parameters;
   std::vector<T> result;
+  Slice ref;
 
   KNOT_ORDERED(FunctionHeader);
 };

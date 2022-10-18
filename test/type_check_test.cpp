@@ -245,7 +245,7 @@ BOOST_AUTO_TEST_CASE(cp_undeclared_binding) {
 BOOST_AUTO_TEST_CASE(cp_arity_mismatch) {
   Env env = create_primative_env();
 
-  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {{{}, "function expects 2 return values, given 3"}});
+  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {{{4, 20}, "function expects 2 return values, given 3"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_arg_count) {
