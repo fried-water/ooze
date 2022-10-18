@@ -34,9 +34,11 @@ void test_or_error(const Env& e, std::string_view f, const std::vector<Contextua
     parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(function_result.has_value());
 
-  const auto result = overload_resolution(e, function_result.value());
+  auto result = overload_resolution(e, function_result.value());
 
   BOOST_REQUIRE(!result.has_value());
+
+  std::sort(result.error().begin(), result.error().end());
 
   if(expected_errors != result.error()) {
     fmt::print("E {}\n", knot::debug(expected_errors));
@@ -318,19 +320,21 @@ BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
 BOOST_AUTO_TEST_CASE(cp_wrong_type_no_functions) {
   Env env = create_primative_env();
 
-  test_or_error(env, "fn f(x: i32) -> f32 { x }", {{{}, "expected i32, found f32"}});
-  test_or_error(
-    env, "fn f(x: i32) -> f32 { let y = x y }", {{{}, "expected i32, found f32"}, {{}, "expected f32, found i32"}});
+  test_or_error(env, "fn f(x: i32) -> f32 { x }", {{{22, 23}, "expected i32, found f32"}});
+  test_or_error(env,
+                "fn f(x: i32) -> f32 { let y = x y }",
+                {{{30, 31}, "expected i32, found f32"}, {{32, 33}, "expected f32, found i32"}});
   test_or_error(env,
                 "fn f(x: i32) -> f32 { let y: i32 = x y }",
-                {{{}, "expected i32, found f32"}, {{}, "expected f32, found i32"}});
+                {{{35, 36}, "expected i32, found f32"}, {{37, 38}, "expected f32, found i32"}});
   test_or_error(env,
                 "fn f(x: i32) -> f32 { let y: f32 = x y }",
-                {{{}, "expected f32, found i32"}, {{}, "expected i32, found f32"}});
-  test_or_error(env, "fn f() -> f32 { 1 }", {{{}, "expected f32, found i32"}});
-  test_or_error(
-    env, "fn f() -> f32 { let x = 1 x }", {{{}, "expected f32, found i32"}, {{}, "expected i32, found f32"}});
-  test_or_error(env, "fn f() -> f32 { let x: f32 = 1 x }", {{{}, "expected f32, found i32"}});
+                {{{35, 36}, "expected i32, found f32"}, {{37, 38}, "expected f32, found i32"}});
+  test_or_error(env, "fn f() -> f32 { 1 }", {{{16, 17}, "expected f32, found i32"}});
+  test_or_error(env,
+                "fn f() -> f32 { let x = 1 x }",
+                {{{24, 25}, "expected i32, found f32"}, {{26, 27}, "expected f32, found i32"}});
+  test_or_error(env, "fn f() -> f32 { let x: f32 = 1 x }", {{{29, 30}, "expected f32, found i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_copy_ref_arg) {

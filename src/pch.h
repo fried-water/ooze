@@ -44,7 +44,7 @@ struct Slice {
   u32 begin = 0;
   u32 end = 0;
 
-  KNOT_COMPAREABLE(Slice);
+  KNOT_ORDERED(Slice);
 };
 
 inline u32 size(Slice s) { return s.end - s.begin; }

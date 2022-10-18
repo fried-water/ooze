@@ -551,7 +551,7 @@ check_conflicting_errors(const Env& e,
   for(const auto& [expr, types] : conflicting_types) {
     const auto& expected_types = expr_types.at(expr);
     errors.push_back(
-      {{},
+      {expr->ref,
        fmt::format("expected {}, found {}",
                    expected_types.size() == 1 ? type_name_or_id(e, *expected_types.front())
                                               : type_list_string(e, expected_types),

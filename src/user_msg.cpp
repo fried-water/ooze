@@ -9,6 +9,9 @@ std::vector<std::string> contextualize(std::string_view src, std::vector<Context
 
   strings.reserve(accumulate<size_t>(errors, [&](size_t acc, const auto& e) { return acc + 3 + e.notes.size(); }));
 
+  // Order errors by position in src
+  std::sort(errors.begin(), errors.end());
+
   for(ContextualError& e : errors) {
     if(e.ref != Slice{}) {
       const auto pos = src.begin() + e.ref.begin;
