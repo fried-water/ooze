@@ -45,6 +45,18 @@ void test_or_error(const Env& e, std::string_view f, const std::vector<Contextua
   BOOST_CHECK(expected_errors == result.error());
 }
 
+void test_name_error(const Env& e, std::string_view f, const std::vector<ContextualError>& expected_errors) {
+  const auto result = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+
+  BOOST_REQUIRE(!result.has_value());
+
+  if(expected_errors != result.error()) {
+    fmt::print("E {}\n", knot::debug(expected_errors));
+    fmt::print("A {}\n", knot::debug(result.error()));
+  }
+  BOOST_CHECK(expected_errors == result.error());
+}
+
 void test_expr_or(const Env& e,
                   TypedHeader expected_header,
                   const std::vector<EnvFunctionRef>& overloads,
@@ -324,6 +336,24 @@ BOOST_AUTO_TEST_CASE(cp_wrong_type_no_functions) {
 BOOST_AUTO_TEST_CASE(cp_return_copy_ref_arg) {
   test_or_error(
     create_primative_env(), "fn f(x: &i32) -> i32 { x }", {{{}, "attempting to return borrowed parameter 'x'"}});
+}
+
+BOOST_AUTO_TEST_CASE(cp_expr_undefined_return) {
+  test_name_error(create_primative_env(), "fn f() -> abc { x }", {{{10, 13}, "undefined type"}});
+}
+
+BOOST_AUTO_TEST_CASE(cp_expr_undefined_arg) {
+  test_name_error(create_primative_env(), "fn f(x: abc) -> () { () }", {{{8, 11}, "undefined type"}});
+}
+
+BOOST_AUTO_TEST_CASE(cp_expr_undefined_let) {
+  test_name_error(create_primative_env(), "fn f() -> () { let x : abc = y x }", {{{23, 26}, "undefined type"}});
+}
+
+BOOST_AUTO_TEST_CASE(cp_expr_undefined_multi) {
+  test_name_error(create_primative_env(),
+                  "fn f(x: a) -> b { let x : c = y x }",
+                  {{{8, 9}, "undefined type"}, {{14, 15}, "undefined type"}, {{26, 27}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_simple) {
