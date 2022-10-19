@@ -69,7 +69,11 @@ BOOST_AUTO_TEST_CASE(ooze_already_move) {
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
 
-  BOOST_CHECK(err("return value for arg 1 already moved") == run(env, script, "f(make_unique_int(0))"));
+  const std::vector<std::string> expected{"1:54 error: binding already moved",
+                                          " | fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }",
+                                          " |                                                       ^"};
+
+  BOOST_CHECK(expected == run(env, script, "f(make_unique_int(0))").error());
 }
 
 BOOST_AUTO_TEST_CASE(ooze_clone) {

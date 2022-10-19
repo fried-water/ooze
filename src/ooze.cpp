@@ -116,7 +116,7 @@ assign_bindings(RuntimeEnv& r, const std::variant<UnTypedExpr, UnTypedAssignment
   return results;
 }
 
-Result<std::vector<Binding>> run_function(RuntimeEnv& r, const CheckedFunction& f) {
+ContextualResult<std::vector<Binding>> run_function(RuntimeEnv& r, const CheckedFunction& f) {
   return create_graph(r.env, f).map([&](anyf::FunctionGraph g) {
     std::vector<anyf::Future> value_inputs;
     std::vector<anyf::BorrowedFuture> borrowed_inputs;
@@ -152,8 +152,8 @@ Result<void> parse_script(Env& e, std::string_view script) {
       for(const auto& f : ast) {
         auto graph_result = type_name_resolution(e, f)
                               .and_then([&](TypedFunction f) { return overload_resolution(e, std::move(f)); })
-                              .map_error([&](auto errors) { return contextualize(script, std::move(errors)); })
-                              .and_then([&](const CheckedFunction& f) { return create_graph(e, f); });
+                              .and_then([&](const CheckedFunction& f) { return create_graph(e, f); })
+                              .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
 
         if(graph_result) {
           e.add_graph(f.name, std::move(*graph_result));
@@ -170,8 +170,8 @@ Result<std::vector<Binding>> run(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
     .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_function_body(std::move(e))); })
     .and_then([&](TypedBody b) { return overload_resolution(r, std::move(b)); })
-    .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); })
-    .and_then([&](CheckedFunction f) { return run_function(r, f); });
+    .and_then([&](CheckedFunction f) { return run_function(r, f); })
+    .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
 Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
@@ -179,9 +179,9 @@ Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignme
     .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_function_body(var))); })
     .and_then(
       [&](auto tup) { return merge(std::move(std::get<0>(tup)), overload_resolution(r, std::move(std::get<1>(tup)))); })
-    .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); })
     .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })
-    .map([&](auto tup) { return assign_bindings(r, std::get<0>(tup), std::move(std::get<1>(tup))); });
+    .map([&](auto tup) { return assign_bindings(r, std::get<0>(tup), std::move(std::get<1>(tup))); })
+    .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); });
 }
 
 Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view expr) {
@@ -189,9 +189,9 @@ Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view e
     .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_function_body(std::move(e))); })
     .and_then([&](TypedBody b) { return check_and_wrap(r, std::move(b)); })
     .and_then([&](TypedBody b) { return overload_resolution(r, std::move(b)); })
-    .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); })
-    .map(gather_binding_strings);
+    .map(gather_binding_strings)
+    .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
 Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
@@ -204,10 +204,10 @@ Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string
     })
     .and_then(
       [&](auto tup) { return merge(std::move(std::get<0>(tup)), overload_resolution(r, std::move(std::get<1>(tup)))); })
-    .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); })
     .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })
     .map([&](auto tup) { return assign_bindings(r, std::get<0>(tup), std::move(std::get<1>(tup))); })
-    .map(gather_binding_strings);
+    .map(gather_binding_strings)
+    .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); });
 }
 
 int main(int argc, const char** argv, Env e) {
