@@ -9,7 +9,7 @@ namespace ooze {
 namespace {
 
 constexpr auto whitespace_re = ctll::fixed_string{"^\\s+"};
-constexpr auto comment_re = ctll::fixed_string{"^#[^\\n]*"};
+constexpr auto comment_re = ctll::fixed_string{"^//[^\\n]*"};
 constexpr auto keyword_re = ctll::fixed_string{"^let|^fn"};
 constexpr auto ident_re = ctll::fixed_string{"^[a-zA-Z_][a-zA-Z0-9_]*"};
 constexpr auto symbol_re = ctll::fixed_string{"^\\(|^\\)|^\\{|^\\}|^,|^\\.|^:|^=|^&|^->"};

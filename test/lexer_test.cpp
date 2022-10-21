@@ -44,10 +44,10 @@ BOOST_AUTO_TEST_CASE(lexer_whitespace) {
 }
 
 BOOST_AUTO_TEST_CASE(lexer_comment) {
-  BOOST_CHECK((std::pair{TokenType::Comment, 1u}) == lex_one("#"));
-  BOOST_CHECK((std::pair{TokenType::Comment, 5u}) == lex_one("# abc"));
-  BOOST_CHECK((std::pair{TokenType::Comment, 11u}) == lex_one("#(){})!/.a\\"));
-  BOOST_CHECK((std::pair{TokenType::Comment, 1u}) == lex_one("#\n"));
+  BOOST_CHECK((std::pair{TokenType::Comment, 2u}) == lex_one("//"));
+  BOOST_CHECK((std::pair{TokenType::Comment, 6u}) == lex_one("// abc"));
+  BOOST_CHECK((std::pair{TokenType::Comment, 12u}) == lex_one("//(){})!/.a\\"));
+  BOOST_CHECK((std::pair{TokenType::Comment, 2u}) == lex_one("//\n"));
 }
 
 BOOST_AUTO_TEST_CASE(lexer_integers) {
@@ -101,16 +101,16 @@ BOOST_AUTO_TEST_CASE(lexer_multi) {
   // comment and whitespace tokens aren't returned
   const std::vector<Token> expected = {{TokenType::LiteralInt, 0u, 3u},
                                        {TokenType::Ident, 4u, 7u},
-                                       {TokenType::Keyword, 17u, 20u},
-                                       {TokenType::Keyword, 21u, 23u},
-                                       {TokenType::LiteralBool, 24u, 28u},
-                                       {TokenType::Ident, 29u, 35u},
-                                       {TokenType::Symbol, 35u, 36u},
-                                       {TokenType::Symbol, 36u, 37u}};
+                                       {TokenType::Keyword, 18u, 21u},
+                                       {TokenType::Keyword, 22u, 24u},
+                                       {TokenType::LiteralBool, 25u, 29u},
+                                       {TokenType::Ident, 30u, 36u},
+                                       {TokenType::Symbol, 36u, 37u},
+                                       {TokenType::Symbol, 37u, 38u}};
 
-  const auto [actual_tokens, actual_offset] = lex("123 abc #comment\nlet fn true\tfalsey,=");
+  const auto [actual_tokens, actual_offset] = lex("123 abc //comment\nlet fn true\tfalsey,=");
 
-  BOOST_CHECK_EQUAL(37u, actual_offset);
+  BOOST_CHECK_EQUAL(38u, actual_offset);
   BOOST_CHECK(expected == actual_tokens);
 }
 
