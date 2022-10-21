@@ -37,15 +37,9 @@ int main(int argc, const char** argv) {
   ooze::Env e = ooze::create_primative_env();
 
   e.add_type<Point>("Point");
-<<<<<<< HEAD
-  
-  e.add_function("create_point", [](int x, int y) { return Point{x, y}; );
-  e.add_function("add", [](const Point& a, const Point& b) { return {a.x + b.x, a.y + b.y}; });
-=======
 
   e.add_function("create_point", [](int x, int y) { return Point{x, y}; });
   e.add_function("add", [](const Point& a, const Point& b) { return Point{a.x + b.x, a.y + b.y}; });
->>>>>>> 6115f19 (Create a basic README, update script to use new comment style)
   e.add_function("to_string", [](const Point& p) { return "(" + std::to_string(p.x) + ", " + std::to_string(p.y) + ")"; });
 
   return ooze::main(argc, argv, e);
