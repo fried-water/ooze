@@ -37,9 +37,15 @@ int main(int argc, const char** argv) {
   ooze::Env e = ooze::create_primative_env();
 
   e.add_type<Point>("Point");
+<<<<<<< HEAD
   
   e.add_function("create_point", [](int x, int y) { return Point{x, y}; );
   e.add_function("add", [](const Point& a, const Point& b) { return {a.x + b.x, a.y + b.y}; });
+=======
+
+  e.add_function("create_point", [](int x, int y) { return Point{x, y}; });
+  e.add_function("add", [](const Point& a, const Point& b) { return Point{a.x + b.x, a.y + b.y}; });
+>>>>>>> 6115f19 (Create a basic README, update script to use new comment style)
   e.add_function("to_string", [](const Point& p) { return "(" + std::to_string(p.x) + ", " + std::to_string(p.y) + ")"; });
 
   return ooze::main(argc, argv, e);
@@ -79,7 +85,7 @@ Try :h for help. Use Ctrl^D to exit.
 Functions are expected to be pure (outside of IO), arguments cannot be taken by mutable& or raw ptr.
 
 Using fully owning types is preferable, any shared mutable state needs to be externally synchronized
-  
+
 Currently **ooze** only supports function calls and assignment. It does not support any form of control flow or accessing subfields of a type
 
 No recursion.

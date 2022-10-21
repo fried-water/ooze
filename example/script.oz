@@ -7,12 +7,12 @@ fn triple(p: &Point) -> Point {
   add(x, p)
 }
 
-# Can pass unspecified types through expressions
+// Can pass unspecified types through expressions
 fn nested(x: i32) -> i32 {
   take_u(create_u(x))
 }
 
-# Can bind unspecified types, but the type must be deduced
+// Can bind unspecified types, but the type must be deduced
 fn bind(x: i32) -> i32 {
   let y = create_u(x)
   take_u(y)
