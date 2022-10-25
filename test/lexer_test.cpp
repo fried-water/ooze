@@ -89,9 +89,11 @@ BOOST_AUTO_TEST_CASE(lexer_other_literals) {
   BOOST_CHECK((std::pair{TokenType::LiteralBool, 5u}) == lex_one("false"));
 
   BOOST_CHECK((std::pair{TokenType::LiteralString, 2u}) == lex_one("\"\""));
+  BOOST_CHECK((std::pair{TokenType::LiteralString, 2u}) == lex_one("\"\"\""));
   BOOST_CHECK((std::pair{TokenType::LiteralString, 5u}) == lex_one("\"abc\""));
 
   BOOST_CHECK((std::pair{TokenType::LiteralString, 2u}) == lex_one("''"));
+  BOOST_CHECK((std::pair{TokenType::LiteralString, 2u}) == lex_one("'''"));
   BOOST_CHECK((std::pair{TokenType::LiteralString, 5u}) == lex_one("'abc'"));
 
   BOOST_CHECK((std::pair{TokenType::Whitespace, 0u}) == lex_one("@"));
