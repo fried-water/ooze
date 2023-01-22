@@ -143,6 +143,8 @@ ContextualResult<std::vector<Binding>> run_function(RuntimeEnv& r, const Checked
 
 } // namespace
 
+RuntimeEnv make_default_runtime(Env env) { return {std::move(env), anyf::make_task_executor()}; }
+
 Result<void> parse_script(Env& e, std::string_view script) {
   return parse(script)
     .map_error([&](auto errors) { return contextualize(script, std::move(errors)); })
@@ -225,10 +227,10 @@ int main(int argc, const char** argv, Env e) {
 
   const auto& result = parse_scripts(e, cmd->filenames).and_then([&]() {
     if(cmd->run_main) {
-      RuntimeEnv r{std::move(e)};
+      RuntimeEnv r = make_default_runtime(std::move(e));
       return run_to_string(r, "main()");
     } else {
-      run_repl(std::move(e));
+      run_repl(make_default_runtime(std::move(e)));
       return Result<std::vector<std::string>>{};
     }
   });

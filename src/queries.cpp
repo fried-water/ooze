@@ -17,10 +17,7 @@ std::string join(const Range& range, F f) {
   }
 }
 
-std::string function_string(const Env& e,
-                            std::string_view fn_name,
-                            const std::vector<TypeProperties>& inputs,
-                            const std::vector<TypeID>& outputs) {
+std::string function_string(const Env& e, std::string_view fn_name, Span<TypeProperties> inputs, Span<TypeID> outputs) {
   const auto input_type_name = [&](auto t) {
     return fmt::format("{}{}", t.value ? "" : "&", type_name_or_id(e, t.id));
   };

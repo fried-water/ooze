@@ -22,14 +22,12 @@ using anyf::TypeProperties;
 
 using EnvFunction = std::variant<AnyFunction, FunctionGraph>;
 
-inline const std::vector<TypeProperties>& input_types(const EnvFunction& f) {
-  return std::holds_alternative<AnyFunction>(f) ? std::get<AnyFunction>(f).input_types()
-                                                : input_types(std::get<FunctionGraph>(f));
+inline Span<TypeProperties> input_types(const EnvFunction& f) {
+  return std::visit([&](const auto& f) -> Span<TypeProperties> { return f.input_types(); }, f);
 }
 
-inline const std::vector<TypeID>& output_types(const EnvFunction& f) {
-  return std::holds_alternative<AnyFunction>(f) ? std::get<AnyFunction>(f).output_types()
-                                                : output_types(std::get<FunctionGraph>(f));
+inline Span<TypeID> output_types(const EnvFunction& f) {
+  return std::visit([&](const auto& f) -> Span<TypeID> { return f.output_types(); }, f);
 }
 
 struct Env {

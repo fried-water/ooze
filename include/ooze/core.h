@@ -3,7 +3,7 @@
 #include "ooze/env.h"
 
 #include <anyf/borrowed_future.h>
-#include <anyf/executor/task_executor.h>
+#include <anyf/executor.h>
 #include <anyf/future.h>
 
 #include <tl/expected.hpp>
@@ -26,9 +26,13 @@ struct Binding {
 
 struct RuntimeEnv {
   Env env;
-  anyf::TaskExecutor executor;
+  anyf::Executor executor;
   std::unordered_map<std::string, Binding> bindings;
+
+  ~RuntimeEnv() { executor.wait(); }
 };
+
+RuntimeEnv make_default_runtime(Env);
 
 Result<void> parse_script(Env&, std::string_view script);
 

@@ -206,9 +206,7 @@ std::vector<std::string> step_repl(RuntimeEnv& repl, std::string_view line) {
   }
 }
 
-void run_repl(Env e) {
-  RuntimeEnv repl{std::move(e)};
-
+void run_repl(RuntimeEnv repl) {
   std::string line;
   fmt::print("Welcome to the ooze repl!\n");
   fmt::print("Try :h for help. Use Ctrl^D to exit.\n");

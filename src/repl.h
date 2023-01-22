@@ -9,6 +9,6 @@ namespace ooze {
 
 std::vector<std::string> step_repl(RuntimeEnv&, std::string_view line);
 
-void run_repl(Env);
+void run_repl(RuntimeEnv);
 
 } // namespace ooze

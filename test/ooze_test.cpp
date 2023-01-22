@@ -13,7 +13,7 @@ namespace ooze {
 namespace {
 
 Result<std::vector<Any>> run(Env e, std::string_view script, std::string_view expr) {
-  RuntimeEnv r{std::move(e)};
+  RuntimeEnv r = make_default_runtime(std::move(e));
 
   return parse_script(r.env, script)
     .and_then([&]() { return ooze::run(r, expr); })

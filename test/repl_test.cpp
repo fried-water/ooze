@@ -8,13 +8,13 @@
 namespace ooze {
 
 BOOST_AUTO_TEST_CASE(repl_empty) {
-  RuntimeEnv r;
+  RuntimeEnv r = make_default_runtime(Env{});
   BOOST_CHECK(step_repl(r, "").empty());
   BOOST_CHECK(r.bindings.empty());
 }
 
 BOOST_AUTO_TEST_CASE(repl_run_expr) {
-  RuntimeEnv r{create_primative_env()};
+  RuntimeEnv r = make_default_runtime(create_primative_env());
 
   const std::vector<std::string> expected{"3"};
   BOOST_CHECK(expected == step_repl(r, "3"));
@@ -28,7 +28,7 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_function) {
-  RuntimeEnv r{create_primative_env()};
+  RuntimeEnv r = make_default_runtime(create_primative_env());
 
   step_repl(r, "let x = 1");
 
@@ -43,7 +43,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_function) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_binding) {
-  RuntimeEnv r{create_primative_env()};
+  RuntimeEnv r = make_default_runtime(create_primative_env());
 
   r.env.add_function("identity", [](int x) { return x; });
 
@@ -57,7 +57,7 @@ BOOST_AUTO_TEST_CASE(repl_missing_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
-  RuntimeEnv r{create_primative_env()};
+  RuntimeEnv r = make_default_runtime(create_primative_env());
   r.env.add_type<std::unique_ptr<int>>("unique_int");
 
   r.env.add_function("make_ptr", [](int x) { return std::make_unique<int>(x); });
@@ -70,7 +70,7 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings) {
-  RuntimeEnv r;
+  RuntimeEnv r = make_default_runtime(Env{});
 
   const std::vector<std::string> no_bindings{"0 binding(s)"};
   BOOST_CHECK(no_bindings == step_repl(r, ":b"));
@@ -101,7 +101,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {
-  RuntimeEnv r{create_primative_env()};
+  RuntimeEnv r = make_default_runtime(create_primative_env());
 
   BOOST_CHECK(step_repl(r, "let x = 5").empty());
 
@@ -116,7 +116,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
   struct A {};
   struct B {};
 
-  RuntimeEnv r;
+  RuntimeEnv r = make_default_runtime(Env{});
 
   add_tieable_type<int>(r.env, "i32");
 
@@ -133,7 +133,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_functions) {
-  RuntimeEnv r{create_primative_env()};
+  RuntimeEnv r = make_default_runtime(create_primative_env());
 
   struct A {};
 
