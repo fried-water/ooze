@@ -56,7 +56,7 @@ void pretty_print(std::ostream& os, const UnTypedHeader& h) {
   pretty_print(os << " -> ", h.result, true);
 }
 
-void pretty_print(std::ostream& os, const UnTypedBody& b) {
+void pretty_print(std::ostream& os, const UnTypedScope& b) {
   os << " {\n";
 
   for(const auto& a : b.assignments) {
@@ -70,7 +70,7 @@ void pretty_print(std::ostream& os, const UnTypedBody& b) {
 
 void pretty_print(std::ostream& os, const UnTypedFunction& f) {
   pretty_print(os << "fn " << f.name, f.header);
-  pretty_print(os, f.body);
+  pretty_print(os, f.scope);
   os << "\n";
 }
 

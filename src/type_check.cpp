@@ -160,7 +160,7 @@ find_expr_bindings(const std::vector<TypedAssignment>& assignments) {
     });
 }
 
-Map<const TypedExpr*, const TypedExpr*> find_function_receivers(const TypedBody& b) {
+Map<const TypedExpr*, const TypedExpr*> find_function_receivers(const TypedScope& b) {
   Map<const TypedExpr*, const TypedExpr*> function_receivers;
 
   knot::preorder(b, [&](const TypedExpr& expr) {
@@ -174,7 +174,7 @@ Map<const TypedExpr*, const TypedExpr*> find_function_receivers(const TypedBody&
   return function_receivers;
 }
 
-PropagationCaches calculate_propagation_caches(const TypedBody& b) {
+PropagationCaches calculate_propagation_caches(const TypedScope& b) {
   Map<std::string, const Binding<TypeID>*> binding_names;
 
   Map<BindingRef, std::vector<const TypedExpr*>> uses;
@@ -230,26 +230,26 @@ auto append_header_candidates(const TypedFunction& f,
   }
 
   // Propagate return value
-  if(f.header.result.empty() || f.body.result.size() == 1) {
+  if(f.header.result.empty() || f.scope.result.size() == 1) {
     std::vector<std::optional<TypeProperties>> types;
 
     for(size_t i = 0; i < f.header.result.size(); i++) {
       types.push_back(TypeProperties{f.header.result[i], true});
     }
 
-    for(size_t i = 0; i < f.body.result.size(); i++) {
-      candidates.push_back({&f.body.result[i], types});
+    for(size_t i = 0; i < f.scope.result.size(); i++) {
+      candidates.push_back({&f.scope.result[i], types});
     }
-  } else if(f.body.result.size() == f.header.result.size()) {
-    for(size_t i = 0; i < f.body.result.size(); i++) {
-      candidates.push_back({&f.body.result[i], {{TypeProperties{f.header.result[i], true}}}});
+  } else if(f.scope.result.size() == f.header.result.size()) {
+    for(size_t i = 0; i < f.scope.result.size(); i++) {
+      candidates.push_back({&f.scope.result[i], {{TypeProperties{f.header.result[i], true}}}});
     }
   }
 
   return candidates;
 }
 
-auto append_body_candidates(const Env& e, const TypedBody& b, std::vector<PropagationCandidate> candidates = {}) {
+auto append_scope_candidates(const Env& e, const TypedScope& b, std::vector<PropagationCandidate> candidates = {}) {
   // Append assignment hints
   for(const TypedAssignment& assign : b.assignments) {
     candidates.push_back(
@@ -278,7 +278,7 @@ auto append_body_candidates(const Env& e, const TypedBody& b, std::vector<Propag
   return candidates;
 }
 
-auto append_binding_candidates(const TypedBody& b,
+auto append_binding_candidates(const TypedScope& b,
                                const Map<std::string, TypeID>& bindings,
                                std::vector<PropagationCandidate> candidates = {}) {
   knot::preorder(b, [&](const TypedExpr& expr) {
@@ -410,9 +410,9 @@ auto constraint_propagation(const Env& e, const PropagationCaches& pc, std::vect
   return std::pair(std::move(expr_types), std::move(conflicting_types));
 }
 
-ContextualResult<CheckedBody>
+ContextualResult<CheckedScope>
 find_overloads(const Env& e,
-               const TypedBody& b,
+               const TypedScope& b,
                const PropagationCaches& pc,
                const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types) {
   Map<const NamedFunction*, ContextualResult<std::tuple<int, const EnvFunction*>>> overloads;
@@ -425,7 +425,7 @@ find_overloads(const Env& e,
 
   std::vector<ContextualError> errors;
 
-  CheckedBody checked_body = knot::map<CheckedBody>(b, [&](const NamedFunction& f) {
+  CheckedScope checked_scope = knot::map<CheckedScope>(b, [&](const NamedFunction& f) {
     auto& result = overloads.at(&f);
     if(!result.has_value()) {
       for(auto& error : result.error()) {
@@ -435,7 +435,7 @@ find_overloads(const Env& e,
     return EnvFunctionRef{f.name, result.has_value() ? std::get<0>(*result) : 0};
   });
 
-  return value_or_errors(std::move(checked_body), std::move(errors));
+  return value_or_errors(std::move(checked_scope), std::move(errors));
 }
 
 std::optional<TypeProperties>
@@ -457,7 +457,7 @@ deduced_single_type(const std::vector<const TypedExpr*>& exprs,
 }
 
 ContextualResult<TypedHeader>
-generate_header(const TypedBody& b,
+generate_header(const TypedScope& b,
                 const Map<BindingRef, std::vector<const TypedExpr*>>& uses,
                 const Map<const TypedExpr*, std::vector<std::optional<TypeProperties>>>& expr_types) {
   std::vector<ContextualError> errors;
@@ -511,7 +511,7 @@ ContextualResult<void> extra_checks(const TypedFunction& f, const PropagationCac
     }
   }
 
-  for(const auto& result_expr : f.body.result) {
+  for(const auto& result_expr : f.scope.result) {
     if(const auto binding_it = pc.binding_of.find(&result_expr); binding_it != pc.binding_of.end()) {
       if(const auto name_ptr = std::get_if<std::string>(&binding_it->second); name_ptr) {
         const auto it = std::find_if(
@@ -523,10 +523,10 @@ ContextualResult<void> extra_checks(const TypedFunction& f, const PropagationCac
     }
   }
 
-  if(!f.header.result.empty() && f.body.result.size() != 1 && f.header.result.size() != f.body.result.size()) {
+  if(!f.header.result.empty() && f.scope.result.size() != 1 && f.header.result.size() != f.scope.result.size()) {
     errors.push_back(
       {f.header.ref,
-       fmt::format("function expects {} return values, given {}", f.header.result.size(), f.body.result.size())});
+       fmt::format("function expects {} return values, given {}", f.header.result.size(), f.scope.result.size())});
   }
 
   return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
@@ -586,12 +586,12 @@ ContextualResult<Typed> type_name_resolution(const Env& e, const Untyped& u) {
 
 } // namespace
 
-UnTypedBody convert_to_function_body(std::variant<UnTypedExpr, UnTypedAssignment> v) {
+UnTypedScope convert_to_scope(std::variant<UnTypedExpr, UnTypedAssignment> v) {
   return std::visit(Overloaded{[](UnTypedExpr e) {
-                                 return UnTypedBody{{}, {std::move(e)}};
+                                 return UnTypedScope{{}, {std::move(e)}};
                                },
                                [](UnTypedAssignment a) {
-                                 UnTypedBody b{{std::move(a)}};
+                                 UnTypedScope b{{std::move(a)}};
                                  for(const auto& binding : b.assignments.front().bindings) {
                                    b.result.push_back(UnTypedExpr{binding.name});
                                  }
@@ -601,21 +601,21 @@ UnTypedBody convert_to_function_body(std::variant<UnTypedExpr, UnTypedAssignment
 }
 
 ContextualResult<TypedFunction> type_name_resolution(const Env& e, const UnTypedFunction& f) {
-  return type_name_resolution<TypedFunction>(e, std::tie(f.header, f.body));
+  return type_name_resolution<TypedFunction>(e, std::tie(f.header, f.scope));
 }
-ContextualResult<TypedBody> type_name_resolution(const Env& e, const UnTypedBody& b) {
-  return type_name_resolution<TypedBody>(e, b);
+ContextualResult<TypedScope> type_name_resolution(const Env& e, const UnTypedScope& b) {
+  return type_name_resolution<TypedScope>(e, b);
 }
 
 ContextualResult<CheckedFunction> overload_resolution(const Env& e, const TypedFunction& f) {
-  const PropagationCaches pc = calculate_propagation_caches(f.body);
+  const PropagationCaches pc = calculate_propagation_caches(f.scope);
 
   const auto [expr_types, conflicting_types] =
-    constraint_propagation(e, pc, append_body_candidates(e, f.body, append_header_candidates(f, pc.uses)));
+    constraint_propagation(e, pc, append_scope_candidates(e, f.scope, append_header_candidates(f, pc.uses)));
 
   auto conflicting_result = check_conflicting_errors(e, expr_types, conflicting_types);
 
-  return merge(extra_checks(f, pc), find_overloads(e, f.body, pc, expr_types))
+  return merge(extra_checks(f, pc), find_overloads(e, f.scope, pc, expr_types))
     .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), std::move(conflicting_result)); })
     .map([&](auto tup) {
       return CheckedFunction{std::move(f.header), std::move(std::get<0>(tup))};
@@ -623,19 +623,19 @@ ContextualResult<CheckedFunction> overload_resolution(const Env& e, const TypedF
 }
 
 ContextualResult<CheckedFunction>
-overload_resolution(const Env& e, const TypedBody& body, const std::unordered_map<std::string, TypeID>& bindings) {
-  const PropagationCaches pc = calculate_propagation_caches(body);
+overload_resolution(const Env& e, const TypedScope& scope, const std::unordered_map<std::string, TypeID>& bindings) {
+  const PropagationCaches pc = calculate_propagation_caches(scope);
 
   const auto [expr_types, conflicting_types] =
-    constraint_propagation(e, pc, append_body_candidates(e, body, append_binding_candidates(body, bindings)));
+    constraint_propagation(e, pc, append_scope_candidates(e, scope, append_binding_candidates(scope, bindings)));
 
-  auto header_result = generate_header(body, pc.uses, expr_types);
-  auto body_result = find_overloads(e, body, pc, expr_types);
+  auto header_result = generate_header(scope, pc.uses, expr_types);
+  auto scope_result = find_overloads(e, scope, pc, expr_types);
   auto conflicting_result = check_conflicting_errors(e, expr_types, conflicting_types);
 
   return check_missing_bindings(pc.uses, bindings)
-    .and_then([&]() { return std::move(body_result); })
-    .and_then([&](CheckedBody b) { return merge(std::move(header_result), std::move(b)); })
+    .and_then([&]() { return std::move(scope_result); })
+    .and_then([&](CheckedScope b) { return merge(std::move(header_result), std::move(b)); })
     .and_then([&](auto tup) {
       return merge(std::move(std::get<0>(tup)), std::move(std::get<1>(tup)), std::move(conflicting_result));
     })

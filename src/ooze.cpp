@@ -69,14 +69,14 @@ std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
     std::move(bindings), [](Binding b) { return anyf::any_cast<std::string>(take(std::move(b)).wait()); });
 }
 
-ContextualResult<CheckedFunction> overload_resolution(const RuntimeEnv& r, TypedBody b) {
+ContextualResult<CheckedFunction> overload_resolution(const RuntimeEnv& r, TypedScope b) {
   return overload_resolution(
     r.env, std::move(b), knot::map<std::unordered_map<std::string, TypeID>>(r.bindings, [](const Binding& b) {
       return b.type;
     }));
 }
 
-ContextualResult<TypedBody> check_and_wrap(const RuntimeEnv& r, TypedBody b) {
+ContextualResult<TypedScope> check_and_wrap(const RuntimeEnv& r, TypedScope b) {
   const auto to_string_wrap = [](TypedExpr e, TypeID t) {
     return t == anyf::type_id<std::string>() ? std::move(e)
                                              : TypedExpr{ast::Call<NamedFunction>{"to_string", {{std::move(e)}}}};
@@ -87,18 +87,18 @@ ContextualResult<TypedBody> check_and_wrap(const RuntimeEnv& r, TypedBody b) {
     assert(b.result.size() == 1);
 
     if(f.header.result.size() == 1) {
-      return TypedBody{{}, {to_string_wrap(std::move(b.result.front()), f.header.result.front())}};
+      return TypedScope{{}, {to_string_wrap(std::move(b.result.front()), f.header.result.front())}};
     } else {
-      TypedBody new_body{{{{}, std::move(b.result.front())}}, {}};
+      TypedScope new_scope{{{{}, std::move(b.result.front())}}, {}};
 
       int i = 0;
       for(TypeID type : f.header.result) {
         const std::string var = std::to_string(i++);
-        new_body.assignments.back().bindings.push_back({var, type});
-        new_body.result.push_back(to_string_wrap({var}, type));
+        new_scope.assignments.back().bindings.push_back({var, type});
+        new_scope.result.push_back(to_string_wrap({var}, type));
       }
 
-      return new_body;
+      return new_scope;
     }
   });
 }
@@ -170,15 +170,15 @@ Result<void> parse_script(Env& e, std::string_view script) {
 
 Result<std::vector<Binding>> run(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
-    .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_function_body(std::move(e))); })
-    .and_then([&](TypedBody b) { return overload_resolution(r, std::move(b)); })
+    .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_scope(std::move(e))); })
+    .and_then([&](TypedScope b) { return overload_resolution(r, std::move(b)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); })
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
 Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
-    .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_function_body(var))); })
+    .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_scope(var))); })
     .and_then(
       [&](auto tup) { return merge(std::move(std::get<0>(tup)), overload_resolution(r, std::move(std::get<1>(tup)))); })
     .and_then([&](auto tup) { return merge(std::move(std::get<0>(tup)), run_function(r, std::get<1>(tup))); })
@@ -188,9 +188,9 @@ Result<std::vector<Binding>> run_assign(RuntimeEnv& r, std::string_view assignme
 
 Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
-    .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_function_body(std::move(e))); })
-    .and_then([&](TypedBody b) { return check_and_wrap(r, std::move(b)); })
-    .and_then([&](TypedBody b) { return overload_resolution(r, std::move(b)); })
+    .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, convert_to_scope(std::move(e))); })
+    .and_then([&](TypedScope b) { return check_and_wrap(r, std::move(b)); })
+    .and_then([&](TypedScope b) { return overload_resolution(r, std::move(b)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); })
     .map(gather_binding_strings)
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
@@ -198,7 +198,7 @@ Result<std::vector<std::string>> run_to_string(RuntimeEnv& r, std::string_view e
 
 Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
-    .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_function_body(var))); })
+    .and_then([&](auto var) { return merge(var, type_name_resolution(r.env, convert_to_scope(var))); })
     .and_then([&](auto tup) {
       return std::holds_alternative<UnTypedAssignment>(std::get<0>(tup))
                ? success<ContextualError>(std::move(tup))

@@ -15,23 +15,23 @@ struct EnvFunctionRef {
 using TypedExpr = UnTypedExpr;
 using TypedHeader = ast::FunctionHeader<anyf::TypeID>;
 using TypedAssignment = ast::Assignment<anyf::TypeID, NamedFunction>;
-using TypedBody = ast::FunctionBody<anyf::TypeID, NamedFunction>;
+using TypedScope = ast::Scope<anyf::TypeID, NamedFunction>;
 
 // Replace function names with specific function overloads
 using CheckedExpr = ast::Expr<EnvFunctionRef>;
 using CheckedAssignment = ast::Assignment<anyf::TypeID, EnvFunctionRef>;
-using CheckedBody = ast::FunctionBody<anyf::TypeID, EnvFunctionRef>;
+using CheckedScope = ast::Scope<anyf::TypeID, EnvFunctionRef>;
 
 struct TypedFunction {
   TypedHeader header;
-  TypedBody body;
+  TypedScope scope;
 
   KNOT_ORDERED(TypedFunction);
 };
 
 struct CheckedFunction {
   TypedHeader header;
-  CheckedBody body;
+  CheckedScope scope;
 
   KNOT_ORDERED(CheckedFunction);
 };

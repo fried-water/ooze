@@ -30,7 +30,7 @@ UnTypedExpr ident(std::string_view name, u32 offset) {
   return {std::string(name), {offset, offset + (u32)name.size()}};
 }
 
-UnTypedBody body(UnTypedExpr expr) { return {{}, {std::move(expr)}}; }
+UnTypedScope scope(UnTypedExpr expr) { return {{}, {std::move(expr)}}; }
 
 UnTypedExpr one(u32 offset) { return {Literal{1}, Slice{offset, offset + 1}}; }
 
@@ -173,7 +173,7 @@ BOOST_AUTO_TEST_CASE(parser_bad_fn_name) { parse_error("fn 1() -> T { 1 }", {{3,
 
 BOOST_AUTO_TEST_CASE(parser_no_fn_keyword) { parse_error("f() -> T { 1 }", {{0, 1}, "expected 'fn'"}); }
 
-BOOST_AUTO_TEST_CASE(parser_no_body) { parse_error("fn f() -> T", {{11, 11}, "expected '{'"}); }
+BOOST_AUTO_TEST_CASE(parser_no_scope) { parse_error("fn f() -> T", {{11, 11}, "expected '{'"}); }
 
 BOOST_AUTO_TEST_CASE(parser_unclosed_paren) { parse_error("fn f( -> T { 1 }", {{6, 8}, "expected ')'"}); }
 

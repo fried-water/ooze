@@ -64,29 +64,29 @@ void test_expr_or(const Env& e,
                   const std::vector<EnvFunctionRef>& overloads,
                   const std::unordered_map<std::string, TypeID>& bindings,
                   std::string_view expr_or_assign) {
-  const auto body_result = parse_repl(expr_or_assign).map(convert_to_function_body).and_then([&](const UnTypedBody& b) {
+  const auto scope_result = parse_repl(expr_or_assign).map(convert_to_scope).and_then([&](const UnTypedScope& b) {
     return type_name_resolution(e, b);
   });
-  BOOST_REQUIRE(body_result.has_value());
+  BOOST_REQUIRE(scope_result.has_value());
 
   int f_idx = 0;
   const CheckedFunction expected{
     std::move(expected_header),
-    knot::map<CheckedBody>(body_result.value(), [&](const NamedFunction&) { return overloads[f_idx++]; })};
+    knot::map<CheckedScope>(scope_result.value(), [&](const NamedFunction&) { return overloads[f_idx++]; })};
 
-  BOOST_CHECK(expected == overload_resolution(e, *body_result, bindings));
+  BOOST_CHECK(expected == overload_resolution(e, *scope_result, bindings));
 }
 
 void test_expr_or_error(const Env& e,
                         std::string_view expr_or_assign,
                         const std::vector<ContextualError>& expected_errors,
                         const std::unordered_map<std::string, TypeID>& bindings = {}) {
-  const auto body_result = parse_repl(expr_or_assign).map(convert_to_function_body).and_then([&](const UnTypedBody& b) {
+  const auto scope_result = parse_repl(expr_or_assign).map(convert_to_scope).and_then([&](const UnTypedScope& b) {
     return type_name_resolution(e, b);
   });
-  BOOST_REQUIRE(body_result.has_value());
+  BOOST_REQUIRE(scope_result.has_value());
 
-  const auto result = overload_resolution(e, body_result.value(), bindings);
+  const auto result = overload_resolution(e, scope_result.value(), bindings);
 
   BOOST_REQUIRE(!result.has_value());
 

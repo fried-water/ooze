@@ -95,7 +95,7 @@ ContextualResult<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFu
     })
     .and_then([&](GraphContext ctx) {
       return accumulate<ContextualResult<GraphContext>>(
-        f.body.assignments,
+        f.scope.assignments,
         [&](auto acc, const CheckedAssignment& assignment) {
           return std::move(acc).and_then([&](GraphContext ctx) {
             return add_expr(ctx, assignment.expr, e).map([&](std::vector<Oterm> terms) {
@@ -113,8 +113,8 @@ ContextualResult<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFu
         std::move(ctx));
     })
     .and_then([&](GraphContext ctx) {
-      return accumulate_exprs(ctx, f.body.result, e).and_then([&](std::vector<Oterm> terms) {
-        return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(f.body.result));
+      return accumulate_exprs(ctx, f.scope.result, e).and_then([&](std::vector<Oterm> terms) {
+        return std::move(ctx.cg).finalize(terms).map_error(to_graph_error(f.scope.result));
       });
     });
 }

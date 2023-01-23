@@ -113,7 +113,7 @@ auto function_header() {
 }
 
 auto function_body() {
-  return construct<UnTypedBody>(seq(symbol("{"), n(assignment()), list_or_one(expr), symbol("}")));
+  return construct<UnTypedScope>(seq(symbol("{"), n(assignment()), list_or_one(expr), symbol("}")));
 }
 
 auto function() { return construct<UnTypedFunction>(seq(keyword("fn"), ident(), function_header(), function_body())); }

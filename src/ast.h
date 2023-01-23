@@ -61,11 +61,11 @@ struct FunctionHeader {
 };
 
 template <typename T, typename F>
-struct FunctionBody {
+struct Scope {
   std::vector<Assignment<T, F>> assignments;
   std::vector<Expr<F>> result;
 
-  KNOT_ORDERED(FunctionBody);
+  KNOT_ORDERED(Scope);
 };
 
 } // namespace ast
@@ -85,12 +85,12 @@ struct NamedFunction {
 using UnTypedExpr = ast::Expr<NamedFunction>;
 using UnTypedAssignment = ast::Assignment<NamedType, NamedFunction>;
 using UnTypedHeader = ast::FunctionHeader<NamedType>;
-using UnTypedBody = ast::FunctionBody<NamedType, NamedFunction>;
+using UnTypedScope = ast::Scope<NamedType, NamedFunction>;
 
 struct UnTypedFunction {
   std::string name;
   UnTypedHeader header;
-  UnTypedBody body;
+  UnTypedScope scope;
 
   KNOT_ORDERED(UnTypedFunction);
 };
