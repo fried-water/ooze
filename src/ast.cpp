@@ -69,9 +69,14 @@ void pretty_print(std::ostream& os, const UnTypedScope& b) {
 }
 
 void pretty_print(std::ostream& os, const UnTypedFunction& f) {
-  pretty_print(os << "fn " << f.name, f.header);
+  pretty_print(os, f.header);
   pretty_print(os, f.scope);
   os << "\n";
+}
+
+void pretty_print(std::ostream& os, const std::tuple<std::string, UnTypedFunction>& t) {
+  const auto& [name, function] = t;
+  pretty_print(os << "fn " << name, function);
 }
 
 template <typename T>
@@ -110,6 +115,7 @@ std::string pretty_print(const AST& ast) {
   return std::move(ss).str();
 }
 
+std::string pretty_print(const std::tuple<std::string, UnTypedFunction>& t) { return pretty_print_gen(t); }
 std::string pretty_print(const Expr<NamedFunction>& expr) { return pretty_print_gen(expr); }
 std::string pretty_print(const Call<NamedFunction>& c) { return pretty_print_gen(c); }
 std::string pretty_print(const UnTypedFunction& f) { return pretty_print_gen(f); }

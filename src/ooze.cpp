@@ -151,14 +151,14 @@ Result<void> parse_script(Env& e, std::string_view script) {
     .and_then([&](AST ast) {
       std::vector<std::string> errors;
 
-      for(const auto& f : ast) {
+      for(const auto& [name, f] : ast) {
         auto graph_result = type_name_resolution(e, f)
                               .and_then([&](TypedFunction f) { return overload_resolution(e, std::move(f)); })
                               .and_then([&](const CheckedFunction& f) { return create_graph(e, f); })
                               .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
 
         if(graph_result) {
-          e.add_graph(f.name, std::move(*graph_result));
+          e.add_graph(name, std::move(*graph_result));
         } else {
           errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
         }

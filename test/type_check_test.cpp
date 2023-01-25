@@ -103,25 +103,25 @@ BOOST_AUTO_TEST_CASE(cp_basic) {
   e.add_function("f", [](i32 x) { return x; });
   e.add_function("f", [](f32 x) { return x; });
 
-  test_or(e, {{"f", 0}}, "fn t(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "fn t(x: f32) -> f32 { f(x) }");
-  test_or(e, {{"f", 0}, {"f", 1}}, "fn t(x: i32, y: f32) -> (i32, f32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1}}, "(x: f32) -> f32 { f(x) }");
+  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: f32) -> (i32, f32) { (f(x), f(y)) }");
 }
 
-BOOST_AUTO_TEST_CASE(cp_empty) { test_or(create_primative_env(), {}, "fn t() -> () { () }"); }
+BOOST_AUTO_TEST_CASE(cp_empty) { test_or(create_primative_env(), {}, "() -> () { () }"); }
 
-BOOST_AUTO_TEST_CASE(cp_unused_input) { test_or(create_primative_env(), {}, "fn t(x: i32) -> () { () }"); }
+BOOST_AUTO_TEST_CASE(cp_unused_input) { test_or(create_primative_env(), {}, "(x: i32) -> () { () }"); }
 
-BOOST_AUTO_TEST_CASE(cp_unused_binding) { test_or(create_primative_env(), {}, "fn t() -> () { let x = 5 () }"); }
+BOOST_AUTO_TEST_CASE(cp_unused_binding) { test_or(create_primative_env(), {}, "() -> () { let x = 5 () }"); }
 
-BOOST_AUTO_TEST_CASE(cp_literal_return) { test_or(create_primative_env(), {}, "fn t() -> i32 { 5 }"); }
+BOOST_AUTO_TEST_CASE(cp_literal_return) { test_or(create_primative_env(), {}, "() -> i32 { 5 }"); }
 
 BOOST_AUTO_TEST_CASE(cp_borrow) {
   Env e = create_primative_env();
   e.add_function("f", [](const i32&) {});
   e.add_function("f", [](i32) {});
 
-  test_or(e, {{"f", 0}}, "fn t(x: &i32) -> () { f(x) }");
+  test_or(e, {{"f", 0}}, "(x: &i32) -> () { f(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_input) {
@@ -129,18 +129,18 @@ BOOST_AUTO_TEST_CASE(cp_input) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return i32(); });
 
-  test_or(e, {{"f", 0}}, "fn t(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "fn t(x: f32) -> i32 { f(x) }");
-  test_or(e, {{"f", 0}, {"f", 1}}, "fn t(x: i32, y: f32) -> (i32, i32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1}}, "(x: f32) -> i32 { f(x) }");
+  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: f32) -> (i32, i32) { (f(x), f(y)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_constant) {
   Env e = create_primative_env();
 
-  test_or(e, {}, "fn t() -> i32 { 1 }");
-  test_or(e, {}, "fn t() -> string { 'abc' }");
-  test_or(e, {}, "fn t() -> i32 { let x = 5 x }");
-  test_or(e, {}, "fn t() -> i32 { let x: i32 = 5 x }");
+  test_or(e, {}, "() -> i32 { 1 }");
+  test_or(e, {}, "() -> string { 'abc' }");
+  test_or(e, {}, "() -> i32 { let x = 5 x }");
+  test_or(e, {}, "() -> i32 { let x: i32 = 5 x }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_output) {
@@ -148,9 +148,9 @@ BOOST_AUTO_TEST_CASE(cp_output) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](i32) { return f32(); });
 
-  test_or(e, {{"f", 0}}, "fn t(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "fn t(x: i32) -> f32 { f(x) }");
-  test_or(e, {{"f", 0}, {"f", 1}}, "fn t(x: i32, y: i32) -> (i32, f32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1}}, "(x: i32) -> f32 { f(x) }");
+  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: i32) -> (i32, f32) { (f(x), f(y)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_binding_up) {
@@ -158,9 +158,9 @@ BOOST_AUTO_TEST_CASE(cp_binding_up) {
   e.add_function("f", []() { return i32(); });
   e.add_function("f", []() { return f32(); });
 
-  test_or(e, {{"f", 0}}, "fn t() -> i32 { let x = f() x }");
-  test_or(e, {{"f", 1}}, "fn t() -> f32 { let x = f() x }");
-  test_or(e, {{"f", 0}, {"f", 1}}, "fn t() -> (i32, f32) { let x = f() let y = f() (x, y) }");
+  test_or(e, {{"f", 0}}, "() -> i32 { let x = f() x }");
+  test_or(e, {{"f", 1}}, "() -> f32 { let x = f() x }");
+  test_or(e, {{"f", 0}, {"f", 1}}, "() -> (i32, f32) { let x = f() let y = f() (x, y) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_binding_across) {
@@ -171,7 +171,7 @@ BOOST_AUTO_TEST_CASE(cp_binding_across) {
   e.add_function("g", [](i32) { return i32(); });
   e.add_function("g", [](f32) { return i32(); });
 
-  test_or(e, {{"f", 0}, {"g", 0}}, "fn t() -> (i32, i32) { let x = f() (x, g(x)) }");
+  test_or(e, {{"f", 0}, {"g", 0}}, "() -> (i32, i32) { let x = f() (x, g(x)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_binding_hint) {
@@ -182,7 +182,7 @@ BOOST_AUTO_TEST_CASE(cp_binding_hint) {
   e.add_function("g", [](i32) { return i32(); });
   e.add_function("g", [](f32) { return i32(); });
 
-  test_or(e, {{"f", 0}, {"g", 0}}, "fn t() -> i32 { let x: i32 = f() g(x) }");
+  test_or(e, {{"f", 0}, {"g", 0}}, "() -> i32 { let x: i32 = f() g(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_param_borrow) {
@@ -191,24 +191,23 @@ BOOST_AUTO_TEST_CASE(cp_param_borrow) {
   e.add_function("f", [](const i32&) { return i32(); });
   e.add_function("g", [](i32) { return i32(); });
 
-  test_or(e, {{"ref", 0}}, "fn f(x: i32) -> () { ref(x) }");
+  test_or(e, {{"ref", 0}}, "(x: i32) -> () { ref(x) }");
 
-  test_or(
-    e, {{"f", 0}, {"g", 0}, {"f", 0}, {"g", 0}}, "fn t(x: i32) -> (i32, i32, i32, i32) { (f(x), g(x), f(x), g(x)) }");
+  test_or(e, {{"f", 0}, {"g", 0}, {"f", 0}, {"g", 0}}, "(x: i32) -> (i32, i32, i32, i32) { (f(x), g(x), f(x), g(x)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_param_borrow_return) {
   Env e = create_primative_env();
   e.add_function("f", [](const i32&) { return i32(); });
 
-  test_or(e, {{"f", 0}, {"f", 0}}, "fn t(x: &i32) -> i32 { f(f(x)) }");
+  test_or(e, {{"f", 0}, {"f", 0}}, "(x: &i32) -> i32 { f(f(x)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_multi_bind) {
   Env e = create_primative_env();
   e.add_function("f", []() { return std::tuple(i32(), f32()); });
 
-  test_or(e, {{"f", 0}}, "fn t() -> (i32, f32) { let (x, y) = f() (x, y) }");
+  test_or(e, {{"f", 0}}, "() -> (i32, f32) { let (x, y) = f() (x, y) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_single_overload) {
@@ -221,16 +220,16 @@ BOOST_AUTO_TEST_CASE(cp_single_overload) {
   e.add_function("h", []() { return i32(); });
   e.add_function("h", []() { return f32(); });
 
-  test_or(e, {{"f", 0}, {"g", 0}, {"h", 0}}, "fn t() -> i32 { f(g(h())) }");
+  test_or(e, {{"f", 0}, {"g", 0}, {"h", 0}}, "() -> i32 { f(g(h())) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_undeclared_function) {
   Env env = create_primative_env();
 
   test_or_error(env,
-                "fn f() -> () { missing() }",
+                "() -> () { missing() }",
                 {{
-                  {15, 24},
+                  {11, 20},
                   "use of undeclared function 'missing'",
                 }});
 }
@@ -239,13 +238,13 @@ BOOST_AUTO_TEST_CASE(cp_undeclared_binding) {
   Env env = create_primative_env();
   env.add_function("f", [](i32) {});
 
-  test_or_error(env, "fn f() -> () { f(x) }", {{{17, 18}, "use of undeclared binding 'x'"}});
+  test_or_error(env, "() -> () { f(x) }", {{{13, 14}, "use of undeclared binding 'x'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_arity_mismatch) {
   Env env = create_primative_env();
 
-  test_or_error(env, "fn f() -> (i32, i32) { (1, 1, 1) }", {{{4, 20}, "function expects 2 return values, given 3"}});
+  test_or_error(env, "() -> (i32, i32) { (1, 1, 1) }", {{{0, 16}, "function expects 2 return values, given 3"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_arg_count) {
@@ -253,8 +252,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_arg_count) {
   env.add_function("identity", [](i32 x) { return x; });
 
   test_or_error(env,
-                "fn f() -> i32 { identity() }",
-                {{{16, 26},
+                "() -> i32 { identity() }",
+                {{{12, 22},
                   "no matching overload found",
                   {"deduced identity() -> (i32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
@@ -264,8 +263,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_bind_count) {
   env.add_function("identity", [](i32 x) { return x; });
 
   test_or_error(env,
-                "fn f(x: i32) -> i32 { let () = identity(x) x }",
-                {{{31, 42},
+                "(x: i32) -> i32 { let () = identity(x) x }",
+                {{{27, 38},
                   "no matching overload found",
                   {"deduced identity(i32) -> () [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
@@ -275,8 +274,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_return_count) {
   env.add_function("identity", [](i32 x) { return x; });
 
   test_or_error(env,
-                "fn f(x: i32) -> () { identity(x) }",
-                {{{21, 32},
+                "(x: i32) -> () { identity(x) }",
+                {{{17, 28},
                   "no matching overload found",
                   {"deduced identity(i32) -> () [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
@@ -286,8 +285,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_arg_type) {
   env.add_function("identity", [](i32 x) { return x; });
 
   test_or_error(env,
-                "fn f(x: u32) -> i32 { identity(x) }",
-                {{{22, 33},
+                "(x: u32) -> i32 { identity(x) }",
+                {{{18, 29},
                   "no matching overload found",
                   {"deduced identity(u32) -> (i32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
@@ -297,8 +296,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_bind_type) {
   env.add_function("identity", [](i32 x) { return x; });
 
   test_or_error(env,
-                "fn f(x: i32) -> i32 { let x: u32 = identity(x) x }",
-                {{{35, 46},
+                "(x: i32) -> i32 { let x: u32 = identity(x) x }",
+                {{{31, 42},
                   "no matching overload found",
                   {"deduced identity(i32) -> (u32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
@@ -308,8 +307,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_return_type) {
   env.add_function("identity", [](i32 x) { return x; });
 
   test_or_error(env,
-                "fn f(x: i32) -> u32 { identity(x) }",
-                {{{22, 33},
+                "(x: i32) -> u32 { identity(x) }",
+                {{{18, 29},
                   "no matching overload found",
                   {"deduced identity(i32) -> (u32) [1 candidate(s)]", "  identity(i32) -> i32"}}});
 }
@@ -320,8 +319,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
 
   test_or_error(
     env,
-    "fn f(x: &i32) -> () { val(x) }",
-    {{{22, 28}, "no matching overload found", {"deduced val(&i32) -> () [1 candidate(s)]", "  val(i32) -> ()"}}});
+    "(x: &i32) -> () { val(x) }",
+    {{{18, 24}, "no matching overload found", {"deduced val(&i32) -> () [1 candidate(s)]", "  val(i32) -> ()"}}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_empty_tuple_as_arg) {
@@ -330,50 +329,49 @@ BOOST_AUTO_TEST_CASE(cp_empty_tuple_as_arg) {
   env.add_function("take", [](i32) {});
 
   test_or_error(
-    env, "fn f() -> () { take(tup()) }", {{{20, 25}, "call to function take takes an expr that returns a tuple"}});
+    env, "() -> () { take(tup()) }", {{{16, 21}, "call to function take takes an expr that returns a tuple"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_type_no_functions) {
   Env env = create_primative_env();
 
-  test_or_error(env, "fn f(x: i32) -> f32 { x }", {{{22, 23}, "expected i32, found f32"}});
+  test_or_error(env, "(x: i32) -> f32 { x }", {{{18, 19}, "expected i32, found f32"}});
   test_or_error(env,
-                "fn f(x: i32) -> f32 { let y = x y }",
-                {{{30, 31}, "expected i32, found f32"}, {{32, 33}, "expected f32, found i32"}});
+                "(x: i32) -> f32 { let y = x y }",
+                {{{26, 27}, "expected i32, found f32"}, {{28, 29}, "expected f32, found i32"}});
   test_or_error(env,
-                "fn f(x: i32) -> f32 { let y: i32 = x y }",
-                {{{35, 36}, "expected i32, found f32"}, {{37, 38}, "expected f32, found i32"}});
+                "(x: i32) -> f32 { let y: i32 = x y }",
+                {{{31, 32}, "expected i32, found f32"}, {{33, 34}, "expected f32, found i32"}});
   test_or_error(env,
-                "fn f(x: i32) -> f32 { let y: f32 = x y }",
-                {{{35, 36}, "expected i32, found f32"}, {{37, 38}, "expected f32, found i32"}});
-  test_or_error(env, "fn f() -> f32 { 1 }", {{{16, 17}, "expected f32, found i32"}});
-  test_or_error(env,
-                "fn f() -> f32 { let x = 1 x }",
-                {{{24, 25}, "expected i32, found f32"}, {{26, 27}, "expected f32, found i32"}});
-  test_or_error(env, "fn f() -> f32 { let x: f32 = 1 x }", {{{29, 30}, "expected f32, found i32"}});
+                "(x: i32) -> f32 { let y: f32 = x y }",
+                {{{31, 32}, "expected i32, found f32"}, {{33, 34}, "expected f32, found i32"}});
+  test_or_error(env, "() -> f32 { 1 }", {{{12, 13}, "expected f32, found i32"}});
+  test_or_error(
+    env, "() -> f32 { let x = 1 x }", {{{20, 21}, "expected i32, found f32"}, {{22, 23}, "expected f32, found i32"}});
+  test_or_error(env, "() -> f32 { let x: f32 = 1 x }", {{{25, 26}, "expected f32, found i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_copy_ref_arg) {
   test_or_error(
-    create_primative_env(), "fn f(x: &i32) -> i32 { x }", {{{23, 24}, "attempting to return borrowed parameter 'x'"}});
+    create_primative_env(), "(x: &i32) -> i32 { x }", {{{19, 20}, "attempting to return borrowed parameter 'x'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_return) {
-  test_name_error(create_primative_env(), "fn f() -> abc { x }", {{{10, 13}, "undefined type"}});
+  test_name_error(create_primative_env(), "() -> abc { x }", {{{6, 9}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_arg) {
-  test_name_error(create_primative_env(), "fn f(x: abc) -> () { () }", {{{8, 11}, "undefined type"}});
+  test_name_error(create_primative_env(), "(x: abc) -> () { () }", {{{4, 7}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_let) {
-  test_name_error(create_primative_env(), "fn f() -> () { let x : abc = y x }", {{{23, 26}, "undefined type"}});
+  test_name_error(create_primative_env(), "() -> () { let x : abc = y x }", {{{19, 22}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_multi) {
   test_name_error(create_primative_env(),
-                  "fn f(x: a) -> b { let x : c = y x }",
-                  {{{8, 9}, "undefined type"}, {{14, 15}, "undefined type"}, {{26, 27}, "undefined type"}});
+                  "(x: a) -> b { let x : c = y x }",
+                  {{{4, 5}, "undefined type"}, {{10, 11}, "undefined type"}, {{22, 23}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_simple) {

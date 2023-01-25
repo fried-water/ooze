@@ -16,24 +16,12 @@ using TypedExpr = UnTypedExpr;
 using TypedHeader = ast::FunctionHeader<anyf::TypeID>;
 using TypedAssignment = ast::Assignment<anyf::TypeID, NamedFunction>;
 using TypedScope = ast::Scope<anyf::TypeID, NamedFunction>;
+using TypedFunction = ast::Function<anyf::TypeID, NamedFunction>;
 
 // Replace function names with specific function overloads
 using CheckedExpr = ast::Expr<EnvFunctionRef>;
 using CheckedAssignment = ast::Assignment<anyf::TypeID, EnvFunctionRef>;
 using CheckedScope = ast::Scope<anyf::TypeID, EnvFunctionRef>;
-
-struct TypedFunction {
-  TypedHeader header;
-  TypedScope scope;
-
-  KNOT_ORDERED(TypedFunction);
-};
-
-struct CheckedFunction {
-  TypedHeader header;
-  CheckedScope scope;
-
-  KNOT_ORDERED(CheckedFunction);
-};
+using CheckedFunction = ast::Function<anyf::TypeID, EnvFunctionRef>;
 
 } // namespace ooze

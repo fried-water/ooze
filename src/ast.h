@@ -68,6 +68,14 @@ struct Scope {
   KNOT_ORDERED(Scope);
 };
 
+template <typename T, typename F>
+struct Function {
+  FunctionHeader<T> header;
+  Scope<T, F> scope;
+
+  KNOT_ORDERED(Function);
+};
+
 } // namespace ast
 
 struct NamedType {
@@ -86,18 +94,12 @@ using UnTypedExpr = ast::Expr<NamedFunction>;
 using UnTypedAssignment = ast::Assignment<NamedType, NamedFunction>;
 using UnTypedHeader = ast::FunctionHeader<NamedType>;
 using UnTypedScope = ast::Scope<NamedType, NamedFunction>;
+using UnTypedFunction = ast::Function<NamedType, NamedFunction>;
 
-struct UnTypedFunction {
-  std::string name;
-  UnTypedHeader header;
-  UnTypedScope scope;
-
-  KNOT_ORDERED(UnTypedFunction);
-};
-
-using AST = std::vector<UnTypedFunction>;
+using AST = std::vector<std::tuple<std::string, UnTypedFunction>>;
 
 std::string pretty_print(const AST&);
+std::string pretty_print(const std::tuple<std::string, UnTypedFunction>&);
 std::string pretty_print(const UnTypedFunction&);
 std::string pretty_print(const UnTypedAssignment&);
 std::string pretty_print(const ast::Expr<NamedFunction>&);

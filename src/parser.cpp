@@ -112,11 +112,9 @@ auto function_header() {
   return construct_with_ref<UnTypedHeader>(seq(list(parameter()), symbol("->"), list_or_one(type_ident())));
 }
 
-auto function_body() {
-  return construct<UnTypedScope>(seq(symbol("{"), n(assignment()), list_or_one(expr), symbol("}")));
-}
+auto scope() { return construct<UnTypedScope>(seq(symbol("{"), n(assignment()), list_or_one(expr), symbol("}"))); }
 
-auto function() { return construct<UnTypedFunction>(seq(keyword("fn"), ident(), function_header(), function_body())); }
+auto function() { return construct<UnTypedFunction>(seq(function_header(), scope())); }
 
 template <typename Parser>
 ContextualResult<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
@@ -146,6 +144,12 @@ ContextualResult<std::variant<UnTypedExpr, UnTypedAssignment>> parse_repl(std::s
 
 ContextualResult<UnTypedFunction> parse_function(std::string_view src) { return parse_string(function(), src); }
 
-ContextualResult<AST> parse(std::string_view src) { return parse_string(n(function()), src); }
+ContextualResult<AST> parse(std::string_view src) {
+  return parse_string(n(seq(keyword("fn"), ident(), function())), src);
+}
+
+ContextualResult<UnTypedHeader> parse_header(std::string_view src) { return parse_string(function_header(), src); }
+ContextualResult<UnTypedScope> parse_scope(std::string_view src) { return parse_string(scope(), src); }
+ContextualResult<UnTypedAssignment> parse_assignment(std::string_view src) { return parse_string(assignment(), src); }
 
 } // namespace ooze
