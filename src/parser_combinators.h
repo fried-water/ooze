@@ -214,8 +214,8 @@ auto transform(P p, F f) {
     auto r = p(s, {loc.pos, loc.depth + 1});
     return r ? passing_result(
                  r.slice, Invoker{}(f, s.state, s.tokens, r.slice, std::move(*r.value)), std::move(r.error))
-             : failing_result<decltype(Invoker{}(f, s.state, s.tokens, r.slice, *r.value))>(r.slice,
-                                                                                            std::move(r.error));
+             : failing_result<decltype(Invoker{}(f, s.state, s.tokens, r.slice, std::move(*r.value)))>(
+                 r.slice, std::move(r.error));
   };
 }
 

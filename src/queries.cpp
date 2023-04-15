@@ -17,45 +17,27 @@ std::string join(const Range& range, F f) {
   }
 }
 
-std::string function_string(const Env& e, std::string_view fn_name, Span<TypeProperties> inputs, Span<TypeID> outputs) {
-  const auto input_type_name = [&](auto t) {
-    return fmt::format("{}{}", t.value ? "" : "&", type_name_or_id(e, t.id));
-  };
+struct TypeStrVisitor {
+  const Env& e;
 
-  return fmt::format("{}{} -> {}", fn_name, type_list_string(e, inputs), output_type_list_string(e, outputs));
-}
+  std::string operator()(Floating) const { return "_"; }
+  std::string operator()(TypeID t) const { return type_name_or_id(e, t); }
+  std::string operator()(Borrow<TypeID> b) const { return fmt::format("&{}", (*this)(*b.type)); }
+
+  std::string operator()(FunctionType<TypeID> v) const {
+    return fmt::format("{} -> {}", (*this)(*v.input), (*this)(*v.output));
+  }
+
+  std::string operator()(const std::vector<CompoundType<TypeID>>& v) const { return join(v, *this); }
+  std::string operator()(const CompoundType<TypeID>& t) const { return std::visit(*this, t.v); }
+};
 
 } // namespace
 
-std::string type_list_string(const Env& e, Span<TypeID> types) {
-  return join(types, [&](TypeID type) { return type_name_or_id(e, type); });
-}
-
-std::string type_list_string(const Env& e, Span<TypeProperties> types) {
-  return join(types,
-              [&](TypeProperties t) { return fmt::format("{}{}", t.value ? "" : "&", type_name_or_id(e, t.id)); });
-}
-
-std::string type_list_string(const Env& e, Span<std::optional<TypeProperties>> types) {
-  return join(types, [&](std::optional<TypeProperties> t) {
-    return t ? fmt::format("{}{}", t->value ? "" : "&", type_name_or_id(e, t->id)) : "_";
-  });
-}
-
-std::string output_type_list_string(const Env& e, Span<TypeID> types) {
-  return types.size() == 1 ? type_name_or_id(e, types.front()) : type_list_string(e, types);
-}
+std::string type_string(const Env& e, const CompoundType<TypeID>& t) { return TypeStrVisitor{e}(t); }
 
 std::string function_string(const Env& e, std::string_view fn_name, const EnvFunction& f) {
-  return std::visit([&](const auto& f) { return function_string(e, fn_name, input_types(f), output_types(f)); }, f);
-}
-
-std::string function_string(const Env& e, std::string_view fn_name, const FunctionGraph& g) {
-  return function_string(e, fn_name, input_types(g), output_types(g));
-}
-
-std::string function_string(const Env& e, std::string_view fn_name, const AnyFunction& f) {
-  return function_string(e, fn_name, f.input_types(), f.output_types());
+  return fmt::format("{}{}", fn_name, type_string(e, f.type));
 }
 
 } // namespace ooze

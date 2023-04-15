@@ -1,8 +1,6 @@
-#include "pch.h"
+#include "test.h"
 
 #include "parser_combinators.h"
-
-#include <boost/test/unit_test.hpp>
 
 namespace ooze::pc {
 

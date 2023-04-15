@@ -1,9 +1,30 @@
 #pragma once
 
 #include "literal.h"
+#include "ooze/type.h"
 
 namespace ooze {
 namespace ast {
+
+struct IdentExpr {
+  std::string name;
+  KNOT_ORDERED(IdentExpr);
+};
+
+struct WildCard {
+  KNOT_ORDERED(WildCard);
+};
+
+struct Ident {
+  std::string name;
+  KNOT_ORDERED(Ident);
+};
+
+struct Pattern {
+  std::variant<std::vector<Pattern>, WildCard, Ident> v;
+  Slice ref;
+  KNOT_ORDERED(Pattern);
+};
 
 template <typename F>
 struct Expr;
@@ -17,44 +38,32 @@ struct Call {
 };
 
 template <typename F>
+struct BorrowExpr {
+  Indirect<Expr<F>> e;
+  KNOT_ORDERED(BorrowExpr);
+};
+
+template <typename F>
 struct Expr {
-  std::variant<Call<F>, std::string, Literal> v;
+  std::variant<std::vector<Expr<F>>, Call<F>, BorrowExpr<F>, IdentExpr, Literal> v;
   Slice ref;
-
   KNOT_ORDERED(Expr);
-};
-
-template <typename T>
-struct Parameter {
-  std::string name;
-  T type;
-  bool borrow = false;
-  Slice ref;
-
-  KNOT_ORDERED(Parameter);
-};
-
-template <typename T>
-struct Binding {
-  std::string name;
-  std::optional<T> type;
-  Slice ref;
-
-  KNOT_ORDERED(Binding);
 };
 
 template <typename T, typename F>
 struct Assignment {
-  std::vector<Binding<T>> bindings;
+  Pattern pattern;
+  CompoundType<T> type;
   Expr<F> expr;
+  Slice ref;
 
   KNOT_ORDERED(Assignment);
 };
 
 template <typename T>
 struct FunctionHeader {
-  std::vector<Parameter<T>> parameters;
-  std::vector<T> result;
+  Pattern pattern;
+  FunctionType<T> type;
   Slice ref;
 
   KNOT_ORDERED(FunctionHeader);
@@ -63,7 +72,7 @@ struct FunctionHeader {
 template <typename T, typename F>
 struct Scope {
   std::vector<Assignment<T, F>> assignments;
-  std::vector<Expr<F>> result;
+  Expr<F> result;
 
   KNOT_ORDERED(Scope);
 };
@@ -104,7 +113,7 @@ std::string pretty_print(const UnTypedFunction&);
 std::string pretty_print(const UnTypedAssignment&);
 std::string pretty_print(const ast::Expr<NamedFunction>&);
 std::string pretty_print(const ast::Call<NamedFunction>&);
-std::string pretty_print(const ast::Parameter<NamedType>&);
-std::string pretty_print(const ast::Binding<NamedType>&);
+std::string pretty_print(const CompoundType<NamedType>&);
+std::string pretty_print(const ast::Pattern&);
 
 } // namespace ooze

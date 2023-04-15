@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ooze/env.h"
+#include "ooze/tree.h"
 
 #include <anyf/borrowed_future.h>
 #include <anyf/executor.h>
@@ -27,20 +28,24 @@ struct Binding {
 struct RuntimeEnv {
   Env env;
   anyf::Executor executor;
-  std::unordered_map<std::string, Binding> bindings;
+  std::unordered_map<std::string, Tree<Binding>> bindings;
 
   ~RuntimeEnv() { executor.wait(); }
 };
+
+Tree<Any> await(Tree<Binding>);
+
+CompoundType<TypeID> type(const Tree<Binding>&);
 
 RuntimeEnv make_default_runtime(Env);
 
 Result<void> parse_script(Env&, std::string_view script);
 
-Result<std::vector<Binding>> run(RuntimeEnv&, std::string_view expr);
-Result<std::vector<std::string>> run_to_string(RuntimeEnv&, std::string_view expr);
+Result<Tree<Binding>> run(RuntimeEnv&, std::string_view expr);
+Result<std::string> run_to_string(RuntimeEnv&, std::string_view expr);
 
-Result<std::vector<Binding>> run_assign(RuntimeEnv&, std::string_view assignment_or_expr);
-Result<std::vector<std::string>> run_to_string_assign(RuntimeEnv&, std::string_view assignment_or_expr);
+Result<Tree<Binding>> run_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
+Result<std::string> run_to_string_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
 
 int main(int argc, const char** argv, Env);
 

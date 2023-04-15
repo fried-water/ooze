@@ -57,6 +57,8 @@ IncludeBlocks:   Regroup
 IncludeCategories:
   - Regex:           '"pch.h"'
     Priority:        0
+  - Regex:           '"test.h"'
+    Priority:        0
   - Regex:           '"executor/.*.h"'
     Priority:        1
   - Regex:           '".*.h"'

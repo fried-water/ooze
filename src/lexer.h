@@ -7,6 +7,7 @@ enum class TokenType {
   Comment,
   Ident,
   Keyword,
+  Underscore,
   Symbol,
   LiteralFloat,
   LiteralInt,

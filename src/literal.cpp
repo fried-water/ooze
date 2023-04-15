@@ -22,6 +22,7 @@ std::optional<Literal> to_literal(TokenType type, std::string_view sv) {
   case TokenType::Whitespace:
   case TokenType::Comment:
   case TokenType::Keyword:
+  case TokenType::Underscore:
   case TokenType::Ident:
   case TokenType::Symbol: return std::nullopt;
   case TokenType::LiteralInt: {

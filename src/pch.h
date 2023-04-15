@@ -1,5 +1,7 @@
 #pragma once
 
+#include "algorithm.h"
+
 #include <anyf/span.h>
 #include <fmt/core.h>
 #include <knot/core.h>
@@ -57,18 +59,6 @@ struct Overloaded : Ts... {
 template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
-template <typename T, typename Range, typename F>
-T accumulate(Range&& range, F f, T acc = {}) {
-  for(auto&& value : range) {
-    if constexpr(std::is_reference_v<Range>) {
-      acc = f(std::move(acc), value);
-    } else {
-      acc = f(std::move(acc), std::move(value));
-    }
-  }
-  return acc;
-}
-
 template <typename T>
 using Result = tl::expected<T, std::vector<std::string>>;
 
@@ -76,6 +66,14 @@ inline void dump(const std::vector<std::string>& lines) {
   for(const std::string& line : lines) {
     fmt::print("{}\n", line);
   }
+}
+
+template <typename... Ts>
+auto make_vector(Ts&&... ts) {
+  std::vector<std::common_type_t<std::decay_t<Ts>...>> v;
+  v.reserve(sizeof...(ts));
+  (v.emplace_back(std::forward<Ts>(ts)), ...);
+  return v;
 }
 
 inline Result<std::vector<std::string>> convert_errors(std::vector<std::string> errors) { return errors; }

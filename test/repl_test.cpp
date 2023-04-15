@@ -1,11 +1,18 @@
-#include "pch.h"
+#include "test.h"
 
 #include "queries.h"
 #include "repl.h"
 
-#include <boost/test/unit_test.hpp>
-
 namespace ooze {
+
+#define compare_output(_EXP, _ACT)                                                                                     \
+  [](const std::vector<std::string>& e, const std::vector<std::string>& a) {                                           \
+    if(e != a) {                                                                                                       \
+      fmt::print("E: {}\n", knot::debug(e));                                                                           \
+      fmt::print("A: {}\n", knot::debug(a));                                                                           \
+    }                                                                                                                  \
+    BOOST_CHECK(e == a);                                                                                               \
+  }(_EXP, _ACT)
 
 BOOST_AUTO_TEST_CASE(repl_empty) {
   RuntimeEnv r = make_default_runtime(Env{});
@@ -16,30 +23,25 @@ BOOST_AUTO_TEST_CASE(repl_empty) {
 BOOST_AUTO_TEST_CASE(repl_run_expr) {
   RuntimeEnv r = make_default_runtime(create_primative_env());
 
-  const std::vector<std::string> expected{"3"};
-  BOOST_CHECK(expected == step_repl(r, "3"));
-
-  const std::vector<std::string> expected2{"abc"};
-  BOOST_CHECK(expected2 == step_repl(r, "'abc'"));
+  compare_output({"3"}, step_repl(r, "3"));
+  compare_output({"abc"}, step_repl(r, "'abc'"));
 
   r.env.add_function("pow", [](int x) { return x * x; });
-  const std::vector<std::string> expected3{"9"};
-  BOOST_CHECK(expected3 == step_repl(r, "pow(3)"));
+  compare_output({"9"}, step_repl(r, "pow(3)"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_function) {
   RuntimeEnv r = make_default_runtime(create_primative_env());
 
-  step_repl(r, "let x = 1");
+  BOOST_CHECK(step_repl(r, "let x = 1").empty());
 
   const std::vector<std::string> expected{
     "1:0 error: use of undeclared function 'missing'", " | missing()", " | ^~~~~~~~~"};
-  BOOST_CHECK(expected == step_repl(r, "missing()"));
+  compare_output(expected, step_repl(r, "missing()"));
 
   const std::vector<std::string> expected2{
     "1:0 error: use of undeclared function 'missing'", " | missing(x)", " | ^~~~~~~~~~"};
-
-  BOOST_CHECK(expected2 == step_repl(r, "missing(x)"));
+  compare_output(expected2, step_repl(r, "missing(x)"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_missing_binding) {
@@ -48,12 +50,12 @@ BOOST_AUTO_TEST_CASE(repl_missing_binding) {
   r.env.add_function("identity", [](int x) { return x; });
 
   const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
-  BOOST_CHECK(expected == step_repl(r, "x"));
+  compare_output(expected, step_repl(r, "x"));
 
   const std::vector<std::string> expected2{
     "1:9 error: use of undeclared binding 'x'", " | identity(x)", " |          ^"};
 
-  BOOST_CHECK(expected2 == step_repl(r, "identity(x)"));
+  compare_output(expected2, step_repl(r, "identity(x)"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
@@ -65,51 +67,49 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
 
   BOOST_REQUIRE(step_repl(r, "let x = make_ptr(5)").empty());
 
-  const std::vector<std::string> expected{"5"};
-  BOOST_CHECK(expected == step_repl(r, "take_ptr(x)"));
+  compare_output({"5"}, step_repl(r, "take_ptr(x)"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings) {
   RuntimeEnv r = make_default_runtime(Env{});
 
-  const std::vector<std::string> no_bindings{"0 binding(s)"};
-  BOOST_CHECK(no_bindings == step_repl(r, ":b"));
+  compare_output({"0 binding(s)"}, step_repl(r, ":b"));
 
-  BOOST_CHECK(step_repl(r, "let x = 5").empty());
-  BOOST_CHECK(step_repl(r, ":a").empty());
+  BOOST_REQUIRE(step_repl(r, "let x = 5").empty());
+  BOOST_REQUIRE(step_repl(r, ":a").empty());
 
   const std::vector<std::string> one_unknown_binding{"1 binding(s)",
                                                      fmt::format("  x: type 0x{:x}", anyf::type_id<int>())};
-  BOOST_CHECK(one_unknown_binding == step_repl(r, ":b"));
+  compare_output(one_unknown_binding, step_repl(r, ":b"));
 
-  BOOST_CHECK(step_repl(r, "let y = 'abc'").empty());
-  BOOST_CHECK(step_repl(r, ":a").empty());
+  BOOST_REQUIRE(step_repl(r, "let y = 'abc'").empty());
+  BOOST_REQUIRE(step_repl(r, ":a").empty());
 
   r.env.add_type<int>("i32");
 
   const std::vector<std::string> two_bindings{
     "2 binding(s)", "  x: i32", fmt::format("  y: {}", type_name_or_id(r.env, anyf::type_id<std::string>()))};
-  BOOST_CHECK(two_bindings == step_repl(r, ":b"));
+  compare_output(two_bindings, step_repl(r, ":b"));
 
-  BOOST_CHECK(r.bindings.size() == 2);
+  BOOST_REQUIRE(r.bindings.size() == 2);
 
-  BOOST_CHECK(anyf::type_id<int>() == r.bindings.at("x").type);
-  BOOST_CHECK(anyf::type_id<std::string>() == r.bindings.at("y").type);
+  Binding& x = std::get<Binding>(r.bindings.at("x").v);
+  Binding& y = std::get<Binding>(r.bindings.at("y").v);
 
-  BOOST_CHECK(5 == anyf::any_cast<int>(std::move(r.bindings.at("x").future).wait()));
-  BOOST_CHECK("abc" == anyf::any_cast<std::string>(std::move(r.bindings.at("y").future).wait()));
+  BOOST_CHECK(anyf::type_id<int>() == x.type);
+  BOOST_CHECK(anyf::type_id<std::string>() == y.type);
+
+  BOOST_CHECK(5 == anyf::any_cast<int>(std::move(x.future).wait()));
+  BOOST_CHECK("abc" == anyf::any_cast<std::string>(std::move(y.future).wait()));
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {
   RuntimeEnv r = make_default_runtime(create_primative_env());
 
-  BOOST_CHECK(step_repl(r, "let x = 5").empty());
-
-  const std::vector<std::string> result{"5"};
-  BOOST_CHECK(result == step_repl(r, "x"));
-
-  const std::vector<std::string> one_binding{"1 binding(s)", fmt::format("  x: i32")};
-  BOOST_CHECK(one_binding == step_repl(r, ":b"));
+  compare_output({}, step_repl(r, "let x = 5"));
+  compare_output({"5"}, step_repl(r, "x"));
+  const std::vector<std::string> expected{"1 binding(s)", fmt::format("  x: i32")};
+  compare_output(expected, step_repl(r, ":b"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_types) {
@@ -121,15 +121,14 @@ BOOST_AUTO_TEST_CASE(repl_types) {
   add_tieable_type<int>(r.env, "i32");
 
   r.env.add_type<A>("A");
+
+  // Types without names won't be reported
   r.env.add_function("to_string", [](const B&) { return std::string("B"); });
 
   const std::vector<std::string> expected{
-    "3 type(s)",
-    "  A                    [to_string: N]",
-    "  i32                  [to_string: Y]",
-    fmt::format("  {:<20} [to_string: Y]", type_name_or_id(r.env, anyf::type_id<B>()))};
+    "2 type(s)", "  A                    [to_string: N]", "  i32                  [to_string: Y]"};
 
-  BOOST_CHECK(expected == step_repl(r, ":t"));
+  compare_output(expected, step_repl(r, ":t"));
 }
 
 BOOST_AUTO_TEST_CASE(repl_functions) {
@@ -160,7 +159,7 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
                                           "  write(&string, &string) -> ()",
                                           "  write(&string, &vector<byte>) -> ()"};
 
-  BOOST_CHECK(expected == step_repl(r, ":f"));
+  compare_output(expected, step_repl(r, ":f"));
 }
 
 } // namespace ooze

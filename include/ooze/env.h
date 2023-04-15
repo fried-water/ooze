@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ooze/type.h"
+
 #include <anyf/any_function.h>
 #include <anyf/graph.h>
 #include <anyf/traits.h>
@@ -20,15 +22,10 @@ using anyf::Span;
 using anyf::TypeID;
 using anyf::TypeProperties;
 
-using EnvFunction = std::variant<AnyFunction, FunctionGraph>;
-
-inline Span<TypeProperties> input_types(const EnvFunction& f) {
-  return std::visit([&](const auto& f) -> Span<TypeProperties> { return f.input_types(); }, f);
-}
-
-inline Span<TypeID> output_types(const EnvFunction& f) {
-  return std::visit([&](const auto& f) -> Span<TypeID> { return f.output_types(); }, f);
-}
+struct EnvFunction {
+  CompoundType<TypeID> type;
+  std::variant<AnyFunction, FunctionGraph> f;
+};
 
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
@@ -37,10 +34,33 @@ struct Env {
 
   template <typename F>
   void add_function(const std::string& name, F&& f) {
-    functions[name].emplace_back(AnyFunction{std::forward<F>(f)});
+    AnyFunction anyf{std::forward<F>(f)};
+
+    std::vector<CompoundType<TypeID>> input;
+    input.reserve(anyf.input_types().size());
+    std::transform(anyf.input_types().begin(),
+                   anyf.input_types().end(),
+                   std::back_inserter(input),
+                   [](TypeProperties p) { return p.value ? leaf_type(p.id) : borrow_type(leaf_type(p.id)); });
+
+    if(anyf.output_types().size() == 1) {
+      functions[name].push_back(
+        {function_type(tuple_type(std::move(input)), leaf_type(anyf.output_types()[0])), std::move(anyf)});
+    } else {
+      std::vector<CompoundType<TypeID>> output;
+      output.reserve(anyf.output_types().size());
+      std::transform(anyf.output_types().begin(), anyf.output_types().end(), std::back_inserter(output), [](TypeID t) {
+        return leaf_type(t);
+      });
+
+      functions[name].push_back(
+        {function_type(tuple_type(std::move(input)), tuple_type(std::move(output))), std::move(anyf)});
+    }
   }
 
-  void add_graph(const std::string& name, FunctionGraph f) { functions[name].emplace_back(std::move(f)); }
+  void add_graph(const std::string& name, CompoundType<TypeID> t, FunctionGraph f) {
+    functions[name].push_back({std::move(t), std::move(f)});
+  }
 
   template <typename T>
   void add_type(const std::string& name) {

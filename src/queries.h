@@ -2,6 +2,7 @@
 
 #include "ast.h"
 #include "ooze/env.h"
+#include "typed_ast.h"
 
 #include <anyf/future.h>
 #include <anyf/graph.h>
@@ -20,11 +21,14 @@ inline std::string type_name_or_id(const Env& e, TypeProperties type) {
   return fmt::format("{}{}", type.value ? "" : "&", it != e.type_names.end() ? it->second : to_string(type.id));
 }
 
-std::string type_list_string(const Env&, Span<TypeID>);
-std::string type_list_string(const Env&, Span<TypeProperties>);
-std::string type_list_string(const Env&, Span<std::optional<TypeProperties>>);
+template <typename R, typename T>
+R untype(const Env& e, const T& t) {
+  return knot::map<R>(t,
+                      Overloaded{[&](TypeID t) { return NamedType{type_name_or_id(e, t)}; },
+                                 [&](const EnvFunctionRef& r) { return NamedFunction{r.name}; }});
+}
 
-std::string output_type_list_string(const Env&, Span<TypeID>);
+std::string type_string(const Env&, const CompoundType<TypeID>&);
 
 std::string function_string(const Env&, std::string_view fn_name, const EnvFunction&);
 std::string function_string(const Env&, std::string_view fn_name, const FunctionGraph&);

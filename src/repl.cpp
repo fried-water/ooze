@@ -8,6 +8,7 @@
 #include "parser_combinators.h"
 #include "queries.h"
 #include "repl.h"
+#include "type_check.h"
 
 #include <anyf/graph_execution.h>
 
@@ -81,20 +82,21 @@ std::vector<std::string> run(RuntimeEnv&, const HelpCmd& help) {
 }
 
 std::vector<std::string> run(RuntimeEnv& repl, BindingsCmd) {
-  std::vector<std::string> output{fmt::format("{} binding(s)", repl.bindings.size())};
-
-  std::vector<std::string> ordered;
-  for(const auto& [binding, entry] : repl.bindings) {
-    ordered.push_back(binding);
-  }
+  std::vector<std::string> ordered = transform_to_vec(repl.bindings, [](const auto& p) { return p.first; });
   std::sort(ordered.begin(), ordered.end());
 
-  for(const auto& binding : ordered) {
-    const auto& [type, f, b] = repl.bindings.at(binding);
-    output.push_back(fmt::format("  {}: {}{}",
-                                 binding,
-                                 type_name_or_id(repl.env, type),
-                                 f.ready() || (b.valid() && b.unique()) ? "" : (b.valid() ? "&" : "*")));
+  std::vector<std::string> output;
+  output.reserve(repl.bindings.size() + 1);
+  output.push_back(fmt::format("{} binding(s)", repl.bindings.size()));
+
+  for(const std::string& binding : ordered) {
+    std::stringstream tree_ss;
+    tree_to_string(tree_ss, repl.bindings.at(binding), [&](std::ostream& os, const Binding& binding) {
+      const auto& [type, f, b] = binding;
+      os << fmt::format(
+        "{}{}", f.ready() || (b.valid() && b.unique()) ? "" : (b.valid() ? "&" : "*"), type_name_or_id(repl.env, type));
+    });
+    output.push_back(fmt::format("  {}: {}", binding, std::move(tree_ss).str()));
   }
 
   return output;
@@ -146,16 +148,12 @@ std::vector<std::string> run(RuntimeEnv& repl, const TypesCmd&) {
   std::map<std::string, bool> types;
 
   for(const auto& [id, name] : e.type_names) {
-    types[type_name_or_id(e, id)] = {};
-  }
+    TypedFunction to_string_wrap{
+      {{make_vector(ast::Pattern{ast::Ident{"x"}})},
+       {tuple_type<TypeID>(borrow_type(leaf_type(id))), leaf_type(anyf::type_id<std::string>())}},
+      {{}, {ast::Call<NamedFunction>{{"to_string"}, {{ast::IdentExpr{"x"}}}}}}};
 
-  const auto to_string_it = e.functions.find("to_string");
-  if(to_string_it != e.functions.end()) {
-    for(const auto& f : to_string_it->second) {
-      if(input_types(f).size() == 1) {
-        types[type_name_or_id(e, input_types(f).front().id)] = true;
-      }
-    }
+    types[type_name_or_id(e, id)] = overload_resolution(e, std::move(to_string_wrap)).has_value();
   }
 
   std::vector<std::string> output{fmt::format("{} type(s)", types.size())};
@@ -177,12 +175,13 @@ std::vector<std::string> run(RuntimeEnv& repl, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
     for(auto& [binding, entry] : repl.bindings) {
-      entry.future = anyf::Future(repl.executor, std::move(entry.future).wait());
+      knot::preorder(entry, [&](Binding& b) { b.future = anyf::Future(repl.executor, std::move(b.future).wait()); });
     }
   } else {
     for(const std::string& binding : cmd.bindings) {
       if(const auto it = repl.bindings.find(binding); it != repl.bindings.end()) {
-        it->second.future = anyf::Future(repl.executor, std::move(it->second.future).wait());
+        knot::preorder(it->second,
+                       [&](Binding& b) { b.future = anyf::Future(repl.executor, std::move(b.future).wait()); });
       } else {
         output.push_back(fmt::format("Binding {} not found", binding));
       }
@@ -202,7 +201,10 @@ std::vector<std::string> step_repl(RuntimeEnv& repl, std::string_view line) {
       .or_else(convert_errors)
       .value();
   } else {
-    return run_to_string_assign(repl, line).or_else(convert_errors).value();
+    return run_to_string_or_assign(repl, line)
+      .map([](std::string out) { return out.empty() ? std::vector<std::string>{} : make_vector(std::move(out)); })
+      .or_else(convert_errors)
+      .value();
   }
 }
 

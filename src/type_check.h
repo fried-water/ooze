@@ -1,22 +1,21 @@
 #pragma once
 
-#include "ast.h"
 #include "ooze/env.h"
 #include "typed_ast.h"
 #include "user_msg.h"
 
-#include <anyf/any_function.h>
-
 namespace ooze {
 
-UnTypedScope convert_to_scope(std::variant<UnTypedExpr, UnTypedAssignment>);
-
 ContextualResult<TypedFunction> type_name_resolution(const Env&, const UnTypedFunction&);
+ContextualResult<TypedHeader> type_name_resolution(const Env&, const UnTypedHeader&);
 ContextualResult<TypedScope> type_name_resolution(const Env&, const UnTypedScope&);
+ContextualResult<CompoundType<TypeID>> type_name_resolution(const Env&, const CompoundType<NamedType>&);
 
-ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
+TypedHeader inferred_header(const TypedScope&);
 
-ContextualResult<CheckedFunction>
-overload_resolution(const Env&, const TypedScope&, const std::unordered_map<std::string, TypeID>&);
+// TODO return Unresolved or CheckedFunction
+ContextualResult<CheckedFunction> overload_resolution(const Env&, TypedFunction, bool debug = false);
+
+ContextualResult<CompoundType<TypeID>> type_check(const Env&, const ast::Pattern&, CompoundType<TypeID>);
 
 } // namespace ooze

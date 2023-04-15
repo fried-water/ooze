@@ -7,7 +7,8 @@ namespace ooze {
 std::vector<std::string> contextualize(std::string_view src, std::vector<ContextualError> errors) {
   std::vector<std::string> strings;
 
-  strings.reserve(accumulate<size_t>(errors, [&](size_t acc, const auto& e) { return acc + 3 + e.notes.size(); }));
+  strings.reserve(
+    knot::accumulate(errors, size_t{0}, [&](size_t acc, const auto& e) { return acc + 3 + e.notes.size(); }));
 
   // Order errors by position in src
   std::sort(errors.begin(), errors.end());

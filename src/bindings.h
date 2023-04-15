@@ -13,24 +13,37 @@ inline anyf::BorrowedFuture borrow(Binding& b) {
   return b.borrowed_future;
 }
 
+inline std::vector<anyf::Future> take(Tree<Binding> tree) {
+  return knot::preorder_accumulate(std::move(tree), std::vector<anyf::Future>{}, [](auto v, Binding b) {
+    v.push_back(take(std::move(b)));
+    return v;
+  });
+}
+
+inline std::vector<anyf::BorrowedFuture> borrow(Tree<Binding>& tree) {
+  return knot::preorder_accumulate(tree, std::vector<anyf::BorrowedFuture>{}, [](auto v, Binding& b) {
+    v.push_back(borrow(b));
+    return v;
+  });
+}
+
 template <typename Bindings>
-Result<std::pair<TypeID, anyf::Future>> take(Bindings& bindings, const std::string& name) {
+Result<std::vector<anyf::Future>> take(Bindings& bindings, const std::string& name) {
   if(const auto var_it = bindings.find(name); var_it != bindings.end()) {
-    Binding b = std::move(var_it->second);
+    Tree<Binding> tree = std::move(var_it->second);
     bindings.erase(var_it);
-    return std::pair(b.type, std::move(b.future));
+    return take(std::move(tree));
   } else {
     return err(fmt::format("Binding {} not found", name));
   }
 }
 
 template <typename Bindings>
-Result<std::pair<TypeID, anyf::BorrowedFuture>> borrow(Bindings& bindings, const std::string& name) {
+Result<std::vector<anyf::BorrowedFuture>> borrow(Bindings& bindings, const std::string& name) {
   if(const auto var_it = bindings.find(name); var_it == bindings.end()) {
     return err(fmt::format("Binding {} not found", name));
   } else {
-    Binding& b = var_it->second;
-    return std::pair(b.type, borrow(b));
+    return borrow(var_it->second);
   }
 }
 

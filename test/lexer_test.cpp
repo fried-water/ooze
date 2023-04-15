@@ -1,8 +1,6 @@
-#include "pch.h"
+#include "test.h"
 
 #include "lexer.h"
-
-#include <boost/test/unit_test.hpp>
 
 namespace ooze {
 
@@ -16,10 +14,13 @@ BOOST_AUTO_TEST_CASE(lexer_keywords) {
 BOOST_AUTO_TEST_CASE(lexer_idents) {
   BOOST_CHECK((std::pair{TokenType::Ident, 4u}) == lex_one("let_"));
   BOOST_CHECK((std::pair{TokenType::Ident, 4u}) == lex_one("abc9"));
-  BOOST_CHECK((std::pair{TokenType::Ident, 1u}) == lex_one("_"));
+  BOOST_CHECK((std::pair{TokenType::Ident, 2u}) == lex_one("_X"));
   BOOST_CHECK((std::pair{TokenType::Ident, 5u}) == lex_one("__1__"));
-  BOOST_CHECK((std::pair{TokenType::Ident, 1u}) == lex_one("_ _"));
+  BOOST_CHECK((std::pair{TokenType::Ident, 2u}) == lex_one("_a _"));
+  BOOST_CHECK((std::pair{TokenType::Ident, 26u}) == lex_one("abcdefghijklmnopqrstuvwxyz"));
 }
+
+BOOST_AUTO_TEST_CASE(lexer_underscore) { BOOST_CHECK((std::pair{TokenType::Underscore, 1u}) == lex_one("_")); }
 
 BOOST_AUTO_TEST_CASE(lexer_symbols) {
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one("("));
@@ -27,6 +28,7 @@ BOOST_AUTO_TEST_CASE(lexer_symbols) {
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one("{"));
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one("})"));
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one(","));
+  BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one(";"));
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one("."));
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one(":"));
   BOOST_CHECK((std::pair{TokenType::Symbol, 1u}) == lex_one("="));
