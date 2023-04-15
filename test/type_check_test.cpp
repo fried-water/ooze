@@ -17,12 +17,6 @@ auto errors(Ts... ts) {
   return tl::unexpected{std::vector<ContextualError>{std::move(ts)...}};
 }
 
-auto untype(const Env& e, const CheckedFunction& f) {
-  return knot::map<UnTypedFunction>(f,
-                                    Overloaded{[&](const TypeID& t) { return NamedType{type_name_or_id(e, t)}; },
-                                               [&](const EnvFunctionRef& e) { return NamedFunction{e.name}; }});
-}
-
 void test_infer_header(const Env& e, std::string_view scope, std::string_view exp_header, std::vector<Slice> exp_refs) {
   const auto scope_result = parse_scope(scope).and_then([&](const auto& s) { return type_name_resolution(e, s); });
 
@@ -88,8 +82,8 @@ void test_or(const Env& e,
   BOOST_REQUIRE(result.has_value());
 
   if(expected.value() != result.value()) {
-    fmt::print("E {}", pretty_print(untype(e, expected.value())));
-    fmt::print("A {}", pretty_print(untype(e, result.value())));
+    fmt::print("E {}", pretty_print(untype<UnTypedFunction>(e, expected.value())));
+    fmt::print("A {}", pretty_print(untype<UnTypedFunction>(e, result.value())));
   }
 
   BOOST_CHECK(expected.value() == result.value());

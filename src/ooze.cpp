@@ -161,9 +161,18 @@ ContextualResult<Tree<Binding>> run_function(RuntimeEnv& r, const CheckedFunctio
                  },
 
                  // These can't be part of the output type of executed functions
-                 [](const FunctionType<TypeID>&) -> Binding { assert(false); },
-                 [](const Floating&) -> Binding { assert(false); },
-                 [](const Borrow<TypeID>&) -> Binding { assert(false); }};
+                 [](const FunctionType<TypeID>&) -> Binding {
+                   assert(false);
+                   exit(1);
+                 },
+                 [](const Floating&) -> Binding {
+                   assert(false);
+                   exit(1);
+                 },
+                 [](const Borrow<TypeID>&) -> Binding {
+                   assert(false);
+                   exit(1);
+                 }};
 
     return knot::map<Tree<Binding>>(*f.header.type.output, std::cref(converter));
   });

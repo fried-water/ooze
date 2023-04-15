@@ -73,6 +73,7 @@ ContextualResult<std::vector<Oterm>> add_expr(GraphContext& ctx, const CheckedEx
                      return ctx.cg.add(AnyFunction([=]() { return value; }), {})
                        .map_error([](const auto&) -> std::vector<ContextualError> {
                          assert(false); // shouldnt ever fail
+                         exit(1);
                        });
                    },
                    literal);

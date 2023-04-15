@@ -4,13 +4,18 @@ project(ooze)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Setting build type to Release as none was specified.")
-  set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 find_package(fmt REQUIRED)
 
 add_subdirectory(ext/AnyFunction)
 add_subdirectory(ext/ctre)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  add_compile_options(-fsanitize=address)
+  add_link_options(-fsanitize=address)
+endif()
 
 add_library(ooze
   src/env.cpp
