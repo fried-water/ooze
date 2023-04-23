@@ -29,14 +29,12 @@ void check_single_error(ContextualError expected, ContextualResult<T> result) {
 }
 
 UnTypedExpr call(std::string name, Slice s, std::vector<UnTypedExpr> args = {}) {
-  return {Call<NamedFunction>{std::move(name), std::move(args)}, s};
+  return {UnTypedCallExpr{std::move(name), std::move(args)}, s};
 }
 
 UnTypedExpr ident(std::string_view name, u32 offset) {
   return {{IdentExpr{std::string(name)}}, {offset, offset + (u32)name.size()}};
 }
-
-UnTypedScope scope(UnTypedExpr expr) { return {{}, {std::move(expr)}}; }
 
 UnTypedExpr one(u32 offset) { return {{Literal{1}}, Slice{offset, offset + 1}}; }
 
@@ -45,9 +43,10 @@ UnTypedExpr expr_tuple(Slice ref, Children... children) {
   return {std::vector<UnTypedExpr>{std::move(children)...}, ref};
 }
 
-template <typename... Children>
-UnTypedExpr expr_borrow(UnTypedExpr e) {
-  return {BorrowExpr<NamedFunction>{std::move(e)}, {e.ref.begin - 1, e.ref.end}};
+UnTypedExpr expr_borrow(UnTypedExpr e) { return {UnTypedBorrowExpr{std::move(e)}, {e.ref.begin - 1, e.ref.end}}; }
+
+UnTypedExpr scope(std::vector<UnTypedAssignment> assignments, UnTypedExpr expr, Slice ref) {
+  return {UnTypedScopeExpr{std::move(assignments), std::move(expr)}, ref};
 }
 
 Pattern ident_pattern(std::string_view name, u32 offset) {
@@ -239,50 +238,64 @@ BOOST_AUTO_TEST_CASE(parser_header_return_tuple1) {
   check_pass(expected, parse_header("() -> (T)"));
 }
 
-BOOST_AUTO_TEST_CASE(parser_scope_simple) {
-  const UnTypedScope expected{{}, one(2)};
-  check_pass(expected, parse_scope("{ 1 }"));
-}
+BOOST_AUTO_TEST_CASE(parser_scope_simple) { check_pass(scope({}, one(2), {0, 5}), parse_expr("{ 1 }")); }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment) {
-  const UnTypedScope expected{{{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}}},
-                              {ident("x", 13)}};
-  check_pass(expected, parse_scope("{ let x = 1; x }"));
+  const UnTypedExpr expected =
+    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}}}, ident("x", 13), {0, 16});
+  check_pass(expected, parse_expr("{ let x = 1; x }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment2) {
-  const UnTypedScope expected{{{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}},
-                               {ident_pattern("y", 17), floating_type<NamedType>(), one(21), {13, 22}}},
-                              {ident("x", 24)}};
-  check_pass(expected, parse_scope("{ let x = 1; let y = 1; x }"));
+  const UnTypedExpr expected = scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}},
+                                      {ident_pattern("y", 17), floating_type<NamedType>(), one(21), {13, 22}}},
+                                     ident("x", 24),
+                                     {0, 27});
+  check_pass(expected, parse_expr("{ let x = 1; let y = 1; x }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_return_tuple_empty) {
-  const UnTypedScope expected{{}, expr_tuple({2, 4})};
-  check_pass(expected, parse_scope("{ () }"));
+  check_pass(scope({}, expr_tuple({2, 4}), {0, 6}), parse_expr("{ () }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_return_tuple) {
-  const UnTypedScope expected{{}, expr_tuple({2, 5}, one(3))};
-  check_pass(expected, parse_scope("{ (1) }"));
+  check_pass(scope({}, expr_tuple({2, 5}, one(3)), {0, 7}), parse_expr("{ (1) }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_return_multi_tuple) {
-  const UnTypedScope expected{{}, expr_tuple({2, 8}, one(3), one(6))};
-  check_pass(expected, parse_scope("{ (1, 1) }"));
+  check_pass(scope({}, expr_tuple({2, 8}, one(3), one(6)), {0, 10}), parse_expr("{ (1, 1) }"));
+}
+
+BOOST_AUTO_TEST_CASE(parser_scope_nested) {
+  const UnTypedExpr expected =
+    scope({{ident_pattern("x", 6), floating_type<NamedType>(), scope({}, one(12), {10, 15}), {2, 15}}},
+          scope({{ident_pattern("y", 23), floating_type<NamedType>(), scope({}, ident("x", 29), {27, 32}), {19, 32}}},
+                scope({}, ident("y", 36), {34, 39}),
+                {17, 41}),
+          {0, 43});
+
+  check_pass(expected, parse_expr("{ let x = { 1 }; { let y = { x }; { y } } }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_ast_empty) { check_pass(AST{}, parse("")); }
 
 BOOST_AUTO_TEST_CASE(parser_ast_simple) {
-  const AST expected{{"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), {{}, {one(14)}}}}};
+  const AST expected{{"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}}};
   check_pass(expected, parse("fn f() -> T { 1 }"));
+}
+
+BOOST_AUTO_TEST_CASE(parser_ast_non_scope) {
+  const AST expected{
+    {"f",
+     {header(tuple_pattern({4, 7}, ident_pattern("x", 5)), {floating_type<NamedType>()}, type("T", 11), {4, 12}),
+      ident("x", 15)}}};
+  check_pass(expected, parse("fn f(x) -> T = x"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_multiple_functions) {
   const AST expected{
-    {"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), {{}, {one(14)}}}},
-    {"g", {header(tuple_pattern({22, 24}), {}, type("T", 28), {22, 29}), {{}, {one(32)}}}},
+    {"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}},
+    {"g", {header(tuple_pattern({22, 24}), {}, type("T", 28), {22, 29}), scope({}, one(32), {30, 35})}},
   };
   check_pass(expected, parse("fn f() -> T { 1 } fn g() -> T { 1 }"));
 }
@@ -295,7 +308,7 @@ BOOST_AUTO_TEST_CASE(parser_no_fn3) { check_single_error({{0, 1}, "expected 'fn'
 
 BOOST_AUTO_TEST_CASE(parser_bad_paren) { check_single_error({{2, 3}, "expected token" /* ? */}, parse("fn)")); }
 
-BOOST_AUTO_TEST_CASE(parser_no_expr) { check_single_error({{1, 2}, "expected literal" /* ? */}, parse_scope("{}")); }
+BOOST_AUTO_TEST_CASE(parser_no_expr) { check_single_error({{1, 2}, "expected literal" /* ? */}, parse_expr("{}")); }
 
 BOOST_AUTO_TEST_CASE(parser_no_return_type) {
   check_single_error({{6, 7}, "expected '('" /* ? */}, parse_header("() -> { 1 }"));
@@ -317,7 +330,7 @@ BOOST_AUTO_TEST_CASE(parser_bad_fn_name) {
 
 BOOST_AUTO_TEST_CASE(parser_no_fn_keyword) { check_single_error({{0, 1}, "expected 'fn'"}, parse("f() -> T { 1 }")); }
 
-BOOST_AUTO_TEST_CASE(parser_no_scope) { check_single_error({{11, 11}, "expected '{'"}, parse("fn f() -> T")); }
+BOOST_AUTO_TEST_CASE(parser_no_scope) { check_single_error({{11, 11}, "expected '='"}, parse("fn f() -> T")); }
 
 BOOST_AUTO_TEST_CASE(parser_unclosed_paren) { check_single_error({{6, 8}, "expected ')'"}, parse("fn f( -> T { 1 }")); }
 

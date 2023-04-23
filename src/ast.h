@@ -26,38 +26,47 @@ struct Pattern {
   KNOT_ORDERED(Pattern);
 };
 
-template <typename F>
+template <typename T, typename F>
 struct Expr;
 
-template <typename F>
-struct Call {
+template <typename T, typename F>
+struct CallExpr {
   F function;
-  std::vector<Expr<F>> parameters;
+  std::vector<Expr<T, F>> parameters;
 
-  KNOT_ORDERED(Call);
+  KNOT_ORDERED(CallExpr);
 };
 
-template <typename F>
+template <typename T, typename F>
 struct BorrowExpr {
-  Indirect<Expr<F>> e;
+  Indirect<Expr<T, F>> expr;
   KNOT_ORDERED(BorrowExpr);
-};
-
-template <typename F>
-struct Expr {
-  std::variant<std::vector<Expr<F>>, Call<F>, BorrowExpr<F>, IdentExpr, Literal> v;
-  Slice ref;
-  KNOT_ORDERED(Expr);
 };
 
 template <typename T, typename F>
 struct Assignment {
   Pattern pattern;
   CompoundType<T> type;
-  Expr<F> expr;
+  Indirect<Expr<T, F>> expr;
   Slice ref;
 
   KNOT_ORDERED(Assignment);
+};
+
+template <typename T, typename F>
+struct ScopeExpr {
+  std::vector<Assignment<T, F>> assignments;
+  Indirect<Expr<T, F>> result;
+
+  KNOT_ORDERED(ScopeExpr);
+};
+
+template <typename T, typename F>
+struct Expr {
+  std::variant<std::vector<Expr<T, F>>, ScopeExpr<T, F>, CallExpr<T, F>, BorrowExpr<T, F>, IdentExpr, Literal> v;
+  Slice ref;
+
+  KNOT_ORDERED(Expr);
 };
 
 template <typename T>
@@ -70,17 +79,9 @@ struct FunctionHeader {
 };
 
 template <typename T, typename F>
-struct Scope {
-  std::vector<Assignment<T, F>> assignments;
-  Expr<F> result;
-
-  KNOT_ORDERED(Scope);
-};
-
-template <typename T, typename F>
 struct Function {
   FunctionHeader<T> header;
-  Scope<T, F> scope;
+  Expr<T, F> expr;
 
   KNOT_ORDERED(Function);
 };
@@ -99,10 +100,12 @@ struct NamedFunction {
   KNOT_ORDERED(NamedFunction);
 };
 
-using UnTypedExpr = ast::Expr<NamedFunction>;
 using UnTypedAssignment = ast::Assignment<NamedType, NamedFunction>;
+using UnTypedScopeExpr = ast::ScopeExpr<NamedType, NamedFunction>;
+using UnTypedCallExpr = ast::CallExpr<NamedType, NamedFunction>;
+using UnTypedBorrowExpr = ast::BorrowExpr<NamedType, NamedFunction>;
+using UnTypedExpr = ast::Expr<NamedType, NamedFunction>;
 using UnTypedHeader = ast::FunctionHeader<NamedType>;
-using UnTypedScope = ast::Scope<NamedType, NamedFunction>;
 using UnTypedFunction = ast::Function<NamedType, NamedFunction>;
 
 using AST = std::vector<std::tuple<std::string, UnTypedFunction>>;
@@ -111,8 +114,7 @@ std::string pretty_print(const AST&);
 std::string pretty_print(const std::tuple<std::string, UnTypedFunction>&);
 std::string pretty_print(const UnTypedFunction&);
 std::string pretty_print(const UnTypedAssignment&);
-std::string pretty_print(const ast::Expr<NamedFunction>&);
-std::string pretty_print(const ast::Call<NamedFunction>&);
+std::string pretty_print(const UnTypedExpr&);
 std::string pretty_print(const CompoundType<NamedType>&);
 std::string pretty_print(const ast::Pattern&);
 

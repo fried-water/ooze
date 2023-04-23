@@ -62,9 +62,7 @@ auto run_or_assign(Env e, std::string_view script, std::string_view expr) {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(ooze_basic) {
-  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 {"
-                                      "  sum(sum(x, y), y)"
-                                      "}";
+  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 = sum(sum(x, y), y)";
   Env env = create_primative_env();
   env.add_function("sum", [](int x, int y) { return x + y; });
 
@@ -72,12 +70,12 @@ BOOST_AUTO_TEST_CASE(ooze_basic) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_fn_no_args) {
-  constexpr std::string_view script = "fn f() -> i32 { 17 }";
+  constexpr std::string_view script = "fn f() -> i32 = 17";
   check_any_tree(17, check_result(run(create_primative_env(), script, "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_ref_param_ref) {
-  constexpr std::string_view script = "fn f(x: &i32) -> string { to_string(x) }";
+  constexpr std::string_view script = "fn f(x: &i32) -> string = to_string(x)";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(&1)")));
 }
 
@@ -87,9 +85,7 @@ BOOST_AUTO_TEST_CASE(ooze_ref_assign_ref) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign_basic) {
-  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 {"
-                                      "  sum(sum(x, y), y)"
-                                      "}";
+  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 = sum(sum(x, y), y)";
   Env env = create_primative_env();
   env.add_function("sum", [](int x, int y) { return x + y; });
 
@@ -104,9 +100,7 @@ BOOST_AUTO_TEST_CASE(ooze_tuple) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_tuple_function) {
-  constexpr std::string_view script = "fn f((w, x) : (i32, i32), (y, z): (i32, i32)) -> _ {"
-                                      "  ((z, x), (y, w))"
-                                      "}";
+  constexpr std::string_view script = "fn f((w, x) : (i32, i32), (y, z): (i32, i32)) -> _ = ((z, x), (y, w))";
   const Tree<Any> tree = check_result(run(create_primative_env(), script, "f((1, 2), (3, 4))"));
   const auto& v = check_vec(2, tree);
   const auto& va = check_vec(2, v[0]);
@@ -136,7 +130,7 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_assignment) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_wildcard_parameter) {
-  constexpr std::string_view script = "fn f(_ : i32, x : i32) -> _ { x }";
+  constexpr std::string_view script = "fn f(_ : i32, x : i32) -> _ = x";
   check_any_tree(2, check_result(run(create_primative_env(), script, "f(1, 2)")));
 }
 
@@ -153,7 +147,7 @@ struct Point {
 };
 
 BOOST_AUTO_TEST_CASE(ooze_custom_type) {
-  const auto script = "fn f(x: Point, y: Point) -> Point { sum(sum(x, y), y) }";
+  const auto script = "fn f(x: Point, y: Point) -> Point = sum(sum(x, y), y)";
 
   Env env = create_primative_env();
   add_tieable_type<Point>(env, "Point");
@@ -164,16 +158,15 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_already_move) {
-  const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }";
+  const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)";
 
   Env env = create_primative_env();
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
 
-  // TODO fix this to only highlight second use of 'x'
-  const std::vector<std::string> expected{"1:50 error: binding already moved",
-                                          " | fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }",
-                                          " |                                                   ^~~~~~"};
+  const std::vector<std::string> expected{"1:54 error: binding already moved",
+                                          " | fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)",
+                                          " |                                                       ^"};
 
   BOOST_CHECK(expected == check_error(run(std::move(env), script, "f(make_unique_int(0))")));
 }
@@ -194,6 +187,26 @@ BOOST_AUTO_TEST_CASE(ooze_expr_rebind) {
   env.add_function("double", [](int x) { return x + x; });
 
   check_any_tree(4, check_result(run(std::move(env), script, "f(1)")));
+}
+
+BOOST_AUTO_TEST_CASE(ooze_scope) {
+  constexpr std::string_view script = "fn f(a: i32, b: i32) -> (i32, (string, i32, i32)) {"
+                                      "  let b = {"
+                                      "    let c : i32 = a;"
+                                      "    let a : string = 'abc';"
+                                      "    (a, b, c)"
+                                      "  };"
+                                      "  (a, b)"
+                                      "}";
+
+  const auto tree = check_result(run(create_primative_env(), script, "f(1, 2)"));
+
+  const auto& v = check_vec(2, tree);
+  check_any_tree(1, v[0]);
+  const auto& v2 = check_vec(3, v[1]);
+  check_any_tree(std::string("abc"), v2[0]);
+  check_any_tree(2, v2[1]);
+  check_any_tree(1, v2[2]);
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign) {

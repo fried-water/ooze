@@ -17,8 +17,8 @@ auto errors(Ts... ts) {
   return tl::unexpected{std::vector<ContextualError>{std::move(ts)...}};
 }
 
-void test_infer_header(const Env& e, std::string_view scope, std::string_view exp_header, std::vector<Slice> exp_refs) {
-  const auto scope_result = parse_scope(scope).and_then([&](const auto& s) { return type_name_resolution(e, s); });
+void test_infer_header(const Env& e, std::string_view expr, std::string_view exp_header, std::vector<Slice> exp_refs) {
+  const auto expr_result = parse_expr(expr).and_then([&](const auto& s) { return type_name_resolution(e, s); });
 
   int next_ref = 0;
   const auto header_result = parse_header(exp_header)
@@ -38,12 +38,12 @@ void test_infer_header(const Env& e, std::string_view scope, std::string_view ex
 
   BOOST_REQUIRE(header_result.has_value());
 
-  if(!scope_result.has_value()) {
-    fmt::print("Parse error: {}", knot::debug(contextualize(scope, scope_result.error())));
+  if(!expr_result.has_value()) {
+    fmt::print("Parse error: {}", knot::debug(contextualize(expr, expr_result.error())));
     BOOST_REQUIRE(false);
   }
 
-  const auto actual = inferred_header(scope_result.value());
+  const auto actual = inferred_header(expr_result.value());
 
   if(actual != header_result.value()) {
     fmt::print("E {}\n", knot::debug(header_result.value()));
@@ -58,7 +58,11 @@ void test_or(const Env& e,
              std::optional<std::string_view> exp = {},
              bool debug = false) {
   const auto fr = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
-  BOOST_REQUIRE(fr.has_value());
+
+  if(!fr.has_value()) {
+    fmt::print("Parse error: {}", knot::debug(contextualize(f, fr.error())));
+    BOOST_REQUIRE(fr.has_value());
+  }
 
   int f_idx = 0;
   const auto expected =
@@ -209,6 +213,28 @@ BOOST_AUTO_TEST_CASE(cp_unpack_tuple_down) {
           {},
           "(tuple: (i32, i32)) -> _ { let (x, y) = tuple; (x, y) }",
           "(tuple: (i32, i32)) -> (i32, i32) { let (x, y) : (i32, i32) = tuple; (x, y) }");
+}
+
+BOOST_AUTO_TEST_CASE(cp_scope) {
+  constexpr std::string_view input = "(a: i32) -> _ {"
+                                     "  let b = {"
+                                     "    let c = a;"
+                                     "    let a = 'abc';"
+                                     "    (a, c)"
+                                     "  };"
+                                     "  (a, b)"
+                                     "}";
+
+  constexpr std::string_view output = "(a: i32) -> (i32, (string, i32)) {"
+                                      "  let b : (string, i32) = {"
+                                      "    let c : i32 = a;"
+                                      "    let a : string = 'abc';"
+                                      "    (a, c)"
+                                      "  };"
+                                      "  (a, b)"
+                                      "}";
+
+  test_or(create_primative_env(), {}, input, output);
 }
 
 BOOST_AUTO_TEST_CASE(cp_function_return) {
@@ -362,9 +388,7 @@ BOOST_AUTO_TEST_CASE(cp_partial) {
 
 BOOST_AUTO_TEST_CASE(cp_borrow_partial) {
   test_or_error(
-    create_primative_env(),
-    "(x) -> _ { let _ = &x; () }",
-    {{{1, 2}, "unable to fully deduce type, deduced: _"}, {{15, 16}, "unable to fully deduce type, deduced: &_"}});
+    create_primative_env(), "(x) -> _ { let _ = &x; () }", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_tuple_partial) {
@@ -534,7 +558,8 @@ BOOST_AUTO_TEST_CASE(cp_wrong_type) {
 
   test_or_error(e, "(x: i32) -> f32 { x }", {{{1, 2}, "expected i32, given f32"}});
   test_or_error(e, "(x: i32) -> f32 { let y = x; y }", {{{22, 23}, "expected f32, given i32"}});
-  test_or_error(e, "(x: i32) -> f32 { let y: i32 = x; y }", {{{22, 23}, "expected i32, given f32"}});
+  test_or_error(e, "(x: i32) -> f32 { let y: i32 = x; y }", {{{34, 35}, "expected i32, given f32"}});
+  test_or_error(e, "(x: i32) -> (f32) { let y: i32 = x; (y) }", {{{37, 38}, "expected i32, given f32"}});
   test_or_error(e, "(x: i32) -> f32 { let y: f32 = x; y }", {{{1, 2}, "expected i32, given f32"}});
   test_or_error(e, "() -> f32 { 1 }", {{{12, 13}, "expected i32, given f32"}});
   test_or_error(e, "() -> f32 { let x = 1; x }", {{{16, 17}, "expected i32, given f32"}});
@@ -542,7 +567,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_type) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_wrong_type_tuple_arg) {
-  test_or_error(create_primative_env(), "((x): (i32)) -> f32 { x }", {{{2, 3}, "expected f32, given i32"}});
+  test_or_error(create_primative_env(), "((x): (i32)) -> f32 { x }", {{{2, 3}, "expected i32, given f32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_missized_pattern) {

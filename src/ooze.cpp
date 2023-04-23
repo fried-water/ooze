@@ -68,17 +68,15 @@ std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
 }
 
 TypedFunction lift_only_borrowed_idents(TypedFunction f) {
-  assert(f.scope.assignments.empty());
-
   const auto count_usages = [&](const std::string& name) {
     return knot::preorder_accumulate(
-      f.scope.result, 0, [&](int acc, const ast::IdentExpr& i) { return i.name == name ? acc + 1 : acc; });
+      f.expr, 0, [&](int acc, const ast::IdentExpr& i) { return i.name == name ? acc + 1 : acc; });
   };
 
   const auto get_borrowed_usages = [&](const std::string& name) {
-    return knot::preorder_accumulate(f.scope.result, std::vector<TypedExpr*>{}, [&](auto acc, TypedExpr& e) {
-      knot::visit(e.v, [&](const ast::BorrowExpr<NamedFunction>& b) {
-        knot::visit(b.e->v, [&](const ast::IdentExpr& i) {
+    return knot::preorder_accumulate(f.expr, std::vector<TypedExpr*>{}, [&](auto acc, TypedExpr& e) {
+      knot::visit(e.v, [&](const TypedBorrowExpr& b) {
+        knot::visit(b.expr->v, [&](const ast::IdentExpr& i) {
           if(i.name == name) {
             acc.push_back(&e);
           }
@@ -105,8 +103,8 @@ TypedFunction lift_only_borrowed_idents(TypedFunction f) {
 }
 
 ContextualResult<TypedFunction>
-infer_header_from_env(const RuntimeEnv& r, TypedScope s, CompoundType<TypeID> result_type) {
-  TypedHeader h = inferred_header(s);
+infer_header_from_env(const RuntimeEnv& r, TypedExpr expr, CompoundType<TypeID> result_type) {
+  TypedHeader h = inferred_header(expr);
 
   *h.type.output = std::move(result_type);
 
@@ -125,7 +123,7 @@ infer_header_from_env(const RuntimeEnv& r, TypedScope s, CompoundType<TypeID> re
                         }
                       }});
 
-  return value_or_errors(TypedFunction{std::move(h), std::move(s)}, std::move(errors));
+  return value_or_errors(TypedFunction{std::move(h), std::move(expr)}, std::move(errors));
 }
 
 ContextualResult<Tree<Binding>> run_function(RuntimeEnv& r, const CheckedFunction& f) {
@@ -178,35 +176,38 @@ ContextualResult<Tree<Binding>> run_function(RuntimeEnv& r, const CheckedFunctio
   });
 }
 
-ContextualResult<Tree<Binding>> run_expr(RuntimeEnv& r, TypedExpr expr) {
-  return infer_header_from_env(r, TypedScope{{}, {std::move(expr)}}, floating_type<TypeID>())
+ContextualResult<Tree<Binding>> run_expr(RuntimeEnv& r, TypedExpr expr, CompoundType<TypeID> type) {
+  return infer_header_from_env(r, std::move(expr), std::move(type))
     .map(lift_only_borrowed_idents)
     .and_then([&](TypedFunction f) { return overload_resolution(r.env, std::move(f)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); });
 }
 
 ContextualResult<std::string> run_expr_to_string(RuntimeEnv& r, TypedExpr expr) {
-  return infer_header_from_env(r, TypedScope{{}, {std::move(expr)}}, floating_type<TypeID>())
+  return infer_header_from_env(r, std::move(expr), floating_type<TypeID>())
     .map(lift_only_borrowed_idents)
     .and_then(
       [&](TypedFunction f) { return overload_resolution(r.env, f).map([&](CheckedFunction) { return std::move(f); }); })
     .map([&](TypedFunction f) {
-      if(std::holds_alternative<ast::IdentExpr>(f.scope.result.v)) {
+      TypedScopeExpr scope;
+
+      if(std::holds_alternative<ast::IdentExpr>(f.expr.v)) {
         knot::visit(f.header.type.input->v, [](std::vector<CompoundType<TypeID>>& v) {
           assert(v.size() == 1);
           v[0] = borrow_type(std::move(v[0]));
         });
 
-        f.scope.assignments.push_back(
-          {{ast::Ident{"x"}}, borrow_type(std::move(*f.header.type.output)), std::move(f.scope.result)});
-        f.scope.result = TypedExpr{ast::Call<NamedFunction>{"to_string", {TypedExpr{ast::IdentExpr{"x"}}}}};
+        scope.assignments.push_back(
+          {{ast::Ident{"x"}}, borrow_type(std::move(*f.header.type.output)), std::move(f.expr)});
+        scope.result = TypedExpr{TypedCallExpr{"to_string", {TypedExpr{ast::IdentExpr{"x"}}}}};
       } else {
-        f.scope.assignments.push_back({{ast::Ident{"x"}}, std::move(*f.header.type.output), std::move(f.scope.result)});
-        f.scope.result = TypedExpr{ast::Call<NamedFunction>{
-          "to_string", {TypedExpr{ast::BorrowExpr<NamedFunction>{TypedExpr{ast::IdentExpr{"x"}}}}}}};
+        scope.assignments.push_back({{ast::Ident{"x"}}, std::move(*f.header.type.output), std::move(f.expr)});
+        scope.result =
+          TypedExpr{TypedCallExpr{"to_string", {TypedExpr{TypedBorrowExpr{TypedExpr{ast::IdentExpr{"x"}}}}}}};
       }
 
       f.header.type.output = leaf_type(anyf::type_id<std::string>());
+      f.expr.v = std::move(scope);
 
       return f;
     })
@@ -218,18 +219,14 @@ ContextualResult<std::string> run_expr_to_string(RuntimeEnv& r, TypedExpr expr) 
     });
 }
 
-ContextualResult<void> run_assign(RuntimeEnv& r, UnTypedAssignment a) {
-  return type_name_resolution(r.env, std::move(a.type))
-    .and_then([&](CompoundType<TypeID> type) {
-      return infer_header_from_env(r, TypedScope{{}, {std::move(a.expr)}}, std::move(type));
-    })
+ContextualResult<void> run_assign(RuntimeEnv& r, TypedAssignment a) {
+  return infer_header_from_env(r, std::move(*a.expr), std::move(a.type))
     .map(lift_only_borrowed_idents)
     .and_then([&](TypedFunction f) { return overload_resolution(r.env, std::move(f)); })
     .and_then([&](CheckedFunction f) {
-      return type_check(r.env, a.pattern, *f.header.type.output).and_then([&](const auto&) {
-        return run_function(r, f);
-      });
+      return type_check(r.env, a.pattern, *f.header.type.output).map([&](const auto&) { return std::move(f); });
     })
+    .and_then([&](CheckedFunction f) { return run_function(r, f); })
     .map([&](Tree<Binding> results) {
       co_visit(a.pattern, results, [&](const ast::Pattern&, Tree<Binding>& tree, const ast::Ident& ident, const auto&) {
         r.bindings[ident.name] = std::move(tree);
@@ -278,26 +275,35 @@ Result<void> parse_script(Env& e, std::string_view script) {
 
 Result<Tree<Binding>> run(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
-    .and_then([&](UnTypedExpr e) { return run_expr(r, std::move(e)); })
+    .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, std::move(e)); })
+    .and_then([&](TypedExpr e) { return run_expr(r, std::move(e), floating_type<TypeID>()); })
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
 Result<Tree<Binding>> run_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
     .and_then([&](auto var) {
-      return std::visit(
-        Overloaded{
-          [&](UnTypedExpr e) { return run_expr(r, std::move(e)); },
-          [&](UnTypedAssignment a) { return run_assign(r, std::move(a)).map([]() { return Tree<Binding>{}; }); },
-        },
-        std::move(var));
+      return std::visit(Overloaded{
+                          [&](UnTypedExpr e) {
+                            return type_name_resolution(r.env, std::move(e)).and_then([&](TypedExpr e) {
+                              return run_expr(r, std::move(e), floating_type<TypeID>());
+                            });
+                          },
+                          [&](UnTypedAssignment a) {
+                            return type_name_resolution(r.env, std::move(a)).and_then([&](TypedAssignment a) {
+                              return run_assign(r, std::move(a)).map([]() { return Tree<Binding>{}; });
+                            });
+                          },
+                        },
+                        std::move(var));
     })
     .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); });
 }
 
 Result<std::string> run_to_string(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
-    .and_then([&](UnTypedExpr e) { return run_expr_to_string(r, std::move(e)); })
+    .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, std::move(e)); })
+    .and_then([&](TypedExpr e) { return run_expr_to_string(r, std::move(e)); })
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
@@ -305,10 +311,15 @@ Result<std::string> run_to_string_or_assign(RuntimeEnv& r, std::string_view assi
   return parse_repl(assignment_or_expr)
     .and_then([&](auto var) {
       return std::visit(Overloaded{
-                          [&](UnTypedExpr e) { return run_expr_to_string(r, std::move(e)); },
+                          [&](UnTypedExpr e) {
+                            return type_name_resolution(r.env, std::move(e)).and_then([&](TypedExpr e) {
+                              return run_expr_to_string(r, std::move(e));
+                            });
+                          },
                           [&](UnTypedAssignment a) {
-                            return run_assign(r, std::move(a)).map([]() { return std::string{}; });
-                            ;
+                            return type_name_resolution(r.env, std::move(a)).and_then([&](TypedAssignment a) {
+                              return run_assign(r, std::move(a)).map([]() { return std::string{}; });
+                            });
                           },
                         },
                         std::move(var));

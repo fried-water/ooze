@@ -106,25 +106,29 @@ auto literal() {
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>&, ParseLocation);
 
-auto call() { return construct<Call<NamedFunction>>(seq(function_ident(), tuple(expr))); }
+auto call() { return construct<UnTypedCallExpr>(seq(function_ident(), tuple(expr))); }
 
-auto borrow_expr() { return construct<BorrowExpr<NamedFunction>>(seq(symbol("&"), expr)); }
+auto borrow_expr() { return construct<UnTypedBorrowExpr>(seq(symbol("&"), expr)); }
+
+auto assignment() { return construct_with_ref<UnTypedAssignment>(seq(keyword("let"), binding(), symbol("="), expr)); }
+
+auto scope() {
+  return construct<UnTypedScopeExpr>(seq(symbol("{"), n(seq(assignment(), symbol(";"))), expr, symbol("}")));
+}
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
   return transform(
-    seq(construct_with_ref<UnTypedExpr>(choose(tuple(expr), call(), borrow_expr(), ident_expr(), literal())),
+    seq(construct_with_ref<UnTypedExpr>(choose(tuple(expr), scope(), call(), borrow_expr(), ident_expr(), literal())),
         n(seq(symbol("."), construct_with_ref<UnTypedExpr>(call())))),
     [](UnTypedExpr acc, std::vector<UnTypedExpr> chain) {
       return knot::accumulate(std::move(chain), std::move(acc), [](UnTypedExpr acc, UnTypedExpr next) {
-        auto& call = std::get<Call<NamedFunction>>(next.v);
+        auto& call = std::get<UnTypedCallExpr>(next.v);
         call.parameters.insert(call.parameters.begin(), std::move(acc));
         next.ref.begin = acc.ref.begin;
         return next;
       });
     })(s, loc);
 }
-
-auto assignment() { return construct_with_ref<UnTypedAssignment>(seq(keyword("let"), binding(), symbol("="), expr)); }
 
 auto function_header() {
   return transform(
@@ -145,9 +149,10 @@ auto function_header() {
     });
 }
 
-auto scope() { return construct<UnTypedScope>(seq(symbol("{"), n(seq(assignment(), symbol(";"))), expr, symbol("}"))); }
-
-auto function() { return construct<UnTypedFunction>(seq(function_header(), scope())); }
+auto function() {
+  return construct<UnTypedFunction>(
+    seq(function_header(), choose(construct_with_ref<UnTypedExpr>(scope()), seq(symbol("="), expr))));
+}
 
 template <typename Parser>
 ContextualResult<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
@@ -182,7 +187,6 @@ ContextualResult<AST> parse(std::string_view src) {
 }
 
 ContextualResult<UnTypedHeader> parse_header(std::string_view src) { return parse_string(function_header(), src); }
-ContextualResult<UnTypedScope> parse_scope(std::string_view src) { return parse_string(scope(), src); }
 ContextualResult<UnTypedAssignment> parse_assignment(std::string_view src) { return parse_string(assignment(), src); }
 ContextualResult<Pattern> parse_pattern(std::string_view src) { return parse_string(pattern, src); }
 ContextualResult<CompoundType<NamedType>> parse_type(std::string_view src) { return parse_string(type, src); }
