@@ -14,8 +14,8 @@ struct ParseState {
 };
 
 struct ParseLocation {
-  u32 pos = 0;
-  u32 depth = 0;
+  int pos = 0;
+  int depth = 0;
 
   KNOT_ORDERED(ParseLocation);
 };
@@ -62,7 +62,7 @@ using parser_result_t =
 namespace details {
 
 template <typename S, typename R, typename T>
-auto seq_helper(const ParseState<S, T>&, u32, ParseResult<R> r) {
+auto seq_helper(const ParseState<S, T>&, int, ParseResult<R> r) {
   if constexpr(std::tuple_size_v<R> == 1) {
     using R2 = std::tuple_element_t<0, R>;
     return r ? passing_result(r.slice, std::move(std::get<0>(*r.value)), std::move(r.error))
@@ -73,7 +73,7 @@ auto seq_helper(const ParseState<S, T>&, u32, ParseResult<R> r) {
 }
 
 template <typename S, typename R, typename T, typename P, typename... Ps>
-auto seq_helper(const ParseState<S, T>& s, u32 depth, ParseResult<R> r, P p, Ps... ps) {
+auto seq_helper(const ParseState<S, T>& s, int depth, ParseResult<R> r, P p, Ps... ps) {
   if constexpr(std::is_same_v<std::tuple<>, std::decay_t<decltype(*p(s, ParseLocation{}).value)>>) {
     if(r) {
       auto r2 = p(s, {r.slice.end, depth + 1});

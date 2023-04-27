@@ -1,6 +1,7 @@
 #pragma once
 
 #include "algorithm.h"
+#include "ooze/slice.h"
 
 #include <anyf/span.h>
 #include <fmt/core.h>
@@ -41,15 +42,6 @@ using f32 = float;
 using f64 = double;
 
 using anyf::Span;
-
-struct Slice {
-  u32 begin = 0;
-  u32 end = 0;
-
-  KNOT_ORDERED(Slice);
-};
-
-inline u32 size(Slice s) { return s.end - s.begin; }
 
 template <class... Ts>
 struct Overloaded : Ts... {

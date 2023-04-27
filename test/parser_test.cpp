@@ -32,11 +32,11 @@ UnTypedExpr call(std::string name, Slice s, std::vector<UnTypedExpr> args = {}) 
   return {UnTypedCallExpr{std::move(name), std::move(args)}, s};
 }
 
-UnTypedExpr ident(std::string_view name, u32 offset) {
-  return {{IdentExpr{std::string(name)}}, {offset, offset + (u32)name.size()}};
+UnTypedExpr ident(std::string_view name, int offset) {
+  return {{IdentExpr{std::string(name)}}, {offset, offset + (int)name.size()}};
 }
 
-UnTypedExpr one(u32 offset) { return {{Literal{1}}, Slice{offset, offset + 1}}; }
+UnTypedExpr one(int offset) { return {{Literal{1}}, Slice{offset, offset + 1}}; }
 
 template <typename... Children>
 UnTypedExpr expr_tuple(Slice ref, Children... children) {
@@ -49,19 +49,19 @@ UnTypedExpr scope(std::vector<UnTypedAssignment> assignments, UnTypedExpr expr, 
   return {UnTypedScopeExpr{std::move(assignments), std::move(expr)}, ref};
 }
 
-Pattern ident_pattern(std::string_view name, u32 offset) {
-  return {{Ident{std::string(name)}}, {offset, offset + (u32)name.size()}};
+Pattern ident_pattern(std::string_view name, int offset) {
+  return {{Ident{std::string(name)}}, {offset, offset + (int)name.size()}};
 }
 
-Pattern wildcard_pattern(u32 offset) { return {{WildCard{}}, {offset, offset + 1}}; }
+Pattern wildcard_pattern(int offset) { return {{WildCard{}}, {offset, offset + 1}}; }
 
 template <typename... Children>
 Pattern tuple_pattern(Slice ref, Children... children) {
   return {std::vector<Pattern>{std::move(children)...}, ref};
 }
 
-CompoundType<NamedType> type(std::string_view name, u32 offset) {
-  return {NamedType{std::string(name), {offset, offset + (u32)name.size()}}};
+CompoundType<NamedType> type(std::string_view name, int offset) {
+  return {NamedType{std::string(name), {offset, offset + (int)name.size()}}};
 }
 
 UnTypedHeader

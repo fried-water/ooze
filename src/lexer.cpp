@@ -36,8 +36,8 @@ constexpr std::tuple MATCHERS = {std::tuple(TokenType::Whitespace, matcher<white
 
 template <typename... Ts>
 auto lex_one(const std::tuple<Ts...>& ts, std::string_view sv) {
-  const std::array<std::pair<TokenType, u32>, sizeof...(Ts)> matches{
-    {{std::get<0>(std::get<Ts>(MATCHERS)), (u32)std::get<1>(std::get<Ts>(MATCHERS))(sv).to_view().size()}...}};
+  const std::array<std::pair<TokenType, int>, sizeof...(Ts)> matches{
+    {{std::get<0>(std::get<Ts>(MATCHERS)), (int)std::get<1>(std::get<Ts>(MATCHERS))(sv).to_view().size()}...}};
 
   return *std::max_element(
     matches.begin(), matches.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
@@ -45,12 +45,12 @@ auto lex_one(const std::tuple<Ts...>& ts, std::string_view sv) {
 
 } // namespace
 
-std::pair<TokenType, u32> lex_one(std::string_view sv) { return lex_one(MATCHERS, sv); }
+std::pair<TokenType, int> lex_one(std::string_view sv) { return lex_one(MATCHERS, sv); }
 
-std::pair<std::vector<Token>, u32> lex(std::string_view sv) {
+std::pair<std::vector<Token>, int> lex(std::string_view sv) {
   std::vector<Token> tokens;
 
-  u32 offset = 0;
+  int offset = 0;
   while(!sv.empty()) {
     const auto [type, size] = lex_one(sv);
 
