@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "ooze/tree.h"
-#include "queries.h"
+#include "pretty_print.h"
 #include "type_check.h"
 
 #include <deque>
@@ -102,13 +102,13 @@ overload_resolution(const Env& e, Slice ref, const std::string& name, const Comp
       overloads->empty()
         ? transform_to_vec(
             functions,
-            [&](const EnvFunction& f) { return fmt::format("  {}{}", name, type_string(e, f.type)); },
-            make_vector(fmt::format("deduced {}{} [{} candidate(s)]", name, type_string(e, type), functions.size())))
+            [&](const EnvFunction& f) { return fmt::format("  {}{}", name, pretty_print(e, f.type)); },
+            make_vector(fmt::format("deduced {}{} [{} candidate(s)]", name, pretty_print(e, type), functions.size())))
         : transform_to_vec(
             *overloads,
-            [&](const auto& p) { return fmt::format("  {}{}", name, type_string(e, functions[p.first].type)); },
+            [&](const auto& p) { return fmt::format("  {}{}", name, pretty_print(e, functions[p.first].type)); },
             make_vector(
-              fmt::format("deduced {}{} [{} candidate(s)]", name, type_string(e, type), overloads->size())))})};
+              fmt::format("deduced {}{} [{} candidate(s)]", name, pretty_print(e, type), overloads->size())))})};
   } else {
     return tl::unexpected{make_vector(ContextualError{ref, fmt::format("use of undeclared function '{}'", name)})};
   }
@@ -406,10 +406,10 @@ std::vector<ContextualError> generate_errors(const Env& e,
       } else if(auto r2 = overload_resolution(e, ref(v), *opt_name, t2); !r2.has_value()) {
         errors = to_vec(std::move(r2.error()), std::move(errors));
       } else {
-        errors.push_back({ref(v), fmt::format("expected {}, given {}", type_string(e, t1), type_string(e, t2))});
+        errors.push_back({ref(v), fmt::format("expected {}, given {}", pretty_print(e, t1), pretty_print(e, t2))});
       }
     } else {
-      errors.push_back({ref(v), fmt::format("expected {}, given {}", type_string(e, t1), type_string(e, t2))});
+      errors.push_back({ref(v), fmt::format("expected {}, given {}", pretty_print(e, t1), pretty_print(e, t2))});
     }
   }
 

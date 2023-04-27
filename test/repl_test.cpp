@@ -1,6 +1,6 @@
 #include "test.h"
 
-#include "queries.h"
+#include "pretty_print.h"
 #include "repl.h"
 
 namespace ooze {
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   r.env.add_type<int>("i32");
 
   const std::vector<std::string> two_bindings{
-    "2 binding(s)", "  x: i32", fmt::format("  y: {}", type_name_or_id(r.env, anyf::type_id<std::string>()))};
+    "2 binding(s)", "  x: i32", fmt::format("  y: {}", pretty_print(r.env, anyf::type_id<std::string>()))};
   compare_output(two_bindings, step_repl(r, ":b"));
 
   BOOST_REQUIRE(r.bindings.size() == 2);
@@ -150,12 +150,12 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
                                           "  serialize [12 overloads]",
                                           "  deserialize [12 overloads]",
                                           "  concat(&string, &string) -> string",
-                                          fmt::format("  create_a() -> {}", type_name_or_id(r.env, a_type)),
+                                          fmt::format("  create_a() -> {}", pretty_print(r.env, a_type)),
                                           "  pow(i32) -> i32",
                                           "  read(&string) -> string",
                                           "  read(&string) -> vector<byte>",
-                                          fmt::format("  read_a(&{}) -> ()", type_name_or_id(r.env, a_type)),
-                                          fmt::format("  take_a({}) -> ()", type_name_or_id(r.env, a_type)),
+                                          fmt::format("  read_a(&{}) -> ()", pretty_print(r.env, a_type)),
+                                          fmt::format("  take_a({}) -> ()", pretty_print(r.env, a_type)),
                                           "  write(&string, &string) -> ()",
                                           "  write(&string, &vector<byte>) -> ()"};
 

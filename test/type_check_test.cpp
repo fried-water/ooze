@@ -1,7 +1,7 @@
 #include "test.h"
 
 #include "parser.h"
-#include "queries.h"
+#include "pretty_print.h"
 #include "type_check.h"
 #include "user_msg.h"
 

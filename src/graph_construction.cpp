@@ -2,7 +2,6 @@
 
 #include "graph_construction.h"
 #include "ooze/tree.h"
-#include "queries.h"
 
 #include <numeric>
 

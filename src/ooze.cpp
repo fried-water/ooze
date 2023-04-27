@@ -6,7 +6,6 @@
 #include "ooze/core.h"
 #include "parser.h"
 #include "parser_combinators.h"
-#include "queries.h"
 #include "repl.h"
 #include "type_check.h"
 #include "user_msg.h"
@@ -249,7 +248,7 @@ RuntimeEnv make_default_runtime(Env env) { return {std::move(env), anyf::make_ta
 Result<void> parse_script(Env& e, std::string_view script) {
   return parse(script)
     .map_error([&](auto errors) { return contextualize(script, std::move(errors)); })
-    .and_then([&](AST ast) {
+    .and_then([&](UnTypedAST ast) {
       std::vector<std::string> errors;
 
       for(const auto& [name, f] : ast) {

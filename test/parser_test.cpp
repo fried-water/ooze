@@ -277,15 +277,16 @@ BOOST_AUTO_TEST_CASE(parser_scope_nested) {
   check_pass(expected, parse_expr("{ let x = { 1 }; { let y = { x }; { y } } }"));
 }
 
-BOOST_AUTO_TEST_CASE(parser_ast_empty) { check_pass(AST{}, parse("")); }
+BOOST_AUTO_TEST_CASE(parser_ast_empty) { check_pass(UnTypedAST{}, parse("")); }
 
 BOOST_AUTO_TEST_CASE(parser_ast_simple) {
-  const AST expected{{"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}}};
+  const UnTypedAST expected{
+    {"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}}};
   check_pass(expected, parse("fn f() -> T { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_ast_non_scope) {
-  const AST expected{
+  const UnTypedAST expected{
     {"f",
      {header(tuple_pattern({4, 7}, ident_pattern("x", 5)), {floating_type<NamedType>()}, type("T", 11), {4, 12}),
       ident("x", 15)}}};
@@ -293,7 +294,7 @@ BOOST_AUTO_TEST_CASE(parser_ast_non_scope) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_multiple_functions) {
-  const AST expected{
+  const UnTypedAST expected{
     {"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}},
     {"g", {header(tuple_pattern({22, 24}), {}, type("T", 28), {22, 29}), scope({}, one(32), {30, 35})}},
   };

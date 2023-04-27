@@ -182,7 +182,7 @@ ContextualResult<std::variant<UnTypedExpr, UnTypedAssignment>> parse_repl(std::s
 
 ContextualResult<UnTypedFunction> parse_function(std::string_view src) { return parse_string(function(), src); }
 
-ContextualResult<AST> parse(std::string_view src) {
+ContextualResult<UnTypedAST> parse(std::string_view src) {
   return parse_string(n(seq(keyword("fn"), ident_string(), function())), src);
 }
 

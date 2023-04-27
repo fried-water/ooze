@@ -6,7 +6,7 @@
 #include "ooze/core.h"
 #include "parser.h"
 #include "parser_combinators.h"
-#include "queries.h"
+#include "pretty_print.h"
 #include "repl.h"
 #include "type_check.h"
 
@@ -94,7 +94,7 @@ std::vector<std::string> run(RuntimeEnv& repl, BindingsCmd) {
     tree_to_string(tree_ss, repl.bindings.at(binding), [&](std::ostream& os, const Binding& binding) {
       const auto& [type, f, b] = binding;
       os << fmt::format(
-        "{}{}", f.ready() || (b.valid() && b.unique()) ? "" : (b.valid() ? "&" : "*"), type_name_or_id(repl.env, type));
+        "{}{}", f.ready() || (b.valid() && b.unique()) ? "" : (b.valid() ? "&" : "*"), pretty_print(repl.env, type));
     });
     output.push_back(fmt::format("  {}: {}", binding, std::move(tree_ss).str()));
   }
@@ -111,16 +111,14 @@ std::vector<std::string> run(RuntimeEnv& repl, const EvalCmd& eval) {
 }
 
 std::vector<std::string> run(RuntimeEnv& repl, const FunctionsCmd&) {
-  const Env& e = repl.env;
-
   std::vector<std::pair<std::string, std::string>> functions;
 
   const std::array<std::string, 4> COLLAPSE{{"clone", "to_string", "serialize", "deserialize"}};
 
-  for(const auto& [name, fs] : e.functions) {
+  for(const auto& [name, fs] : repl.env.functions) {
     if(std::find(COLLAPSE.begin(), COLLAPSE.end(), name) == COLLAPSE.end()) {
       for(const auto& f : fs) {
-        functions.emplace_back(name, function_string(e, name, f));
+        functions.emplace_back(name, fmt::format("{}{}", name, pretty_print(repl.env, f.type)));
       }
     }
   }
@@ -130,7 +128,7 @@ std::vector<std::string> run(RuntimeEnv& repl, const FunctionsCmd&) {
   std::vector<std::string> output{fmt::format("{} function(s)", functions.size())};
 
   for(const std::string& name : COLLAPSE) {
-    if(const auto it = e.functions.find(name); it != e.functions.end()) {
+    if(const auto it = repl.env.functions.find(name); it != repl.env.functions.end()) {
       output.push_back(fmt::format("  {} [{} overloads]", name, it->second.size()));
     }
   }
@@ -153,7 +151,7 @@ std::vector<std::string> run(RuntimeEnv& repl, const TypesCmd&) {
        {tuple_type<TypeID>(borrow_type(leaf_type(id))), leaf_type(anyf::type_id<std::string>())}},
       {TypedCallExpr{{"to_string"}, {{ast::IdentExpr{"x"}}}}}};
 
-    types[type_name_or_id(e, id)] = overload_resolution(e, std::move(to_string_wrap)).has_value();
+    types[pretty_print(e, id)] = overload_resolution(e, std::move(to_string_wrap)).has_value();
   }
 
   std::vector<std::string> output{fmt::format("{} type(s)", types.size())};

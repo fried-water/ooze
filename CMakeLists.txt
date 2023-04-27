@@ -19,16 +19,15 @@ endif()
 
 add_library(ooze
   src/env.cpp
-  src/ast.cpp
   src/lexer.cpp
   src/literal.cpp
   src/io.cpp
   src/parser.cpp
+  src/pretty_print.cpp
   src/graph_construction.cpp
   src/type_check.cpp
   src/repl.cpp
   src/user_msg.cpp
-  src/queries.cpp
   src/ooze.cpp)
 
 target_compile_features(ooze PUBLIC cxx_std_17)

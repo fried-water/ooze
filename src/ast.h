@@ -108,14 +108,6 @@ using UnTypedExpr = ast::Expr<NamedType, NamedFunction>;
 using UnTypedHeader = ast::FunctionHeader<NamedType>;
 using UnTypedFunction = ast::Function<NamedType, NamedFunction>;
 
-using AST = std::vector<std::tuple<std::string, UnTypedFunction>>;
-
-std::string pretty_print(const AST&);
-std::string pretty_print(const std::tuple<std::string, UnTypedFunction>&);
-std::string pretty_print(const UnTypedFunction&);
-std::string pretty_print(const UnTypedAssignment&);
-std::string pretty_print(const UnTypedExpr&);
-std::string pretty_print(const CompoundType<NamedType>&);
-std::string pretty_print(const ast::Pattern&);
+using UnTypedAST = std::vector<std::tuple<std::string, UnTypedFunction>>;
 
 } // namespace ooze
