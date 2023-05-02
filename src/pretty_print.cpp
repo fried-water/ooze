@@ -45,7 +45,7 @@ struct Printer {
 
   void pretty_print(std::ostream& os, TypeID t) {
     const auto it = _e->type_names.find(t);
-    os << (it != _e->type_names.end() ? it->second : fmt::format("type 0x{:x}", t));
+    os << (it != _e->type_names.end() ? it->second : fmt::format("type 0x{:x}", t.id));
   }
 
   template <typename T>

@@ -24,15 +24,14 @@ void test_infer_header(const Env& e, std::string_view expr, std::string_view exp
   const auto header_result = parse_header(exp_header)
                                .and_then([&](const auto& h) { return type_name_resolution(e, h); })
                                .map([&](TypedHeader h) {
-                                 h.ref = {};
+                                 knot::preorder(h, [](Slice& ref) { ref = {}; });
                                  knot::preorder(h, [&](ast::Pattern& p) {
-                                   knot::visit(p.v,
-                                               Overloaded{[&](const auto&) { p.ref = {}; },
-                                                          [&](const ast::Ident&) {
-                                                            BOOST_REQUIRE(next_ref < exp_refs.size());
-                                                            p.ref = exp_refs[next_ref++];
-                                                          }});
+                                   knot::visit(p.v, [&](const ast::Ident&) {
+                                     BOOST_REQUIRE(next_ref < exp_refs.size());
+                                     p.ref = exp_refs[next_ref++];
+                                   });
                                  });
+
                                  return h;
                                });
 
@@ -125,11 +124,11 @@ void test_name_error(const Env& e, std::string_view f, const std::vector<Context
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(infer_empty) { test_infer_header(Env{}, "{ () }", "() -> _", {}); }
+BOOST_AUTO_TEST_CASE(infer_empty) { test_infer_header(Env{}, "()", "() -> _", {{}}); }
 
-BOOST_AUTO_TEST_CASE(infer_return_int) { test_infer_header(Env{}, "{ 0 }", "() -> _", {}); }
+BOOST_AUTO_TEST_CASE(infer_return_int) { test_infer_header(Env{}, "0", "() -> _", {}); }
 
-BOOST_AUTO_TEST_CASE(infer_single_arg) { test_infer_header(create_primative_env(), "{ a }", "(a) -> _", {{2, 3}}); }
+BOOST_AUTO_TEST_CASE(infer_single_arg) { test_infer_header(create_primative_env(), "a", "(a) -> _", {{0, 1}}); }
 
 BOOST_AUTO_TEST_CASE(infer_multi_arg) {
   test_infer_header(
@@ -361,10 +360,7 @@ BOOST_AUTO_TEST_CASE(cp_invalid_borrow_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_invalid_borrow_pattern) {
-  test_or_error(create_primative_env(),
-                "(_ : &&i32) -> _ { 1 }",
-                // TODO improve ref
-                {{{0, 11}, "cannot borrow a borrow"}});
+  test_or_error(create_primative_env(), "(_ : &&i32) -> _ { 1 }", {{{5, 10}, "cannot borrow a borrow"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_borrow) {
@@ -590,19 +586,19 @@ BOOST_AUTO_TEST_CASE(cp_only_undeclared_error) {
   Env e = create_primative_env();
   e.add_function("f", []() {});
 
-  test_or_error(e, "() -> _ { f(missing()) }", {{{12, 21}, "use of undeclared function 'missing'"}});
+  test_or_error(e, "() -> _ = f(missing())", {{{12, 21}, "use of undeclared function 'missing'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_copy_ref_arg) {
-  test_or_error(create_primative_env(), "(x: &i32) -> i32 { x }", {{{1, 2}, "expected &i32, given i32"}});
+  test_or_error(create_primative_env(), "(x: &i32) -> i32 = x", {{{1, 2}, "expected &i32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_return) {
-  test_name_error(create_primative_env(), "() -> abc { x }", {{{6, 9}, "undefined type"}});
+  test_name_error(create_primative_env(), "() -> abc = x", {{{6, 9}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_arg) {
-  test_name_error(create_primative_env(), "(x: abc) -> () { () }", {{{4, 7}, "undefined type"}});
+  test_name_error(create_primative_env(), "(x: abc) -> () = ()", {{{4, 7}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_expr_undefined_let) {

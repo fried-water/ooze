@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   BOOST_REQUIRE(step_repl(r, ":a").empty());
 
   const std::vector<std::string> one_unknown_binding{"1 binding(s)",
-                                                     fmt::format("  x: type 0x{:x}", anyf::type_id<int>())};
+                                                     fmt::format("  x: type 0x{:x}", anyf::type_id<int>().id)};
   compare_output(one_unknown_binding, step_repl(r, ":b"));
 
   BOOST_REQUIRE(step_repl(r, "let y = 'abc'").empty());

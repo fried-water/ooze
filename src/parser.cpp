@@ -42,7 +42,7 @@ auto construct_with_ref(P p) {
 
 auto ident_string() { return construct<std::string>(token_parser(TokenType::Ident)); }
 auto ident_expr() { return construct<IdentExpr>(ident_string()); }
-auto type_ident() { return construct_with_ref<NamedType>(ident_string()); }
+auto type_ident() { return construct<NamedType>(ident_string()); }
 auto function_ident() { return construct<NamedFunction>(ident_string()); }
 
 template <typename T, typename T2, typename... Ts>
@@ -84,12 +84,12 @@ ParseResult<CompoundType<NamedType>> type(const ParseState<std::string_view, Tok
 auto borrow_type() { return construct<Borrow<NamedType>>(seq(symbol("&"), type)); }
 
 auto leaf_type() {
-  return transform(choose(underscore(), construct_with_ref<NamedType>(ident_string())),
+  return transform(choose(underscore(), type_ident()),
                    [](auto v) { return v.index() == 0 ? TypeVar{Floating{}} : TypeVar{std::get<1>(std::move(v))}; });
 }
 
 ParseResult<CompoundType<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
-  return construct<CompoundType<NamedType>>(
+  return construct_with_ref<CompoundType<NamedType>>(
     choose(construct<TypeVar>(tuple(type)), construct<TypeVar>(borrow_type()), leaf_type()))(s, loc);
 }
 
@@ -144,7 +144,7 @@ auto function_header() {
         type),
     [](const auto&, auto tokens, Slice s, auto pattern, auto inputs, auto result_type) {
       return UnTypedHeader{std::move(pattern),
-                           {tuple_type(std::move(inputs)), std::move(result_type)},
+                           {tuple_type(std::move(inputs), pattern.ref), std::move(result_type)},
                            Slice{tokens[s.begin].ref.begin, tokens[s.end - 1].ref.end}};
     });
 }

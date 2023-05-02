@@ -61,12 +61,12 @@ Pattern tuple_pattern(Slice ref, Children... children) {
 }
 
 CompoundType<NamedType> type(std::string_view name, int offset) {
-  return {NamedType{std::string(name), {offset, offset + (int)name.size()}}};
+  return {NamedType{std::string(name)}, {offset, offset + (int)name.size()}};
 }
 
 UnTypedHeader
 header(Pattern pattern, std::vector<CompoundType<NamedType>> inputs, CompoundType<NamedType> output, Slice ref) {
-  return {std::move(pattern), {{{std::move(inputs)}}, std::move(output)}, ref};
+  return {std::move(pattern), {{{std::move(inputs), pattern.ref}}, std::move(output)}, ref};
 }
 
 } // namespace
@@ -142,29 +142,30 @@ BOOST_AUTO_TEST_CASE(parser_ident_nested_tuple) {
 
 BOOST_AUTO_TEST_CASE(parser_type_simple) { check_pass(type("a", 0), parse_type("a")); }
 
-BOOST_AUTO_TEST_CASE(parser_type_borrowed) { check_pass(borrow_type(type("a", 1)), parse_type("&a")); }
+BOOST_AUTO_TEST_CASE(parser_type_borrowed) { check_pass(borrow_type(type("a", 1), {0, 2}), parse_type("&a")); }
 
-BOOST_AUTO_TEST_CASE(parser_floating) { check_pass(floating_type<NamedType>(), parse_type("_")); }
+BOOST_AUTO_TEST_CASE(parser_floating) { check_pass(floating_type<NamedType>({0, 1}), parse_type("_")); }
 
 BOOST_AUTO_TEST_CASE(parser_floating_borrowed) {
-  check_pass(borrow_type(floating_type<NamedType>()), parse_type("&_"));
+  check_pass(borrow_type(floating_type<NamedType>({1, 2}), {0, 2}), parse_type("&_"));
 }
 
-BOOST_AUTO_TEST_CASE(parser_type_empty_tuple) { check_pass(tuple_type<NamedType>(), parse_type("()")); }
+BOOST_AUTO_TEST_CASE(parser_type_empty_tuple) { check_pass(tuple_type<NamedType>({}, {0, 2}), parse_type("()")); }
 
 BOOST_AUTO_TEST_CASE(parser_type_tuple1) {
-  const CompoundType<NamedType> expected = tuple_type<NamedType>(type("a", 1));
+  const CompoundType<NamedType> expected = tuple_type<NamedType>({type("a", 1)}, {0, 3});
   check_pass(expected, parse_type("(a)"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_type_tuple2) {
-  const CompoundType<NamedType> expected = tuple_type<NamedType>(borrow_type(type("a", 2)), floating_type<NamedType>());
+  const CompoundType<NamedType> expected =
+    tuple_type<NamedType>({borrow_type(type("a", 2), {1, 3}), floating_type<NamedType>({5, 6})}, {0, 7});
   check_pass(expected, parse_type("(&a, _)"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_type_nested_tuple) {
-  const CompoundType<NamedType> expected =
-    tuple_type<NamedType>(tuple_type<NamedType>(type("a", 2)), borrow_type(floating_type<NamedType>()));
+  const CompoundType<NamedType> expected = tuple_type<NamedType>(
+    {tuple_type<NamedType>({type("a", 2)}, {1, 4}), borrow_type(floating_type<NamedType>({7, 8}), {6, 8})}, {0, 9});
   check_pass(expected, parse_type("((a), &_)"));
 }
 
@@ -179,12 +180,13 @@ BOOST_AUTO_TEST_CASE(parser_assignment_type) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_implicit) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>(), one(11), {0, 12}};
+  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>({7, 8}), one(11), {0, 12}};
   check_pass(expected, parse_assignment("let a: _ = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_tuple) {
-  const UnTypedAssignment expected{tuple_pattern({4, 6}), tuple_type<NamedType>(), expr_tuple({13, 15}), {0, 15}};
+  const UnTypedAssignment expected{
+    tuple_pattern({4, 6}), tuple_type<NamedType>({}, {8, 10}), expr_tuple({13, 15}), {0, 15}};
   check_pass(expected, parse_assignment("let (): () = ()"));
 }
 
@@ -209,14 +211,14 @@ BOOST_AUTO_TEST_CASE(parser_header_two_args) {
 
 BOOST_AUTO_TEST_CASE(parser_header_borrow_arg) {
   const UnTypedHeader expected =
-    header(tuple_pattern({0, 7}, ident_pattern("a", 1)), {borrow_type(type("X", 5))}, type("T", 11), {0, 12});
+    header(tuple_pattern({0, 7}, ident_pattern("a", 1)), {borrow_type(type("X", 5), {4, 6})}, type("T", 11), {0, 12});
   check_pass(expected, parse_header("(a: &X) -> T"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_pattern_arg) {
   const UnTypedHeader expected =
     header(tuple_pattern({0, 17}, tuple_pattern({1, 7}, ident_pattern("a", 2), ident_pattern("b", 5))),
-           {tuple_type<NamedType>(type("X", 10), borrow_type(type("Y", 14)))},
+           {tuple_type<NamedType>({type("X", 10), borrow_type(type("Y", 14), {13, 15})}, {9, 16})},
            type("T", 21),
            {0, 22});
   check_pass(expected, parse_header("((a, b): (X, &Y)) -> T"));
@@ -229,12 +231,13 @@ BOOST_AUTO_TEST_CASE(parser_header_unspecified_arg) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_return_tuple_empty) {
-  const UnTypedHeader expected = header(tuple_pattern({0, 2}), {}, tuple_type<NamedType>(), {0, 8});
+  const UnTypedHeader expected = header(tuple_pattern({0, 2}), {}, tuple_type<NamedType>({}, {6, 8}), {0, 8});
   check_pass(expected, parse_header("() -> ()"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_return_tuple1) {
-  const UnTypedHeader expected = header(tuple_pattern({0, 2}), {}, tuple_type<NamedType>(type("T", 7)), {0, 9});
+  const UnTypedHeader expected =
+    header(tuple_pattern({0, 2}), {}, tuple_type<NamedType>({type("T", 7)}, {6, 9}), {0, 9});
   check_pass(expected, parse_header("() -> (T)"));
 }
 

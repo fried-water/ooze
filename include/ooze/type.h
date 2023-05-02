@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ooze/indirect.h"
+#include "ooze/slice.h"
 
 #include <knot/core.h>
 
@@ -31,40 +32,33 @@ struct FunctionType {
 template <typename T>
 struct CompoundType {
   std::variant<std::vector<CompoundType<T>>, FunctionType<T>, Floating, Borrow<T>, T> v;
+  Slice ref;
   KNOT_ORDERED(CompoundType);
 };
 
 template <typename T>
-CompoundType<T> leaf_type(T t) {
-  return {std::move(t)};
+CompoundType<T> leaf_type(T t, Slice ref = {}) {
+  return {std::move(t), ref};
 }
 
 template <typename T>
-CompoundType<T> floating_type() {
-  return {Floating{}};
+CompoundType<T> floating_type(Slice ref = {}) {
+  return {Floating{}, ref};
 }
 
 template <typename T>
-CompoundType<T> borrow_type(CompoundType<T> t) {
-  return {Borrow<T>{std::move(t)}};
+CompoundType<T> borrow_type(CompoundType<T> t, Slice ref = {}) {
+  return {Borrow<T>{std::move(t)}, ref};
 }
 
 template <typename T>
-CompoundType<T> function_type(CompoundType<T> input, CompoundType<T> output) {
-  return {FunctionType<T>{std::move(input), std::move(output)}};
+CompoundType<T> function_type(CompoundType<T> input, CompoundType<T> output, Slice ref = {}) {
+  return {FunctionType<T>{std::move(input), std::move(output)}, ref};
 }
 
 template <typename T>
-CompoundType<T> tuple_type(std::vector<CompoundType<T>> v) {
-  return {std::move(v)};
-}
-
-template <typename T, typename... Children>
-CompoundType<T> tuple_type(Children... children) {
-  std::vector<CompoundType<T>> v;
-  v.reserve(sizeof...(Children));
-  (v.push_back(std::move(children)), ...);
-  return {std::move(v)};
+CompoundType<T> tuple_type(std::vector<CompoundType<T>> v, Slice ref = {}) {
+  return {std::move(v), ref};
 }
 
 } // namespace ooze

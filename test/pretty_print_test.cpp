@@ -20,20 +20,20 @@ BOOST_AUTO_TEST_CASE(pretty_print_type) {
   const auto int_typed = leaf_type<TypeID>(anyf::type_id<int>());
 
   BOOST_CHECK_EQUAL("i32", pretty_print(e, leaf_type<TypeID>(anyf::type_id<int>())));
-  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", anyf::type_id<int>()), pretty_print({}, anyf::type_id<int>()));
+  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", anyf::type_id<int>().id), pretty_print({}, anyf::type_id<int>()));
 
   BOOST_CHECK_EQUAL("i32", pretty_print(int_named));
   BOOST_CHECK_EQUAL("i32", pretty_print(e, int_typed));
 
   BOOST_CHECK_EQUAL("&i32", pretty_print(borrow_type(int_named)));
 
-  BOOST_CHECK_EQUAL("()", pretty_print(tuple_type<NamedType>()));
-  BOOST_CHECK_EQUAL("(i32)", pretty_print(tuple_type<NamedType>(int_named)));
-  BOOST_CHECK_EQUAL("(i32, i32)", pretty_print(tuple_type<NamedType>(int_named, int_named)));
+  BOOST_CHECK_EQUAL("()", pretty_print(tuple_type<NamedType>({})));
+  BOOST_CHECK_EQUAL("(i32)", pretty_print(tuple_type<NamedType>({int_named})));
+  BOOST_CHECK_EQUAL("(i32, i32)", pretty_print(tuple_type<NamedType>({int_named, int_named})));
 
   BOOST_CHECK_EQUAL("i32 -> i32", pretty_print(function_type(int_named, int_named)));
   BOOST_CHECK_EQUAL("i32 -> i32 -> i32", pretty_print(function_type(int_named, function_type(int_named, int_named))));
-  BOOST_CHECK_EQUAL("(i32) -> i32", pretty_print(function_type(tuple_type<NamedType>(int_named), int_named)));
+  BOOST_CHECK_EQUAL("(i32) -> i32", pretty_print(function_type(tuple_type<NamedType>({int_named}), int_named)));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_expr) {
@@ -89,10 +89,10 @@ BOOST_AUTO_TEST_CASE(pretty_print_header) {
 
   BOOST_CHECK_EQUAL("x: i -> i", pretty_print(UnTypedHeader{Pattern{Ident{"x"}}, {i, i}}));
   BOOST_CHECK_EQUAL("() -> i",
-                    pretty_print(UnTypedHeader{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>(), i}}));
+                    pretty_print(UnTypedHeader{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}}));
   BOOST_CHECK_EQUAL(
     "(x: i) -> i",
-    pretty_print(UnTypedHeader{Pattern{std::vector<Pattern>{Pattern{Ident{"x"}}}}, {tuple_type<NamedType>(i), i}}));
+    pretty_print(UnTypedHeader{Pattern{std::vector<Pattern>{Pattern{Ident{"x"}}}}, {tuple_type<NamedType>({i}), i}}));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_function) {
@@ -100,16 +100,16 @@ BOOST_AUTO_TEST_CASE(pretty_print_function) {
   const auto x_expr = UnTypedExpr{IdentExpr{"x"}};
 
   BOOST_CHECK_EQUAL("() -> i {\n  x\n}",
-                    pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>(), i}},
+                    pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}},
                                                  {UnTypedScopeExpr{{}, x_expr}}}));
   BOOST_CHECK_EQUAL(
     "() -> i = x",
-    pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>(), i}}, x_expr}));
+    pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}}, x_expr}));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_ast) {
   const auto f =
-    UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>(), leaf_type<NamedType>({"i"})}},
+    UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), leaf_type<NamedType>({"i"})}},
                     UnTypedExpr{IdentExpr{"x"}}};
 
   BOOST_CHECK_EQUAL("fn f() -> i = x\n\nfn g() -> i = x", pretty_print(UnTypedAST{{"f", f}, {"g", f}}));

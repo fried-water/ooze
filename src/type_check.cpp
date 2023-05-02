@@ -611,7 +611,9 @@ std::vector<ContextualError> extra_checks(const TypedFunction& f,
                 });
   };
 
-  knot::preorder(f.header.type, [&](const Borrow<TypeID>& b) { check_borrowed_type(f.header.pattern.ref, *b.type); });
+  knot::preorder(f.header.type, [&](const CompoundType<TypeID>& t) {
+    knot::visit(t.v, [&](const Borrow<TypeID>& b) { check_borrowed_type(t.ref, *b.type); });
+  });
 
   knot::preorder(f.expr, [&](const TypedExpr& e) {
     knot::visit(e.v, [&](const TypedBorrowExpr& b) { check_borrowed_type(e.ref, types.at(b.expr.get())); });
@@ -634,19 +636,38 @@ std::vector<ContextualError> extra_checks(const TypedFunction& f,
   return errors;
 }
 
+struct TypeNameResolution {
+  const Env& e;
+  std::vector<ContextualError>& errors;
+
+  CompoundType<TypeID> operator()(const CompoundType<NamedType>& type) {
+    return std::visit(
+      Overloaded{[&](const NamedType& named) {
+                   if(const auto it = e.type_ids.find(named.name); it != e.type_ids.end()) {
+                     return CompoundType<TypeID>{it->second, type.ref};
+                   } else {
+                     errors.push_back({type.ref, "undefined type"});
+                     return CompoundType<TypeID>{TypeID{}, type.ref};
+                   }
+                 },
+                 [&](const std::vector<CompoundType<NamedType>>& v) {
+                   return CompoundType<TypeID>{knot::map<std::vector<CompoundType<TypeID>>>(v, *this), type.ref};
+                 },
+                 [&](const FunctionType<NamedType>& f) {
+                   return CompoundType<TypeID>{knot::map<FunctionType<TypeID>>(f, *this), type.ref};
+                 },
+                 [&](const Floating&) { return floating_type<TypeID>(type.ref); },
+                 [&](const Borrow<NamedType>& b) {
+                   return CompoundType<TypeID>{knot::map<Borrow<TypeID>>(b, *this), type.ref};
+                 }},
+      type.v);
+  }
+};
+
 template <typename Typed, typename Untyped>
 ContextualResult<Typed> type_name_resolution(const Env& e, const Untyped& u) {
   std::vector<ContextualError> errors;
-
-  auto typed = knot::map<Typed>(u, [&](const NamedType& type) {
-    if(const auto it = e.type_ids.find(type.name); it != e.type_ids.end()) {
-      return it->second;
-    } else {
-      errors.push_back({type.ref, "undefined type"});
-      return TypeID{};
-    }
-  });
-
+  auto typed = knot::map<Typed>(u, TypeNameResolution{e, errors});
   return value_or_errors(std::move(typed), std::move(errors));
 }
 

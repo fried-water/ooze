@@ -148,7 +148,7 @@ std::vector<std::string> run(RuntimeEnv& repl, const TypesCmd&) {
   for(const auto& [id, name] : e.type_names) {
     TypedFunction to_string_wrap{
       {{make_vector(ast::Pattern{ast::Ident{"x"}})},
-       {tuple_type<TypeID>(borrow_type(leaf_type(id))), leaf_type(anyf::type_id<std::string>())}},
+       {tuple_type<TypeID>(make_vector(borrow_type(leaf_type(id)))), leaf_type(anyf::type_id<std::string>())}},
       {TypedCallExpr{{"to_string"}, {{ast::IdentExpr{"x"}}}}}};
 
     types[pretty_print(e, id)] = overload_resolution(e, std::move(to_string_wrap)).has_value();

@@ -233,15 +233,21 @@ ContextualResult<void> run_assign(RuntimeEnv& r, TypedAssignment a) {
     });
 }
 
+struct TypeOfBindingConverter {
+  CompoundType<TypeID> operator()(const Tree<Binding>& tree) {
+    return {knot::map<decltype(CompoundType<TypeID>{}.v)>(tree.v, *this)};
+  }
+
+  TypeID operator()(const Binding& b) { return b.type; }
+};
+
 } // namespace
 
 Tree<Any> await(Tree<Binding> tree) {
   return knot::map<Tree<Any>>(std::move(tree), [](Binding b) -> Any { return take(std::move(b)).wait(); });
 }
 
-CompoundType<TypeID> type(const Tree<Binding>& tree) {
-  return knot::map<CompoundType<TypeID>>(tree, [](const Binding& b) { return b.type; });
-}
+CompoundType<TypeID> type(const Tree<Binding>& tree) { return TypeOfBindingConverter{}(tree); }
 
 RuntimeEnv make_default_runtime(Env env) { return {std::move(env), anyf::make_task_executor()}; }
 

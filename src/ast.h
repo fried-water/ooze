@@ -90,8 +90,6 @@ struct Function {
 
 struct NamedType {
   std::string name;
-  Slice ref;
-
   KNOT_ORDERED(NamedType);
 };
 
