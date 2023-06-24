@@ -63,4 +63,21 @@ auto transform_filter_to_vec(R&& range, F f, std::vector<T> v = {}) {
   return v;
 }
 
+template <typename... Rs, typename T = std::common_type_t<typename std::decay_t<Rs>::value_type...>>
+auto flatten(Rs&&... ranges) {
+  std::vector<T> v;
+
+  const auto append = [&](auto&& range) { v = to_vec(std::forward<decltype(range)>(range), std::move(v)); };
+
+  (append(std::forward<Rs>(ranges)), ...);
+
+  return v;
+}
+
+template <typename T, typename P>
+std::vector<T> sorted(std::vector<T> v, P projection) {
+  std::sort(v.begin(), v.end(), [&](const auto& lhs, const auto& rhs) { return projection(lhs) < projection(rhs); });
+  return v;
+}
+
 } // namespace ooze

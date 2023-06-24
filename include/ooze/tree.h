@@ -16,10 +16,9 @@ struct Tree {
 
 template <typename T1, typename T2, typename F>
 void co_visit(T1& t1, T2& t2, F f) {
-  if(t1.v.index() == 0 && t2.v.index() == 0) {
+  if(t1.v.index() == 0 && t2.v.index() == 0 && std::get<0>(t1.v).size() == std::get<0>(t2.v).size()) {
     auto& v1 = std::get<0>(t1.v);
     auto& v2 = std::get<0>(t2.v);
-    assert(v1.size() == v2.size());
 
     for(size_t i = 0; i < v1.size(); i++) {
       co_visit(v1[i], v2[i], f);

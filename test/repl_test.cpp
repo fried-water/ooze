@@ -30,34 +30,6 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
   compare_output({"9"}, step_repl(r, "pow(3)"));
 }
 
-BOOST_AUTO_TEST_CASE(repl_missing_function) {
-  RuntimeEnv r = make_default_runtime(create_primative_env());
-
-  BOOST_CHECK(step_repl(r, "let x = 1").empty());
-
-  const std::vector<std::string> expected{
-    "1:0 error: use of undeclared function 'missing'", " | missing()", " | ^~~~~~~~~"};
-  compare_output(expected, step_repl(r, "missing()"));
-
-  const std::vector<std::string> expected2{
-    "1:0 error: use of undeclared function 'missing'", " | missing(x)", " | ^~~~~~~~~~"};
-  compare_output(expected2, step_repl(r, "missing(x)"));
-}
-
-BOOST_AUTO_TEST_CASE(repl_missing_binding) {
-  RuntimeEnv r = make_default_runtime(create_primative_env());
-
-  r.env.add_function("identity", [](int x) { return x; });
-
-  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
-  compare_output(expected, step_repl(r, "x"));
-
-  const std::vector<std::string> expected2{
-    "1:9 error: use of undeclared binding 'x'", " | identity(x)", " |          ^"};
-
-  compare_output(expected2, step_repl(r, "identity(x)"));
-}
-
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
   RuntimeEnv r = make_default_runtime(create_primative_env());
   r.env.add_type<std::unique_ptr<int>>("unique_int");

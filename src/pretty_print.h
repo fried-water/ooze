@@ -1,8 +1,7 @@
 #pragma once
 
-#include "ast.h"
+#include "ooze/ast.h"
 #include "ooze/env.h"
-#include "typed_ast.h"
 
 namespace ooze {
 
@@ -12,6 +11,8 @@ std::string pretty_print(const ast::Pattern&);
 
 std::string pretty_print(const CompoundType<NamedType>&);
 std::string pretty_print(const Env&, const CompoundType<TypeID>&);
+
+std::string pretty_print(const Env&, const FunctionType<TypeID>&);
 
 std::string pretty_print(const UnTypedAST& ast);
 

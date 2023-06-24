@@ -295,11 +295,7 @@ BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) {});
 
-  const std::vector<std::string> expected{"1:0 error: no matching overload found",
-                                          " | f('abc')",
-                                          " | ^~~~~~~~",
-                                          "deduced f(string) -> _ [1 candidate(s)]",
-                                          "  f(i32) -> ()"};
+  const std::vector<std::string> expected{"1:2 error: expected string, given i32", " | f('abc')", " |   ^~~~~"};
 
   const auto error = check_error(run(std::move(e), "", "f('abc')"));
   BOOST_CHECK(expected == error);

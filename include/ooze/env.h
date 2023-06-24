@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ooze/ast.h"
 #include "ooze/type.h"
 
 #include <anyf/any_function.h>
@@ -23,8 +24,9 @@ using anyf::TypeID;
 using anyf::TypeProperties;
 
 struct EnvFunction {
-  CompoundType<TypeID> type;
-  std::variant<AnyFunction, FunctionGraph> f;
+  FunctionType<TypeID> type;
+  std::variant<AnyFunction, FunctionGraph, TypedFunction> f;
+  std::vector<std::pair<FunctionType<TypeID>, FunctionGraph>> instatiations;
 };
 
 struct Env {
@@ -45,7 +47,7 @@ struct Env {
 
     if(anyf.output_types().size() == 1) {
       functions[name].push_back(
-        {function_type(tuple_type(std::move(input)), leaf_type(anyf.output_types()[0])), std::move(anyf)});
+        {FunctionType<anyf::TypeID>{tuple_type(std::move(input)), leaf_type(anyf.output_types()[0])}, std::move(anyf)});
     } else {
       std::vector<CompoundType<TypeID>> output;
       output.reserve(anyf.output_types().size());
@@ -54,11 +56,11 @@ struct Env {
       });
 
       functions[name].push_back(
-        {function_type(tuple_type(std::move(input)), tuple_type(std::move(output))), std::move(anyf)});
+        {FunctionType<anyf::TypeID>{tuple_type(std::move(input)), tuple_type(std::move(output))}, std::move(anyf)});
     }
   }
 
-  void add_graph(const std::string& name, CompoundType<TypeID> t, FunctionGraph f) {
+  void add_graph(const std::string& name, FunctionType<TypeID> t, FunctionGraph f) {
     functions[name].push_back({std::move(t), std::move(f)});
   }
 

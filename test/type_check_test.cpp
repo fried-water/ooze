@@ -9,13 +9,18 @@ namespace ooze {
 
 namespace {
 
-const TypeID I = anyf::type_id<i32>();
-const TypeID F = anyf::type_id<f32>();
+const CompoundType<TypeID> I = leaf_type<TypeID>(anyf::type_id<i32>());
+const CompoundType<TypeID> F = leaf_type<TypeID>(anyf::type_id<f32>());
 
 template <typename... Ts>
 auto errors(Ts... ts) {
   return tl::unexpected{std::vector<ContextualError>{std::move(ts)...}};
 }
+
+constexpr auto clear_refs = [](auto f) {
+  knot::preorder(f, [](Slice& ref) { ref = {}; });
+  return f;
+};
 
 void test_infer_header(const Env& e, std::string_view expr, std::string_view exp_header, std::vector<Slice> exp_refs) {
   const auto expr_result = parse_expr(expr).and_then([&](const auto& s) { return type_name_resolution(e, s); });
@@ -74,10 +79,7 @@ void test_or(const Env& e,
 
   BOOST_REQUIRE(expected.has_value());
 
-  const auto result = overload_resolution(e, std::move(fr.value()), debug).map([&](CheckedFunction f) {
-    knot::preorder(f, [](Slice& ref) { ref = {}; });
-    return f;
-  });
+  const auto result = overload_resolution_concrete(e, std::move(fr.value()), {}, debug).map(clear_refs);
 
   if(!result.has_value()) {
     fmt::print("Parse error: {}", knot::debug(contextualize(f, result.error())));
@@ -85,8 +87,46 @@ void test_or(const Env& e,
   BOOST_REQUIRE(result.has_value());
 
   if(expected.value() != result.value()) {
-    fmt::print("E {}", pretty_print(untype<UnTypedFunction>(e, expected.value())));
-    fmt::print("A {}", pretty_print(untype<UnTypedFunction>(e, result.value())));
+    fmt::print("E {}\n", pretty_print(untype<UnTypedFunction>(e, expected.value())));
+    fmt::print("A {}\n", pretty_print(untype<UnTypedFunction>(e, result.value())));
+  }
+
+  BOOST_CHECK(expected.value() == result.value());
+}
+
+void test_or_unresolved(const Env& e,
+                        std::string_view f,
+                        std::optional<std::string_view> exp = {},
+                        bool debug = false) {
+  const auto fr = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+
+  if(!fr.has_value()) {
+    fmt::print("Parse error: {}", knot::debug(contextualize(f, fr.error())));
+    BOOST_REQUIRE(fr.has_value());
+  }
+
+  int f_idx = 0;
+  const auto expected = parse_function(exp ? *exp : f)
+                          .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); })
+                          .map(clear_refs);
+
+  BOOST_REQUIRE(expected.has_value());
+
+  const auto result = overload_resolution(e, std::move(fr.value()), {}, debug)
+                        .map([&](auto variant) {
+                          BOOST_REQUIRE(std::holds_alternative<TypedFunction>(variant));
+                          return std::get<TypedFunction>(std::move(variant));
+                        })
+                        .map(clear_refs);
+
+  if(!result.has_value()) {
+    fmt::print("Parse error: {}", knot::debug(contextualize(f, result.error())));
+  }
+  BOOST_REQUIRE(result.has_value());
+
+  if(expected.value() != result.value()) {
+    fmt::print("E {}\n", pretty_print(untype<UnTypedFunction>(e, expected.value())));
+    fmt::print("A {}\n", pretty_print(untype<UnTypedFunction>(e, result.value())));
   }
 
   BOOST_CHECK(expected.value() == result.value());
@@ -99,7 +139,7 @@ void test_or_error(const Env& e,
   const auto fr = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(fr.has_value());
 
-  auto result = overload_resolution(e, fr.value(), debug);
+  const auto result = overload_resolution_concrete(e, fr.value(), {}, debug);
 
   BOOST_REQUIRE(!result.has_value());
 
@@ -120,6 +160,14 @@ void test_name_error(const Env& e, std::string_view f, const std::vector<Context
     fmt::print("A {}\n", knot::debug(result.error()));
   }
   BOOST_CHECK(expected_errors == result.error());
+}
+
+FunctionType<TypeID> sino(CompoundType<TypeID> input) { return {tuple_type<TypeID>({input}), tuple_type<TypeID>({})}; }
+
+FunctionType<TypeID> niso(CompoundType<TypeID> output) { return {tuple_type<TypeID>({}), std::move(output)}; }
+
+FunctionType<TypeID> siso(CompoundType<TypeID> input, CompoundType<TypeID> output) {
+  return {tuple_type<TypeID>({std::move(input)}), std::move(output)};
 }
 
 } // namespace
@@ -240,14 +288,14 @@ BOOST_AUTO_TEST_CASE(cp_function_return) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
 
-  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(cp_function_assign) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
 
-  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { let x: i32 = f(x); x }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { let x: i32 = f(x); x }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_function_multi) {
@@ -255,20 +303,20 @@ BOOST_AUTO_TEST_CASE(cp_function_multi) {
   e.add_function("f", [](i32 x) { return x; });
   e.add_function("f", [](f32 x) { return x; });
 
-  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { f(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_prop_single_function) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
 
-  test_or(e, {{"f", 0}}, "(x) -> _ { f(x) }", "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x) -> _ { f(x) }", "(x: i32) -> i32 { f(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_param) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) {});
-  test_or(e, {{"f", 0}}, "(x: i32) -> () { f(x) }", "(x: i32) -> () { f(x) }");
+  test_or(e, {{"f", 0, sino(I)}}, "(x: i32) -> () { f(x) }", "(x: i32) -> () { f(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_overload_borrow) {
@@ -276,7 +324,7 @@ BOOST_AUTO_TEST_CASE(cp_fn_overload_borrow) {
   e.add_function("f", [](const i32&) {});
   e.add_function("f", [](i32) {});
 
-  test_or(e, {{"f", 0}}, "(x: &i32) -> () { f(x) }", "(x: &i32) -> () { f(x) }");
+  test_or(e, {{"f", 0, sino(borrow_type(I))}}, "(x: &i32) -> () { f(x) }", "(x: &i32) -> () { f(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_overload_input) {
@@ -284,9 +332,9 @@ BOOST_AUTO_TEST_CASE(cp_fn_overload_input) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return i32(); });
 
-  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "(x: f32) -> i32 { f(x) }");
-  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: f32) -> (i32, i32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1, siso(F, I)}}, "(x: f32) -> i32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(F, I)}}, "(x: i32, y: f32) -> (i32, i32) { (f(x), f(y)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_overload_output) {
@@ -294,9 +342,9 @@ BOOST_AUTO_TEST_CASE(cp_fn_overload_output) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](i32) { return f32(); });
 
-  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "(x: i32) -> f32 { f(x) }");
-  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: i32) -> (i32, f32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1, siso(I, F)}}, "(x: i32) -> f32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(I, F)}}, "(x: i32, y: i32) -> (i32, f32) { (f(x), f(y)) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_constant) {
@@ -309,10 +357,10 @@ BOOST_AUTO_TEST_CASE(cp_fn_up) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return f32(); });
 
-  test_or(e, {{"f", 0}}, "(x) -> i32 { f(x) }", "(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "(x) -> f32 { f(x) }", "(x: f32) -> f32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x) -> i32 { f(x) }", "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1, siso(F, F)}}, "(x) -> f32 { f(x) }", "(x: f32) -> f32 { f(x) }");
   test_or(e,
-          {{"f", 0}, {"f", 1}},
+          {{"f", 0, siso(I, I)}, {"f", 1, siso(F, F)}},
           "(x, y) -> (i32, f32) { (f(x), f(y)) }",
           "(x: i32, y: f32) -> (i32, f32) { (f(x), f(y)) }");
 }
@@ -322,10 +370,10 @@ BOOST_AUTO_TEST_CASE(cp_fn_down) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return f32(); });
 
-  test_or(e, {{"f", 0}}, "(x: i32) -> _ { f(x) }", "(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1}}, "(x: f32) -> _ { f(x) }", "(x: f32) -> f32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> _ { f(x) }", "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 1, siso(F, F)}}, "(x: f32) -> _ { f(x) }", "(x: f32) -> f32 { f(x) }");
   test_or(e,
-          {{"f", 0}, {"f", 1}},
+          {{"f", 0, siso(I, I)}, {"f", 1, siso(F, F)}},
           "(x: i32, y: f32) -> _ { (f(x), f(y)) }",
           "(x: i32, y: f32) -> (i32, f32) { (f(x), f(y)) }");
 }
@@ -337,7 +385,7 @@ BOOST_AUTO_TEST_CASE(cp_borrow) {
 BOOST_AUTO_TEST_CASE(cp_param_borrow) {
   Env e = create_primative_env();
   e.add_function("ref", [](const i32& x) {});
-  test_or(e, {{"ref", 0}}, "(x) -> () { ref(&x) }", "(x: i32) -> () { ref(&x) }");
+  test_or(e, {{"ref", 0, sino(borrow_type(I))}}, "(x) -> () { ref(&x) }", "(x: i32) -> () { ref(&x) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_nested_fn_overload) {
@@ -350,7 +398,7 @@ BOOST_AUTO_TEST_CASE(cp_nested_fn_overload) {
   e.add_function("h", []() { return i32(); });
   e.add_function("h", []() { return f32(); });
 
-  test_or(e, {{"f", 0}, {"g", 0}, {"h", 0}}, "() -> i32 { f(g(h())) }");
+  test_or(e, {{"f", 0, siso(I, I)}, {"g", 0, siso(I, I)}, {"h", 0, niso(I)}}, "() -> i32 { f(g(h())) }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_invalid_borrow_expr) {
@@ -360,7 +408,8 @@ BOOST_AUTO_TEST_CASE(cp_invalid_borrow_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_invalid_borrow_pattern) {
-  test_or_error(create_primative_env(), "(_ : &&i32) -> _ { 1 }", {{{5, 10}, "cannot borrow a borrow"}});
+  // TODO update error to highlight type instead of pattern
+  test_or_error(create_primative_env(), "(_ : &&i32) -> _ { 1 }", {{{1, 2}, "cannot borrow a borrow"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_borrow) {
@@ -370,16 +419,13 @@ BOOST_AUTO_TEST_CASE(cp_return_borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_floating_borrow) {
-  test_or_error(create_primative_env(), "(x) -> _ { &x }", {{{11, 13}, "cannot return a borrowed value"}});
-  test_or_error(create_primative_env(), "(x : &_) -> _ { x }", {{{16, 17}, "cannot return a borrowed value"}});
-  test_or_error(create_primative_env(), "(x) -> _ { (&x) }", {{{12, 14}, "cannot return a borrowed value"}});
+  test_or_error(create_primative_env(), "(x) -> _ { &x }", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
+  test_or_error(create_primative_env(), "(x : &_) -> _ { x }", {{{1, 2}, "unable to fully deduce type, deduced: &_"}});
+  test_or_error(create_primative_env(), "(x) -> _ { (&x) }", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_partial) {
-  test_or_error(
-    create_primative_env(),
-    "(x) -> _ { x }",
-    {{{1, 2}, "unable to fully deduce type, deduced: _"}, {{11, 12}, "unable to fully deduce type, deduced: _"}});
+  test_or_error(create_primative_env(), "(x) -> _ { x }", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_borrow_partial) {
@@ -388,14 +434,12 @@ BOOST_AUTO_TEST_CASE(cp_borrow_partial) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_tuple_partial) {
-  test_or_error(
-    create_primative_env(),
-    "(x: (_)) -> _ { x }",
-    {{{1, 2}, "unable to fully deduce type, deduced: (_)"}, {{16, 17}, "unable to fully deduce type, deduced: (_)"}});
-  test_or_error(
-    create_primative_env(),
-    "(x) -> (_) { x }",
-    {{{1, 2}, "unable to fully deduce type, deduced: (_)"}, {{13, 14}, "unable to fully deduce type, deduced: (_)"}});
+  test_or_error(create_primative_env(), "(x: (_)) -> _ { x }", {{{1, 2}, "unable to fully deduce type, deduced: (_)"}});
+  test_or_error(create_primative_env(), "(x) -> (_) { x }", {{{1, 2}, "unable to fully deduce type, deduced: (_)"}});
+}
+
+BOOST_AUTO_TEST_CASE(cp_function_identity) {
+  test_or_unresolved(create_primative_env(), "(x) -> _ { x }", "(x: _) -> _ { x }");
 }
 
 BOOST_AUTO_TEST_CASE(cp_undeclared_function) {
@@ -403,13 +447,13 @@ BOOST_AUTO_TEST_CASE(cp_undeclared_function) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_undeclared_binding) {
-  test_or_error({}, "() -> () { x }", {{{11, 12}, "use of undeclared binding 'x'"}});
-  test_or_error({}, "() -> () { (x, 1) }", {{{12, 13}, "use of undeclared binding 'x'"}});
-  test_or_error({}, "() -> () { let y = x; y }", {{{19, 20}, "use of undeclared binding 'x'"}});
+  test_or_error({}, "() -> _ { x }", {{{10, 11}, "use of undeclared binding 'x'"}});
+  test_or_error({}, "() -> _ { (x, 1) }", {{{11, 12}, "use of undeclared binding 'x'"}});
+  test_or_error({}, "() -> _ { let y = x; y }", {{{18, 19}, "use of undeclared binding 'x'"}});
 
   test_or_error({},
-                "() -> () { let y = x; z }",
-                {{{19, 20}, "use of undeclared binding 'x'"}, {{22, 23}, "use of undeclared binding 'z'"}});
+                "() -> () { let _y = x; z }",
+                {{{20, 21}, "use of undeclared binding 'x'"}, {{23, 24}, "use of undeclared binding 'z'"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_pattern_mismatch) {
@@ -430,7 +474,7 @@ BOOST_AUTO_TEST_CASE(cp_return_arity_mismatch) {
 
 BOOST_AUTO_TEST_CASE(cp_unused_binding) {
   test_or_error(create_primative_env(),
-                "(x) -> _ { 1 }",
+                "(x: i32) -> _ { 1 }",
                 {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_or_error(create_primative_env(),
@@ -438,7 +482,7 @@ BOOST_AUTO_TEST_CASE(cp_unused_binding) {
                 {{{14, 15}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_or_error(create_primative_env(),
-                "(x) -> _ { let x = 1; x }",
+                "(x: i32) -> _ { let x = 1; x }",
                 {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_or_error(create_primative_env(),
@@ -452,13 +496,13 @@ BOOST_AUTO_TEST_CASE(cp_unused_binding_ignore) {
 
 BOOST_AUTO_TEST_CASE(cp_function_ident_reuse) {
   test_or_error(create_primative_env(),
-                "(x, x) -> _ { x }",
+                "(x: i32, x: i32) -> _ { x }",
                 {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
   test_or_error(create_primative_env(),
-                "((x, x)) -> _ { x }",
+                "((x, x): (i32, i32)) -> _ { x }",
                 {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
   test_or_error(create_primative_env(),
-                "((x, (x))) -> _ { x }",
+                "((x, (x)): (i32, (i32))) -> _ { x }",
                 {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
@@ -477,22 +521,15 @@ BOOST_AUTO_TEST_CASE(cp_wrong_bind_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(env,
-                "(x: i32) -> i32 { let () = identity(x); x }",
-                {{{27, 38},
-                  "no matching overload found",
-                  {"deduced identity(_) -> () [1 candidate(s)]", "  identity(i32) -> i32"}}});
+  test_or_error(env, "(x: i32) -> i32 { let () = identity(x); x }", {{{22, 24}, "expected (), given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_return_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(env,
-                "(x: i32) -> () { identity(x) }",
-                {{{17, 28},
-                  "no matching overload found",
-                  {"deduced identity(_) -> () [1 candidate(s)]", "  identity(i32) -> i32"}}});
+  test_or_error(
+    env, "(x: i32) -> () { identity(x) }", {{{17, 28}, "expected identity(i32) -> i32, given identity(_) -> ()"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_multi_overload_match) {
@@ -514,22 +551,15 @@ BOOST_AUTO_TEST_CASE(cp_wrong_bind_type) {
   Env e = create_primative_env();
   e.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(e,
-                "(x: i32) -> i32 { let x: u32 = identity(x); x }",
-                {{{31, 42},
-                  "no matching overload found",
-                  {"deduced identity(_) -> u32 [1 candidate(s)]", "  identity(i32) -> i32"}}});
+  test_or_error(e, "(x: i32) -> i32 { let x: u32 = identity(x); x }", {{{22, 23}, "expected u32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_return_type) {
   Env e = create_primative_env();
   e.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(e,
-                "(x: i32) -> u32 { identity(x) }",
-                {{{18, 29},
-                  "no matching overload found",
-                  {"deduced identity(_) -> u32 [1 candidate(s)]", "  identity(i32) -> i32"}}});
+  test_or_error(
+    e, "(x: i32) -> u32 { identity(x) }", {{{18, 29}, "expected identity(i32) -> i32, given identity(_) -> u32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
@@ -541,12 +571,9 @@ BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
 
 BOOST_AUTO_TEST_CASE(cp_empty_tuple_as_arg) {
   Env e = create_primative_env();
-  e.add_function("tup", []() { return std::tuple(); });
   e.add_function("take", [](i32) {});
 
-  test_or_error(e,
-                "() -> () { take(tup()) }",
-                {{{16, 21}, "no matching overload found", {"deduced tup() -> i32 [1 candidate(s)]", "  tup() -> ()"}}});
+  test_or_error(e, "() -> () { take(()) }", {{{16, 18}, "expected (), given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_type) {

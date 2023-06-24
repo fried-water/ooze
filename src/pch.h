@@ -1,6 +1,7 @@
 #pragma once
 
 #include "algorithm.h"
+#include "ooze/primatives.h"
 #include "ooze/slice.h"
 
 #include <anyf/span.h>
@@ -9,7 +10,6 @@
 
 #include <tl/expected.hpp>
 
-#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <optional>
@@ -23,23 +23,10 @@
 namespace ooze {
 
 template <typename Key, typename Value>
-using Map = std::unordered_map<Key, Value>;
+using Map = std::unordered_map<Key, Value, knot::Hash>;
 
 template <typename T>
 using Set = std::unordered_set<T, knot::Hash>;
-
-using i8 = int8_t;
-using i16 = int16_t;
-using i32 = int32_t;
-using i64 = int64_t;
-
-using u8 = uint8_t;
-using u16 = uint16_t;
-using u32 = uint32_t;
-using u64 = uint64_t;
-
-using f32 = float;
-using f64 = double;
 
 using anyf::Span;
 
@@ -75,6 +62,17 @@ inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string
 template <typename T, typename E>
 tl::expected<T, std::vector<E>> value_or_errors(T t, std::vector<E> errors) {
   return errors.empty() ? tl::expected<T, std::vector<E>>{std::move(t)} : tl::unexpected{std::move(errors)};
+}
+
+template <typename T, typename E>
+tl::expected<T, std::vector<E>> result_and_errors(tl::expected<T, std::vector<E>> exp, std::vector<E> errors) {
+  if(errors.empty()) {
+    return exp;
+  } else if(exp.has_value()) {
+    return tl::unexpected{std::move(errors)};
+  } else {
+    return tl::unexpected{to_vec(std::move(errors), std::move(exp.error()))};
+  }
 }
 
 template <typename E, typename T>

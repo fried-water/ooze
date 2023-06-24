@@ -1,7 +1,7 @@
 #pragma once
 
+#include "ooze/ast.h"
 #include "ooze/env.h"
-#include "typed_ast.h"
 #include "user_msg.h"
 
 namespace ooze {
@@ -14,9 +14,14 @@ ContextualResult<CompoundType<TypeID>> type_name_resolution(const Env&, const Co
 
 TypedHeader inferred_header(const TypedExpr&);
 
-// TODO return Unresolved or CheckedFunction
-ContextualResult<CheckedFunction> overload_resolution(const Env&, TypedFunction, bool debug = false);
-
 ContextualResult<CompoundType<TypeID>> type_check(const Env&, const ast::Pattern&, CompoundType<TypeID>);
+
+ContextualResult<std::variant<CheckedFunction, TypedFunction>>
+overload_resolution(const Env&, TypedFunction, std::optional<FunctionType<TypeID>> type = {}, bool debug = false);
+
+ContextualResult<CheckedFunction> overload_resolution_concrete(const Env&,
+                                                               TypedFunction,
+                                                               std::optional<FunctionType<TypeID>> type = {},
+                                                               bool debug = false);
 
 } // namespace ooze

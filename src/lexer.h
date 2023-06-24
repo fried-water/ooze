@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ooze/slice.h"
+
 namespace ooze {
 
 enum class TokenType {

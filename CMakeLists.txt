@@ -20,7 +20,6 @@ endif()
 add_library(ooze
   src/env.cpp
   src/lexer.cpp
-  src/literal.cpp
   src/io.cpp
   src/parser.cpp
   src/pretty_print.cpp

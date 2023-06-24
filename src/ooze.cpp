@@ -53,10 +53,7 @@ Result<void> parse_scripts(Env& e, const std::vector<std::string>& filenames) {
       } else if(result) {
         return acc;
       } else {
-        acc.error().insert(acc.error().end(),
-                           std::make_move_iterator(result.error().begin()),
-                           std::make_move_iterator(result.error().end()));
-        return acc;
+        return tl::unexpected{to_vec(std::move(result.error()), std::move(acc.error()))};
       }
     });
 }
@@ -133,18 +130,10 @@ ContextualResult<Tree<Binding>> run_function(RuntimeEnv& r, const CheckedFunctio
     co_visit(f.header.pattern,
              *f.header.type.input,
              Overloaded{[&](auto&, auto&, const ast::Ident& i, const auto&) {
-                          auto values = take(r.bindings, i.name);
-                          assert(values);
-                          value_inputs.insert(value_inputs.end(),
-                                              std::make_move_iterator(values->begin()),
-                                              std::make_move_iterator(values->end()));
+                          value_inputs = to_vec(*take(r.bindings, i.name), std::move(value_inputs));
                         },
                         [&](auto&, auto&, const ast::Ident& i, const Borrow<TypeID>&) {
-                          auto borrows = borrow(r.bindings, i.name);
-                          assert(borrows);
-                          borrowed_inputs.insert(borrowed_inputs.end(),
-                                                 std::make_move_iterator(borrows->begin()),
-                                                 std::make_move_iterator(borrows->end()));
+                          borrowed_inputs = to_vec(*borrow(r.bindings, i.name), std::move(borrowed_inputs));
                         }});
 
     std::vector<anyf::Future> results =
@@ -178,7 +167,7 @@ ContextualResult<Tree<Binding>> run_function(RuntimeEnv& r, const CheckedFunctio
 ContextualResult<Tree<Binding>> run_expr(RuntimeEnv& r, TypedExpr expr, CompoundType<TypeID> type) {
   return infer_header_from_env(r, std::move(expr), std::move(type))
     .map(lift_only_borrowed_idents)
-    .and_then([&](TypedFunction f) { return overload_resolution(r.env, std::move(f)); })
+    .and_then([&](TypedFunction f) { return overload_resolution_concrete(r.env, std::move(f)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); });
 }
 
@@ -186,7 +175,7 @@ ContextualResult<std::string> run_expr_to_string(RuntimeEnv& r, TypedExpr expr) 
   return infer_header_from_env(r, std::move(expr), floating_type<TypeID>())
     .map(lift_only_borrowed_idents)
     .and_then(
-      [&](TypedFunction f) { return overload_resolution(r.env, f).map([&](CheckedFunction) { return std::move(f); }); })
+      [&](TypedFunction f) { return overload_resolution_concrete(r.env, f).map([&](auto) { return std::move(f); }); })
     .map([&](TypedFunction f) {
       TypedScopeExpr scope;
 
@@ -210,7 +199,7 @@ ContextualResult<std::string> run_expr_to_string(RuntimeEnv& r, TypedExpr expr) 
 
       return f;
     })
-    .and_then([&](TypedFunction f) { return overload_resolution(r.env, std::move(f)); })
+    .and_then([&](TypedFunction f) { return overload_resolution_concrete(r.env, std::move(f)); })
     .and_then([&](CheckedFunction f) { return run_function(r, f); })
     .map([&](Tree<Binding> t) {
       std::vector<anyf::Future> futures = take(std::move(t));
@@ -221,7 +210,7 @@ ContextualResult<std::string> run_expr_to_string(RuntimeEnv& r, TypedExpr expr) 
 ContextualResult<void> run_assign(RuntimeEnv& r, TypedAssignment a) {
   return infer_header_from_env(r, std::move(*a.expr), std::move(a.type))
     .map(lift_only_borrowed_idents)
-    .and_then([&](TypedFunction f) { return overload_resolution(r.env, std::move(f)); })
+    .and_then([&](TypedFunction f) { return overload_resolution_concrete(r.env, std::move(f)); })
     .and_then([&](CheckedFunction f) {
       return type_check(r.env, a.pattern, *f.header.type.output).map([&](const auto&) { return std::move(f); });
     })
@@ -259,7 +248,7 @@ Result<void> parse_script(Env& e, std::string_view script) {
 
       for(const auto& [name, f] : ast) {
         auto graph_result = type_name_resolution(e, f)
-                              .and_then([&](TypedFunction f) { return overload_resolution(e, std::move(f)); })
+                              .and_then([&](TypedFunction f) { return overload_resolution_concrete(e, std::move(f)); })
                               .and_then([&](CheckedFunction f) {
                                 auto fg_result = create_graph(e, f);
                                 return merge(std::move(f.header.type), std::move(fg_result));

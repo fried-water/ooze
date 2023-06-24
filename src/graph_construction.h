@@ -1,7 +1,7 @@
 #pragma once
 
+#include "ooze/ast.h"
 #include "ooze/env.h"
-#include "typed_ast.h"
 #include "user_msg.h"
 
 #include <anyf/graph.h>
