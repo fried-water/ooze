@@ -147,7 +147,7 @@ struct Point {
 };
 
 BOOST_AUTO_TEST_CASE(ooze_custom_type) {
-  const auto script = "fn f(x: Point, y: Point) -> Point = sum(sum(x, y), y)";
+  constexpr std::string_view script = "fn f(x: Point, y: Point) -> Point = sum(sum(x, y), y)";
 
   Env env = create_primative_env();
   add_tieable_type<Point>(env, "Point");
@@ -158,7 +158,7 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_already_move) {
-  const auto script = "fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)";
+  constexpr std::string_view script = "fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)";
 
   Env env = create_primative_env();
   env.add_type<std::unique_ptr<int>>("unique_int");
@@ -181,7 +181,7 @@ BOOST_AUTO_TEST_CASE(ooze_clone) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_rebind) {
-  const auto script = "fn f(x: i32) -> i32 { let x = double(x); let x = double(x); x }";
+  constexpr std::string_view script = "fn f(x: i32) -> i32 { let x = double(x); let x = double(x); x }";
 
   Env env = create_primative_env();
   env.add_function("double", [](int x) { return x + x; });
@@ -207,6 +207,15 @@ BOOST_AUTO_TEST_CASE(ooze_scope) {
   check_any_tree(std::string("abc"), v2[0]);
   check_any_tree(2, v2[1]);
   check_any_tree(1, v2[2]);
+}
+
+BOOST_AUTO_TEST_CASE(ooze_out_of_order, *boost::unit_test::disabled()) {
+  constexpr std::string_view script = "fn f() -> _ = g()\n"
+                                      "fn g() -> i32 = 1\n";
+
+  Env e = create_primative_env();
+
+  check_void_result(parse_script(e, script));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign) {

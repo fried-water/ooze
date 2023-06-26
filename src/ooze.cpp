@@ -242,29 +242,46 @@ RuntimeEnv make_default_runtime(Env env) { return {std::move(env), anyf::make_ta
 
 Result<void> parse_script(Env& e, std::string_view script) {
   return parse(script)
-    .map_error([&](auto errors) { return contextualize(script, std::move(errors)); })
     .and_then([&](UnTypedAST ast) {
-      std::vector<std::string> errors;
+      std::vector<ContextualError> errors;
+
+      std::vector<EnvFunctionRef> typed_ast;
+      typed_ast.reserve(ast.size());
 
       for(const auto& [name, f] : ast) {
-        auto graph_result = type_name_resolution(e, f)
-                              .and_then([&](TypedFunction f) { return overload_resolution_concrete(e, std::move(f)); })
-                              .and_then([&](CheckedFunction f) {
-                                auto fg_result = create_graph(e, f);
-                                return merge(std::move(f.header.type), std::move(fg_result));
-                              })
-                              .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
-
-        if(graph_result) {
-          auto&& [type, graph] = std::move(*graph_result);
-          e.add_graph(name, {std::move(type)}, std::move(graph));
+        if(auto typed_result = type_name_resolution(e, f); typed_result) {
+          std::vector<EnvFunction>& functions = e.functions[name];
+          functions.push_back({typed_result->header.type, std::move(*typed_result)});
+          typed_ast.push_back({name, int(functions.size() - 1)});
         } else {
-          errors.insert(errors.begin(), graph_result.error().begin(), graph_result.error().end());
+          errors = to_vec(std::move(typed_result.error()), std::move(errors));
         }
       }
 
-      return errors.empty() ? Result<void>{} : tl::unexpected{std::move(errors)};
-    });
+      return value_or_errors(std::move(typed_ast), std::move(errors));
+    })
+    .and_then([&](std::vector<EnvFunctionRef> ast) {
+      std::vector<ContextualError> errors;
+
+      for(const auto& [name, idx, _] : ast) {
+        EnvFunction& env_function = e.functions.at(name)[idx];
+
+        auto graph_result =
+          overload_resolution_concrete(e, std::move(std::move(std::get<TypedFunction>(env_function.f))))
+            .and_then([&](const CheckedFunction& f) {
+              env_function.type = f.header.type;
+              return create_graph(e, f);
+            })
+            .map([&](anyf::FunctionGraph f) { env_function.f = std::move(f); });
+
+        if(!graph_result) {
+          errors = to_vec(std::move(graph_result.error()), std::move(errors));
+        }
+      }
+
+      return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
+    })
+    .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
 }
 
 Result<Tree<Binding>> run(RuntimeEnv& r, std::string_view expr) {
