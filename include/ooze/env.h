@@ -29,6 +29,8 @@ struct EnvFunction {
   std::vector<std::pair<FunctionType<TypeID>, FunctionGraph>> instatiations;
 };
 
+FunctionType<anyf::TypeID> type_of(const AnyFunction&);
+
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
   std::unordered_map<std::string, TypeID> type_ids;
@@ -37,27 +39,7 @@ struct Env {
   template <typename F>
   void add_function(const std::string& name, F&& f) {
     AnyFunction anyf{std::forward<F>(f)};
-
-    std::vector<CompoundType<TypeID>> input;
-    input.reserve(anyf.input_types().size());
-    std::transform(anyf.input_types().begin(),
-                   anyf.input_types().end(),
-                   std::back_inserter(input),
-                   [](TypeProperties p) { return p.value ? leaf_type(p.id) : borrow_type(leaf_type(p.id)); });
-
-    if(anyf.output_types().size() == 1) {
-      functions[name].push_back(
-        {FunctionType<anyf::TypeID>{tuple_type(std::move(input)), leaf_type(anyf.output_types()[0])}, std::move(anyf)});
-    } else {
-      std::vector<CompoundType<TypeID>> output;
-      output.reserve(anyf.output_types().size());
-      std::transform(anyf.output_types().begin(), anyf.output_types().end(), std::back_inserter(output), [](TypeID t) {
-        return leaf_type(t);
-      });
-
-      functions[name].push_back(
-        {FunctionType<anyf::TypeID>{tuple_type(std::move(input)), tuple_type(std::move(output))}, std::move(anyf)});
-    }
+    functions[name].push_back({type_of(anyf), std::move(anyf)});
   }
 
   void add_graph(const std::string& name, FunctionType<TypeID> t, FunctionGraph f) {
