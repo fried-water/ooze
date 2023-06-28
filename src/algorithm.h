@@ -80,4 +80,14 @@ std::vector<T> sorted(std::vector<T> v, P projection) {
   return v;
 }
 
+template <typename Range, typename F>
+bool any_of(const Range& range, F f) {
+  return std::any_of(range.begin(), range.end(), f);
+}
+
+template <typename Range, typename F>
+auto find_if(const Range& range, F f) {
+  return std::find_if(range.begin(), range.end(), f);
+}
+
 } // namespace ooze

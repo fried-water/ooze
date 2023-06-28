@@ -218,6 +218,17 @@ BOOST_AUTO_TEST_CASE(ooze_out_of_order, *boost::unit_test::disabled()) {
   check_void_result(parse_script(e, script));
 }
 
+BOOST_AUTO_TEST_CASE(ooze_generic) {
+  constexpr std::string_view script = "fn f(x : &_) -> string = to_string(x)\n"
+                                      "fn g(x: i32) -> string = f(&x)\n";
+
+  const auto tree = check_result(run(create_primative_env(), script, "(g(3), f(&0.5))"));
+
+  const auto& v = check_vec(2, tree);
+  check_any_tree(std::string("3"), v[0]);
+  check_any_tree(std::string("0.5"), v[1]);
+}
+
 BOOST_AUTO_TEST_CASE(ooze_assign) {
   const auto m = check_result(run_or_assign(create_primative_env(), "", "let x = 1")).second;
   BOOST_REQUIRE_EQUAL(1, m.size());

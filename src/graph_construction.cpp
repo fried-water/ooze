@@ -97,13 +97,18 @@ add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphC
   return add_expr(e, call.parameters, std::move(ctx)).and_then([&](GraphContext ctx) {
     const auto it = e.functions.find(call.function.name);
     assert(it != e.functions.end() && call.function.overload_idx < it->second.size());
+    const EnvFunction& env_function = it->second[call.function.overload_idx];
 
     return std::visit(Overloaded{[&](const auto& f) { return ctx.cg.add(f, ctx.terms); },
                                  [&](const TypedFunction&) -> tl::expected<std::vector<Oterm>, anyf::GraphError> {
-                                   assert(false);
-                                   return std::vector<Oterm>{};
+                                   const auto it =
+                                     find_if(env_function.instatiations, applied([&](const auto& type, const auto&) {
+                                               return call.function.type == type;
+                                             }));
+                                   assert(it != env_function.instatiations.end());
+                                   return ctx.cg.add(it->second, ctx.terms);
                                  }},
-                      it->second[call.function.overload_idx].f)
+                      env_function.f)
       .map_error([&](anyf::GraphError error) { return to_graph_error(error, call.parameters); })
       .map([&](std::vector<Oterm> terms) {
         ctx.terms = std::move(terms);

@@ -122,8 +122,79 @@ infer_header_from_env(const RuntimeEnv& r, TypedExpr expr, CompoundType<TypeID> 
   return value_or_errors(TypedFunction{std::move(h), std::move(expr)}, std::move(errors));
 }
 
+bool is_instantiated(const Env& e, const EnvFunctionRef& call) {
+  const EnvFunction& ef = e.functions.at(call.name)[call.overload_idx];
+  return call.type == ef.type || any_of(ef.instatiations, [&](const auto& p) { return call.type == p.first; });
+}
+
+std::vector<EnvFunctionRef> uninstantiated_functions(const Env& e, const CheckedFunction& f) {
+  return knot::preorder_accumulate(f, std::vector<EnvFunctionRef>{}, [&](auto acc, const EnvFunctionRef& call) {
+    if(!is_instantiated(e, call)) {
+      acc.push_back(call);
+    }
+    return acc;
+  });
+}
+
+ContextualResult<FunctionGraph> create_graph_and_instantiations(Env& e, const CheckedFunction& f) {
+  std::vector<ContextualError> errors;
+
+  std::vector<EnvFunctionRef> typed_functions = uninstantiated_functions(e, f);
+  std::vector<std::pair<EnvFunctionRef, CheckedFunction>> checked_functions;
+
+  Set<EnvFunctionRef> visited;
+
+  for(size_t i = 0; i < typed_functions.size(); i++) {
+    const auto& call = typed_functions[i];
+    if(visited.insert(call).second) {
+      const EnvFunction& ef = e.functions.at(call.name)[call.overload_idx];
+      auto result = overload_resolution_concrete(e, std::get<TypedFunction>(ef.f), call.type);
+
+      if(result) {
+        typed_functions = to_vec(uninstantiated_functions(e, *result), std::move(typed_functions));
+        checked_functions.emplace_back(std::move(typed_functions[i]), std::move(*result));
+      } else {
+        errors = to_vec(std::move(result.error()), std::move(errors));
+      }
+    }
+  }
+
+  if(!errors.empty()) {
+    return tl::unexpected{std::move(errors)};
+  }
+
+  for(int i = checked_functions.size() - 1; i >= 0; i--) {
+    const auto& [call, f] = checked_functions[i];
+
+    if(auto result = create_graph(e, f); result) {
+      e.functions.at(call.name)[call.overload_idx].instatiations.emplace_back(call.type, std::move(*result));
+    } else {
+      errors = to_vec(std::move(result.error()), std::move(errors));
+    }
+  }
+
+  return errors.empty() ? create_graph(e, f) : tl::unexpected{std::move(errors)};
+}
+
+std::tuple<Env, ContextualResult<void>>
+add_function(Env e, const std::string& name, std::variant<CheckedFunction, TypedFunction> var) {
+  ContextualResult<void> result =
+    std::visit(Overloaded{[&](TypedFunction f) {
+                            e.functions[name].push_back({f.header.type, std::move(f)});
+                            return ContextualResult<void>{};
+                          },
+                          [&](CheckedFunction f) {
+                            return create_graph_and_instantiations(e, std::move(f)).map([&](FunctionGraph g) {
+                              e.functions[name].push_back({std::move(f.header.type), std::move(g)});
+                            });
+                          }},
+               std::move(var));
+
+  return {std::move(e), std::move(result)};
+}
+
 ContextualResult<Tree<Binding>> run_function(RuntimeEnv& r, const CheckedFunction& f) {
-  return create_graph(r.env, f).map([&](anyf::FunctionGraph g) {
+  return create_graph_and_instantiations(r.env, f).map([&](anyf::FunctionGraph g) {
     std::vector<anyf::Future> value_inputs;
     std::vector<anyf::BorrowedFuture> borrowed_inputs;
 
@@ -243,43 +314,17 @@ RuntimeEnv make_default_runtime(Env env) { return {std::move(env), anyf::make_ta
 Result<void> parse_script(Env& e, std::string_view script) {
   return parse(script)
     .and_then([&](UnTypedAST ast) {
-      std::vector<ContextualError> errors;
-
-      std::vector<EnvFunctionRef> typed_ast;
-      typed_ast.reserve(ast.size());
-
-      for(const auto& [name, f] : ast) {
-        if(auto typed_result = type_name_resolution(e, f); typed_result) {
-          std::vector<EnvFunction>& functions = e.functions[name];
-          functions.push_back({typed_result->header.type, std::move(*typed_result)});
-          typed_ast.push_back({name, int(functions.size() - 1)});
-        } else {
-          errors = to_vec(std::move(typed_result.error()), std::move(errors));
-        }
-      }
-
-      return value_or_errors(std::move(typed_ast), std::move(errors));
-    })
-    .and_then([&](std::vector<EnvFunctionRef> ast) {
-      std::vector<ContextualError> errors;
-
-      for(const auto& [name, idx, _] : ast) {
-        EnvFunction& env_function = e.functions.at(name)[idx];
-
-        auto graph_result =
-          overload_resolution_concrete(e, std::move(std::move(std::get<TypedFunction>(env_function.f))))
-            .and_then([&](const CheckedFunction& f) {
-              env_function.type = f.header.type;
-              return create_graph(e, f);
-            })
-            .map([&](anyf::FunctionGraph f) { env_function.f = std::move(f); });
-
-        if(!graph_result) {
-          errors = to_vec(std::move(graph_result.error()), std::move(errors));
-        }
-      }
-
-      return errors.empty() ? ContextualResult<void>{} : tl::unexpected{std::move(errors)};
+      return knot::accumulate(ast, ContextualResult<void>{}, [&](auto result, const auto& tup) {
+        const auto& name = std::get<0>(tup);
+        return result ? type_name_resolution(e, std::get<1>(tup))
+                          .and_then([&](TypedFunction f) { return overload_resolution(e, std::move(f)); })
+                          .and_then([&](auto var) {
+                            ContextualResult<void> result;
+                            std::tie(e, result) = add_function(std::move(e), name, std::move(var));
+                            return result;
+                          })
+                      : std::move(result);
+      });
     })
     .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
 }
@@ -293,21 +338,18 @@ Result<Tree<Binding>> run(RuntimeEnv& r, std::string_view expr) {
 
 Result<Tree<Binding>> run_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
-    .and_then([&](auto var) {
-      return std::visit(Overloaded{
-                          [&](UnTypedExpr e) {
-                            return type_name_resolution(r.env, std::move(e)).and_then([&](TypedExpr e) {
-                              return run_expr(r, std::move(e), floating_type<TypeID>());
-                            });
-                          },
-                          [&](UnTypedAssignment a) {
-                            return type_name_resolution(r.env, std::move(a)).and_then([&](TypedAssignment a) {
-                              return run_assign(r, std::move(a)).map([]() { return Tree<Binding>{}; });
-                            });
-                          },
-                        },
-                        std::move(var));
-    })
+    .and_then(visited(Overloaded{
+      [&](UnTypedExpr e) {
+        return type_name_resolution(r.env, std::move(e)).and_then([&](TypedExpr e) {
+          return run_expr(r, std::move(e), floating_type<TypeID>());
+        });
+      },
+      [&](UnTypedAssignment a) {
+        return type_name_resolution(r.env, std::move(a)).and_then([&](TypedAssignment a) {
+          return run_assign(r, std::move(a)).map([]() { return Tree<Binding>{}; });
+        });
+      },
+    }))
     .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); });
 }
 
@@ -320,21 +362,18 @@ Result<std::string> run_to_string(RuntimeEnv& r, std::string_view expr) {
 
 Result<std::string> run_to_string_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
-    .and_then([&](auto var) {
-      return std::visit(Overloaded{
-                          [&](UnTypedExpr e) {
-                            return type_name_resolution(r.env, std::move(e)).and_then([&](TypedExpr e) {
-                              return run_expr_to_string(r, std::move(e));
-                            });
-                          },
-                          [&](UnTypedAssignment a) {
-                            return type_name_resolution(r.env, std::move(a)).and_then([&](TypedAssignment a) {
-                              return run_assign(r, std::move(a)).map([]() { return std::string{}; });
-                            });
-                          },
-                        },
-                        std::move(var));
-    })
+    .and_then(visited(Overloaded{
+      [&](UnTypedExpr e) {
+        return type_name_resolution(r.env, std::move(e)).and_then([&](TypedExpr e) {
+          return run_expr_to_string(r, std::move(e));
+        });
+      },
+      [&](UnTypedAssignment a) {
+        return type_name_resolution(r.env, std::move(a)).and_then([&](TypedAssignment a) {
+          return run_assign(r, std::move(a)).map([]() { return std::string{}; });
+        });
+      },
+    }))
     .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); });
 }
 

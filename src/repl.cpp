@@ -195,7 +195,7 @@ std::vector<std::string> step_repl(RuntimeEnv& repl, std::string_view line) {
     return {};
   } else if(line[0] == ':') {
     return parse_command({line.data() + 1, line.size() - 1})
-      .map([&](const auto& cmd) { return std::visit([&](const auto& cmd) { return run(repl, cmd); }, cmd); })
+      .map(visited([&](const auto& cmd) { return run(repl, cmd); }))
       .or_else(convert_errors)
       .value();
   } else {
