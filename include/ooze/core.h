@@ -29,8 +29,6 @@ struct RuntimeEnv {
   Env env;
   anyf::Executor executor;
   std::unordered_map<std::string, Tree<Binding>> bindings;
-
-  ~RuntimeEnv() { executor.wait(); }
 };
 
 Tree<Any> await(Tree<Binding>);
