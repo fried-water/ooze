@@ -1,7 +1,7 @@
 #pragma once
 
 #include "algorithm.h"
-#include "functional.h"
+#include "ooze/functional.h"
 #include "ooze/primatives.h"
 #include "ooze/slice.h"
 
@@ -40,7 +40,7 @@ template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
 template <typename T>
-using Result = tl::expected<T, std::vector<std::string>>;
+using StringResult = tl::expected<T, std::vector<std::string>>;
 
 inline void dump(const std::vector<std::string>& lines) {
   for(const std::string& line : lines) {
@@ -56,7 +56,7 @@ auto make_vector(Ts&&... ts) {
   return v;
 }
 
-inline Result<std::vector<std::string>> convert_errors(std::vector<std::string> errors) { return errors; }
+inline StringResult<std::vector<std::string>> convert_errors(std::vector<std::string> errors) { return errors; }
 
 inline auto err(std::string msg) { return tl::unexpected{std::vector<std::string>{std::move(msg)}}; }
 
@@ -74,11 +74,6 @@ tl::expected<T, std::vector<E>> result_and_errors(tl::expected<T, std::vector<E>
   } else {
     return tl::unexpected{to_vec(std::move(errors), std::move(exp.error()))};
   }
-}
-
-template <typename E, typename T>
-auto success(T t) {
-  return tl::expected<T, std::vector<E>>{std::move(t)};
 }
 
 template <typename E>
@@ -130,17 +125,6 @@ constexpr auto error_type(knot::TypeList<Ts...> tl) {
   } else {
     return error_type(tail(tl));
   }
-}
-
-template <typename... Ts>
-auto merge(Ts... ts) {
-  using error_type = knot::type_t<decltype(value_type(error_type(knot::TypeList<Ts...>{})))>;
-
-  std::vector<error_type> errors;
-  (append_errors(errors, std::move(ts)), ...);
-
-  return errors.empty() ? success<error_type>(std::tuple_cat(get_value(std::move(ts))...))
-                        : tl::unexpected{std::move(errors)};
 }
 
 } // namespace ooze

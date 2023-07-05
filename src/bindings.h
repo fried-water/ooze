@@ -28,7 +28,7 @@ inline std::vector<anyf::BorrowedFuture> borrow(Tree<Binding>& tree) {
 }
 
 template <typename Bindings>
-Result<std::vector<anyf::Future>> take(Bindings& bindings, const std::string& name) {
+StringResult<std::vector<anyf::Future>> take(Bindings& bindings, const std::string& name) {
   if(const auto var_it = bindings.find(name); var_it != bindings.end()) {
     Tree<Binding> tree = std::move(var_it->second);
     bindings.erase(var_it);
@@ -39,7 +39,7 @@ Result<std::vector<anyf::Future>> take(Bindings& bindings, const std::string& na
 }
 
 template <typename Bindings>
-Result<std::vector<anyf::BorrowedFuture>> borrow(Bindings& bindings, const std::string& name) {
+StringResult<std::vector<anyf::BorrowedFuture>> borrow(Bindings& bindings, const std::string& name) {
   if(const auto var_it = bindings.find(name); var_it == bindings.end()) {
     return err(fmt::format("Binding {} not found", name));
   } else {

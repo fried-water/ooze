@@ -82,8 +82,7 @@ std::vector<std::string> run(RuntimeEnv&, const HelpCmd& help) {
 }
 
 std::vector<std::string> run(RuntimeEnv& repl, BindingsCmd) {
-  std::vector<std::string> ordered = transform_to_vec(repl.bindings, [](const auto& p) { return p.first; });
-  std::sort(ordered.begin(), ordered.end());
+  std::vector<std::string> ordered = sorted(transform_to_vec(repl.bindings, [](const auto& p) { return p.first; }));
 
   std::vector<std::string> output;
   output.reserve(repl.bindings.size() + 1);
@@ -123,8 +122,6 @@ std::vector<std::string> run(RuntimeEnv& repl, const FunctionsCmd&) {
     }
   }
 
-  std::sort(functions.begin(), functions.end());
-
   std::vector<std::string> output{fmt::format("{} function(s)", functions.size())};
 
   for(const std::string& name : COLLAPSE) {
@@ -133,7 +130,7 @@ std::vector<std::string> run(RuntimeEnv& repl, const FunctionsCmd&) {
     }
   }
 
-  for(const auto& [name, str] : functions) {
+  for(const auto& [name, str] : sorted(std::move(functions))) {
     output.push_back(fmt::format("  {}", str));
   }
 

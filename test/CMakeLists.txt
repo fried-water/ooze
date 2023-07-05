@@ -12,6 +12,7 @@ add_executable(ooze_test
   parser_combinator_test.cpp
   pretty_print_test.cpp
   repl_test.cpp
+  result_test.cpp
   ooze_test.cpp)
 
 target_link_libraries(ooze_test PRIVATE ooze ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})

@@ -42,9 +42,9 @@ std::optional<Command> parse_cmd_line(int argc, const char** argv) {
   }
 }
 
-Result<void> parse_scripts(Env& e, const std::vector<std::string>& filenames) {
+StringResult<void> parse_scripts(Env& e, const std::vector<std::string>& filenames) {
   return knot::accumulate(
-    filenames, Result<void>{}, [&](Result<void> acc, const std::string& filename) -> Result<void> {
+    filenames, StringResult<void>{}, [&](StringResult<void> acc, const std::string& filename) -> StringResult<void> {
       auto result =
         read_text_file(filename).and_then([&](const std::string& script) { return parse_script(e, script); });
 
@@ -311,7 +311,7 @@ CompoundType<TypeID> type(const Tree<Binding>& tree) { return TypeOfBindingConve
 
 RuntimeEnv make_default_runtime(Env env) { return {std::move(env), anyf::make_task_executor()}; }
 
-Result<void> parse_script(Env& e, std::string_view script) {
+StringResult<void> parse_script(Env& e, std::string_view script) {
   return parse(script)
     .and_then([&](UnTypedAST ast) {
       return knot::accumulate(ast, ContextualResult<void>{}, [&](auto result, const auto& tup) {
@@ -329,14 +329,14 @@ Result<void> parse_script(Env& e, std::string_view script) {
     .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
 }
 
-Result<Tree<Binding>> run(RuntimeEnv& r, std::string_view expr) {
+StringResult<Tree<Binding>> run(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
     .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, std::move(e)); })
     .and_then([&](TypedExpr e) { return run_expr(r, std::move(e), floating_type<TypeID>()); })
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
-Result<Tree<Binding>> run_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
+StringResult<Tree<Binding>> run_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
     .and_then(visited(Overloaded{
       [&](UnTypedExpr e) {
@@ -353,14 +353,14 @@ Result<Tree<Binding>> run_or_assign(RuntimeEnv& r, std::string_view assignment_o
     .map_error([&](auto errors) { return contextualize(assignment_or_expr, std::move(errors)); });
 }
 
-Result<std::string> run_to_string(RuntimeEnv& r, std::string_view expr) {
+StringResult<std::string> run_to_string(RuntimeEnv& r, std::string_view expr) {
   return parse_expr(expr)
     .and_then([&](UnTypedExpr e) { return type_name_resolution(r.env, std::move(e)); })
     .and_then([&](TypedExpr e) { return run_expr_to_string(r, std::move(e)); })
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
 }
 
-Result<std::string> run_to_string_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
+StringResult<std::string> run_to_string_or_assign(RuntimeEnv& r, std::string_view assignment_or_expr) {
   return parse_repl(assignment_or_expr)
     .and_then(visited(Overloaded{
       [&](UnTypedExpr e) {
@@ -395,7 +395,7 @@ int main(int argc, const char** argv, Env e) {
       return run_to_string(r, "main()").map([](std::string s) { return make_vector(std::move(s)); });
     } else {
       run_repl(make_default_runtime(std::move(e)));
-      return Result<std::vector<std::string>>{};
+      return StringResult<std::vector<std::string>>{};
     }
   });
 

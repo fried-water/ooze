@@ -17,7 +17,7 @@
 namespace ooze {
 
 template <typename T>
-using Result = tl::expected<T, std::vector<std::string>>;
+using StringResult = tl::expected<T, std::vector<std::string>>;
 
 struct Binding {
   TypeID type;
@@ -37,13 +37,13 @@ CompoundType<TypeID> type(const Tree<Binding>&);
 
 RuntimeEnv make_default_runtime(Env);
 
-Result<void> parse_script(Env&, std::string_view script);
+StringResult<void> parse_script(Env&, std::string_view script);
 
-Result<Tree<Binding>> run(RuntimeEnv&, std::string_view expr);
-Result<std::string> run_to_string(RuntimeEnv&, std::string_view expr);
+StringResult<Tree<Binding>> run(RuntimeEnv&, std::string_view expr);
+StringResult<std::string> run_to_string(RuntimeEnv&, std::string_view expr);
 
-Result<Tree<Binding>> run_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
-Result<std::string> run_to_string_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
+StringResult<Tree<Binding>> run_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
+StringResult<std::string> run_to_string_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
 
 int main(int argc, const char** argv, Env);
 

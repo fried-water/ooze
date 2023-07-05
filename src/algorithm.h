@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ooze/functional.h"
+
 #include <algorithm>
 #include <type_traits>
 #include <vector>
@@ -74,8 +76,8 @@ auto flatten(Rs&&... ranges) {
   return v;
 }
 
-template <typename T, typename P>
-std::vector<T> sorted(std::vector<T> v, P projection) {
+template <typename T, typename P = Identity>
+std::vector<T> sorted(std::vector<T> v, P projection = {}) {
   std::sort(v.begin(), v.end(), [&](const auto& lhs, const auto& rhs) { return projection(lhs) < projection(rhs); });
   return v;
 }

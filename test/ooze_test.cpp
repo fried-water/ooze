@@ -10,12 +10,9 @@ namespace ooze {
 
 namespace {
 
-Result<Tree<Any>> run(Env e, std::string_view script, std::string_view expr) {
+StringResult<Tree<Any>> run(Env e, std::string_view script, std::string_view expr) {
   RuntimeEnv r = make_default_runtime(std::move(e));
-
-  return parse_script(r.env, script).and_then([&]() { return ooze::run(r, expr); }).map([](Tree<Binding> bindings) {
-    return await(std::move(bindings));
-  });
+  return parse_script(r.env, script).and_then([&]() { return ooze::run(r, expr); }).map(await);
 }
 
 auto run_or_assign(Env e, std::string_view script, std::string_view expr) {
