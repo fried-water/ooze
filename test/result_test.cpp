@@ -47,7 +47,7 @@ BOOST_AUTO_TEST_CASE(result_trivial_state) {
 }
 
 BOOST_AUTO_TEST_CASE(result_trivial_state_void) {
-  Result<void, std::string, State> r = {{}, State{2}};
+  Result<void, std::string, State> r = {State{2}};
   BOOST_CHECK(r.has_value());
   BOOST_CHECK(std::tuple(State{2}) == r.state());
 
@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE(result_map_state) {
 }
 
 BOOST_AUTO_TEST_CASE(result_map_void_state) {
-  const auto r = Result<void, std::string, State>({}, State{3}).map([](State s) { return s; });
+  const auto r = Result<void, std::string, State>(State{3}).map([](State s) { return s; });
   BOOST_CHECK((success<std::string>(State{3}) == r));
 }
 
@@ -144,8 +144,6 @@ BOOST_AUTO_TEST_CASE(result_map_skip) {
   const auto r = fail<int>(std::string("abc")).map([](int x) { BOOST_CHECK(false); });
   BOOST_CHECK((fail<void>(std::string("abc")) == r));
 }
-
-// TODO map_error() tests
 
 BOOST_AUTO_TEST_CASE(result_map_error) {
   const auto r = fail<float>(5).map_error([](int x) { return std::to_string(x); });
@@ -175,6 +173,12 @@ BOOST_AUTO_TEST_CASE(result_map_error_skip) {
   BOOST_CHECK((success<float>(5) == r));
 }
 
-// TODO allow Result<T, T>
+BOOST_AUTO_TEST_CASE(result_same_type) {
+  const auto r = success<int>(1)
+                   .map([](int x) { return x + 1; })
+                   .and_then([](int x) { return fail<int>(x * 3); })
+                   .map_error([](int x) { return x + 3; });
+  BOOST_CHECK((fail<int>(9) == r));
+}
 
 } // namespace ooze

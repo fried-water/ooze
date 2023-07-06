@@ -39,17 +39,29 @@ constexpr knot::Type<E> fail_type(knot::Type<Result<T, E, Ts...>>) {
   return {};
 }
 
+template <typename E>
+struct Failure {
+  E value;
+  KNOT_ORDERED(Failure);
+};
+
+template <typename E>
+Failure(E) -> Failure<E>;
+
 template <typename T, typename E, typename... Ts>
 class Result {
-  std::variant<T, E> _result;
+  std::variant<T, Failure<E>> _result;
   std::tuple<Ts...> _state;
 
 public:
   template <bool b = std::is_default_constructible_v<std::tuple<Ts...>>, typename = std::enable_if_t<b>>
   constexpr Result(T t) : _result(std::move(t)) {}
 
-  constexpr Result(std::variant<T, E> r, Ts... ts) : _result(std::move(r)), _state(std::move(ts)...) {}
-  constexpr Result(std::variant<T, E> r, std::tuple<Ts...> s) : _result(std::move(r)), _state(std::move(s)) {}
+  constexpr Result(T t, Ts... ts) : _result(std::move(t)), _state(std::move(ts)...) {}
+  constexpr Result(T t, std::tuple<Ts...> s) : _result(std::move(t)), _state(std::move(s)) {}
+
+  constexpr Result(Failure<E> e, Ts... ts) : _result(std::move(e)), _state(std::move(ts)...) {}
+  constexpr Result(Failure<E> e, std::tuple<Ts...> s) : _result(std::move(e)), _state(std::move(s)) {}
 
   template <typename F>
   auto and_then(F f) && {
@@ -104,9 +116,9 @@ public:
   constexpr T& value() & { return std::get<0>(_result); }
   constexpr const T& value() const& { return std::get<0>(_result); }
 
-  constexpr E error() && { return std::move(std::get<1>(_result)); }
-  constexpr E& error() & { return std::get<1>(_result); }
-  constexpr const E& error() const& { return std::get<1>(_result); }
+  constexpr E error() && { return std::move(std::get<1>(_result).value); }
+  constexpr E& error() & { return std::get<1>(_result).value; }
+  constexpr const E& error() const& { return std::get<1>(_result).value; }
 
   constexpr std::tuple<Ts...>&& state() && { return std::move(_state); }
   constexpr std::tuple<Ts...>& state() & { return _state; }
@@ -131,8 +143,11 @@ public:
   template <bool b = std::is_default_constructible_v<std::tuple<Ts...>>, typename = std::enable_if_t<b>>
   constexpr Result() {}
 
-  constexpr Result(std::optional<E> e, Ts... ts) : _error(std::move(e)), _state(std::move(ts)...) {}
-  constexpr Result(std::optional<E> e, std::tuple<Ts...> s) : _error(std::move(e)), _state(std::move(s)) {}
+  constexpr Result(Ts... ts) : _state(std::move(ts)...) {}
+  constexpr Result(std::tuple<Ts...> s) : _state(std::move(s)) {}
+
+  constexpr Result(Failure<E> e, Ts... ts) : _error(std::move(e.value)), _state(std::move(ts)...) {}
+  constexpr Result(Failure<E> e, std::tuple<Ts...> s) : _error(std::move(e.value)), _state(std::move(s)) {}
 
   template <typename F>
   auto and_then(F f) && {
@@ -207,7 +222,7 @@ constexpr Result<T, E, Ts...> success(T t, Ts... ts) {
 
 template <typename E, typename... Ts>
 constexpr Result<void, E, Ts...> success(std::tuple<>, Ts... ts) {
-  return Result<void, E, Ts...>{{}, std::tuple(std::move(ts)...)};
+  return Result<void, E, Ts...>{std::tuple(std::move(ts)...)};
 }
 
 template <typename E>
@@ -222,7 +237,7 @@ constexpr Result<T, E, Ts...> fail(E e, Ts... ts) {
 
 template <typename T, typename E, typename... Ts>
 constexpr Result<T, E, Ts...> fail(knot::Type<T>, E e, Ts... ts) {
-  return Result<T, E, Ts...>{std::move(e), std::tuple(std::move(ts)...)};
+  return Result<T, E, Ts...>{Failure{std::move(e)}, std::tuple(std::move(ts)...)};
 }
 
 } // namespace ooze
