@@ -53,7 +53,7 @@ StringResult<void> parse_scripts(Env& e, const std::vector<std::string>& filenam
       } else if(result) {
         return acc;
       } else {
-        return tl::unexpected{to_vec(std::move(result.error()), std::move(acc.error()))};
+        return Failure{to_vec(std::move(result.error()), std::move(acc.error()))};
       }
     });
 }
@@ -160,7 +160,7 @@ ContextualResult<FunctionGraph> create_graph_and_instantiations(Env& e, const Ch
   }
 
   if(!errors.empty()) {
-    return tl::unexpected{std::move(errors)};
+    return Failure{std::move(errors)};
   }
 
   for(int i = checked_functions.size() - 1; i >= 0; i--) {
@@ -173,7 +173,7 @@ ContextualResult<FunctionGraph> create_graph_and_instantiations(Env& e, const Ch
     }
   }
 
-  return errors.empty() ? create_graph(e, f) : tl::unexpected{std::move(errors)};
+  return errors.empty() ? create_graph(e, f) : Failure{std::move(errors)};
 }
 
 std::tuple<Env, ContextualResult<void>>

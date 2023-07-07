@@ -49,13 +49,12 @@ Env create_primative_env() {
   env.add_type<std::vector<std::byte>>("vector<byte>");
 
   env.add_function("write", [](const std::string& file, const std::vector<std::byte>& bytes) {
-    const StringResult<void> r = write_binary_file(file, bytes);
-
+    const auto r = write_binary_file(file, bytes);
     if(!r) dump_and_exit(r.error());
   });
 
   env.add_function("write", [](const std::string& file, const std::string& bytes) {
-    const StringResult<void> r =
+    const auto r =
       write_binary_file(file, Span<std::byte>{reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()});
 
     if(!r) dump_and_exit(r.error());

@@ -265,9 +265,8 @@ template <typename P, typename T, typename S = int>
 auto parse(P p, Span<T> tokens, S s = {}) {
   auto r = p(ParseState<S, T>{s, tokens}, {});
   return r && size(r.slice) == tokens.size()
-           ? tl::expected<parser_result_t<S, T, P>, std::optional<std::pair<std::string, ParseLocation>>>{std::move(
-               *r.value)}
-           : tl::unexpected{std::move(r.error)};
+           ? Result<parser_result_t<S, T, P>, std::optional<std::pair<std::string, ParseLocation>>>{std::move(*r.value)}
+           : Failure{std::move(r.error)};
 }
 
 } // namespace ooze::pc

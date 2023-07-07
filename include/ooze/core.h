@@ -1,13 +1,12 @@
 #pragma once
 
 #include "ooze/env.h"
+#include "ooze/result.h"
 #include "ooze/tree.h"
 
 #include <anyf/borrowed_future.h>
 #include <anyf/executor.h>
 #include <anyf/future.h>
-
-#include <tl/expected.hpp>
 
 #include <string>
 #include <string_view>
@@ -17,7 +16,7 @@
 namespace ooze {
 
 template <typename T>
-using StringResult = tl::expected<T, std::vector<std::string>>;
+using StringResult = Result<T, std::vector<std::string>>;
 
 struct Binding {
   TypeID type;

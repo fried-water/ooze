@@ -53,7 +53,7 @@ struct TypeCheckError {
 };
 
 template <typename T>
-using TypeCheckResult = tl::expected<T, std::vector<TypeCheckError>>;
+using TypeCheckResult = Result<T, std::vector<TypeCheckError>>;
 
 enum class PropDirection { Input, Output, Across };
 
@@ -638,7 +638,7 @@ TypeCheckResult<CheckedFunction> find_overloads(const Env& e,
 
   return errors.empty() ? TypeCheckResult<CheckedFunction>{knot::map<CheckedFunction>(
                             f, [&](const NamedFunction& f) { return all_overloads.at(&f); })}
-                        : tl::unexpected{std::move(errors)};
+                        : Failure{std::move(errors)};
 }
 
 std::vector<TypeCheckError> find_returned_borrows(const TypedFunction& f,

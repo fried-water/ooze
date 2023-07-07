@@ -55,7 +55,7 @@ class Result {
 
 public:
   template <bool b = std::is_default_constructible_v<std::tuple<Ts...>>, typename = std::enable_if_t<b>>
-  constexpr Result(T t) : _result(std::move(t)) {}
+  constexpr Result(T t = {}) : _result(std::move(t)) {}
 
   constexpr Result(T t, Ts... ts) : _result(std::move(t)), _state(std::move(ts)...) {}
   constexpr Result(T t, std::tuple<Ts...> s) : _result(std::move(t)), _state(std::move(s)) {}
@@ -77,27 +77,38 @@ public:
 
   template <typename F>
   auto map(F f_) && {
-    auto f = tuple_wrap(std::move(f_));
-    return std::apply(
-      [&](auto&&... ts) {
-        constexpr auto result =
-          knot::as_typelist(knot::invoke_result(knot::Type<decltype(f)>{}, knot::TypeList<T, Ts...>{}));
+    if constexpr(sizeof...(Ts) == 0) {
+      constexpr auto result = knot::invoke_result(knot::Type<F>{}, knot::TypeList<T>{});
 
-        if constexpr(result == knot::TypeList<Ts...>{}) {
-          return has_value() ? std::apply([](auto&&... ts) { return success<E>(std::tuple<>{}, std::move(ts)...); },
-                                          f(std::move(value()), std::move(ts)...))
-                             : fail<void>(std::move(error()), std::move(ts)...);
-        } else if constexpr(tail(result) == knot::TypeList<Ts...>{}) {
-          return has_value()
-                   ? std::apply([](auto&& t, auto&&... ts) { return success<E>(std::move(t), std::move(ts)...); },
-                                f(std::move(value()), std::move(ts)...))
-                   : fail(head(result), std::move(error()), std::move(ts)...);
-        } else {
-          static_assert(result == knot::TypeList<Ts...>{} || tail(result) == knot::TypeList<Ts...>{},
-                        "Invalid Result::map() function return value");
-        }
-      },
-      std::move(_state));
+      if constexpr(result == knot::Type<void>{}) {
+        return has_value() ? success<E>(tuple_wrap(std::move(f_))(std::move(value())))
+                           : fail(result, std::move(error()));
+      } else {
+        return has_value() ? success<E>(f_(std::move(value()))) : fail(result, std::move(error()));
+      }
+    } else {
+      auto f = tuple_wrap(std::move(f_));
+      return std::apply(
+        [&](auto&&... ts) {
+          constexpr auto result =
+            knot::as_typelist(knot::invoke_result(knot::Type<decltype(f)>{}, knot::TypeList<T, Ts...>{}));
+
+          if constexpr(result == knot::TypeList<Ts...>{}) {
+            return has_value() ? std::apply([](auto&&... ts) { return success<E>(std::tuple<>{}, std::move(ts)...); },
+                                            f(std::move(value()), std::move(ts)...))
+                               : fail<void>(std::move(error()), std::move(ts)...);
+          } else if constexpr(tail(result) == knot::TypeList<Ts...>{}) {
+            return has_value()
+                     ? std::apply([](auto&& t, auto&&... ts) { return success<E>(std::move(t), std::move(ts)...); },
+                                  f(std::move(value()), std::move(ts)...))
+                     : fail(head(result), std::move(error()), std::move(ts)...);
+          } else {
+            static_assert(result == knot::TypeList<Ts...>{} || tail(result) == knot::TypeList<Ts...>{},
+                          "Invalid Result::map() function return value");
+          }
+        },
+        std::move(_state));
+    }
   }
 
   template <typename F>
@@ -112,11 +123,22 @@ public:
       std::move(_state));
   }
 
-  constexpr T value() && { return std::move(std::get<0>(_result)); }
+  template <typename F>
+  Result<T, E> or_else(F f) && {
+    return has_value()
+             ? std::move(*this)
+             : std::apply([&](auto&&... ts) { return f(std::move(error()), std::move(ts)...); }, std::move(_state));
+  }
+
+  constexpr T&& value() && { return std::move(std::get<0>(_result)); }
   constexpr T& value() & { return std::get<0>(_result); }
   constexpr const T& value() const& { return std::get<0>(_result); }
 
-  constexpr E error() && { return std::move(std::get<1>(_result).value); }
+  constexpr T&& operator*() && { return std::move(std::get<0>(_result)); }
+  constexpr T& operator*() & { return std::get<0>(_result); }
+  constexpr const T& operator*() const& { return std::get<0>(_result); }
+
+  constexpr E&& error() && { return std::move(std::get<1>(_result).value); }
   constexpr E& error() & { return std::get<1>(_result).value; }
   constexpr const E& error() const& { return std::get<1>(_result).value; }
 
@@ -197,7 +219,14 @@ public:
       std::move(_state));
   }
 
-  constexpr E error() && { return std::move(*_error); }
+  template <typename F>
+  Result<void, E> or_else(F f) && {
+    return has_value()
+             ? std::move(*this)
+             : std::apply([&](auto&&... ts) { return f(std::move(error()), std::move(ts)...); }, std::move(_state));
+  }
+
+  constexpr E&& error() && { return std::move(*_error); }
   constexpr E& error() & { return *_error; }
   constexpr const E& error() const& { return *_error; }
 

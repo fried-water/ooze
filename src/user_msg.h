@@ -11,7 +11,7 @@ struct ContextualError {
 };
 
 template <typename T>
-using ContextualResult = tl::expected<T, std::vector<ContextualError>>;
+using ContextualResult = Result<T, std::vector<ContextualError>>;
 
 std::vector<std::string> contextualize(std::string_view src, std::vector<ContextualError>);
 

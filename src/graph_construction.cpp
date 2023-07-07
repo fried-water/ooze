@@ -12,6 +12,11 @@ namespace {
 using anyf::FunctionGraph;
 using anyf::Oterm;
 
+template <typename T, typename E>
+Result<T, E> convert(tl::expected<T, E> exp) {
+  return exp ? Result<T, E>{std::move(exp.value())} : Failure{std::move(exp.error())};
+}
+
 std::vector<ContextualError> to_graph_error(anyf::GraphError error, const CheckedExpr& expr, bool indexed = true) {
   return std::visit(Overloaded{[&](const CheckedScopeExpr& s) { return to_graph_error(error, *s.result, indexed); },
                                [&](const std::vector<CheckedExpr>& exprs) {
@@ -63,7 +68,7 @@ ContextualResult<GraphContext> add_expr(const Env& e, const std::vector<CheckedE
       ctx = std::move(*r);
       terms.insert(terms.end(), ctx.terms.begin(), ctx.terms.end());
     } else {
-      return tl::unexpected{std::move(r.error())};
+      return Failure{std::move(r.error())};
     }
   }
 
@@ -99,14 +104,14 @@ add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphC
     assert(it != e.functions.end() && call.function.overload_idx < it->second.size());
     const EnvFunction& env_function = it->second[call.function.overload_idx];
 
-    return std::visit(Overloaded{[&](const auto& f) { return ctx.cg.add(f, ctx.terms); },
-                                 [&](const TypedFunction&) -> tl::expected<std::vector<Oterm>, anyf::GraphError> {
+    return std::visit(Overloaded{[&](const auto& f) { return convert(ctx.cg.add(f, ctx.terms)); },
+                                 [&](const TypedFunction&) {
                                    const auto it =
                                      find_if(env_function.instatiations, applied([&](const auto& type, const auto&) {
                                                return call.function.type == type;
                                              }));
                                    assert(it != env_function.instatiations.end());
-                                   return ctx.cg.add(it->second, ctx.terms);
+                                   return convert(ctx.cg.add(it->second, ctx.terms));
                                  }},
                       env_function.f)
       .map_error([&](anyf::GraphError error) { return to_graph_error(error, call.parameters); })
@@ -139,13 +144,13 @@ ContextualResult<GraphContext> add_expr(const Env& e, const ast::IdentExpr& iden
 
   ctx.terms = std::move(*terms);
 
-  return ContextualResult<GraphContext>{std::move(ctx)};
+  return ctx;
 }
 
 ContextualResult<GraphContext> add_expr(const Env& e, const Literal& literal, GraphContext ctx) {
   return std::visit(
     [&](const auto& value) {
-      return ctx.cg.add(AnyFunction([=]() { return value; }), {})
+      return convert(ctx.cg.add(AnyFunction([=]() { return value; }), {}))
         .map([&](std::vector<Oterm> terms) {
           ctx.terms = std::move(terms);
           return std::move(ctx);
@@ -187,8 +192,8 @@ ContextualResult<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFu
            f.expr,
            append_bindings(f.header.pattern, *f.header.type.input, GraphContext{std::move(cg), {{}}, std::move(terms)}))
     .and_then([&](GraphContext ctx) {
-      return std::move(ctx.cg).finalize(ctx.terms).map_error(
-        [&](anyf::GraphError error) { return to_graph_error(error, f.expr); });
+      return convert(std::move(ctx.cg).finalize(ctx.terms).map_error(
+        [&](anyf::GraphError error) { return to_graph_error(error, f.expr); }));
     });
 }
 

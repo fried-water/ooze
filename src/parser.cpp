@@ -207,7 +207,7 @@ ContextualResult<parser_result_t<std::string_view, Token, Parser>> parse_string(
   if(value && size(parse_slice) == tokens.size() && lex_end == src.size()) {
     return std::move(*value);
   } else {
-    return tl::unexpected{std::vector<ContextualError>{
+    return Failure{std::vector<ContextualError>{
       {(error && error->second.pos < tokens.size()) ? tokens[error->second.pos].ref
                                                     : Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1},
        error ? fmt::format("expected {}", error->first) : fmt::format("unknown token")}}};
