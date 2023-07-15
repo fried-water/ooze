@@ -15,8 +15,8 @@
 
 namespace ooze {
 
-template <typename T>
-using StringResult = Result<T, std::vector<std::string>>;
+template <typename T, typename... Ts>
+using StringResult = Result<T, std::vector<std::string>, Ts...>;
 
 struct Binding {
   TypeID type;
@@ -24,25 +24,16 @@ struct Binding {
   anyf::BorrowedFuture borrowed_future;
 };
 
-struct RuntimeEnv {
-  Env env;
-  anyf::Executor executor;
-  std::unordered_map<std::string, Tree<Binding>> bindings;
-};
+using Bindings = std::unordered_map<std::string, Tree<Binding>>;
 
 Tree<Any> await(Tree<Binding>);
 
 CompoundType<TypeID> type(const Tree<Binding>&);
 
-RuntimeEnv make_default_runtime(Env);
+StringResult<void, Env> parse_script(Env, std::string_view script);
 
-StringResult<void> parse_script(Env&, std::string_view script);
-
-StringResult<Tree<Binding>> run(RuntimeEnv&, std::string_view expr);
-StringResult<std::string> run_to_string(RuntimeEnv&, std::string_view expr);
-
-StringResult<Tree<Binding>> run_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
-StringResult<std::string> run_to_string_or_assign(RuntimeEnv&, std::string_view assignment_or_expr);
+StringResult<Tree<Binding>, Env, Bindings> run(anyf::ExecutorRef, Env, Bindings, std::string_view expr);
+StringResult<std::string, Env, Bindings> run_to_string(anyf::ExecutorRef, Env, Bindings, std::string_view expr);
 
 int main(int argc, const char** argv, Env);
 

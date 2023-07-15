@@ -7,8 +7,8 @@
 
 namespace ooze {
 
-std::vector<std::string> step_repl(RuntimeEnv&, std::string_view line);
+std::tuple<std::vector<std::string>, Env, Bindings> step_repl(anyf::ExecutorRef, Env, Bindings, std::string_view line);
 
-void run_repl(RuntimeEnv);
+std::tuple<Env, Bindings> run_repl(anyf::ExecutorRef, Env, Bindings);
 
 } // namespace ooze

@@ -44,7 +44,25 @@ auto applied(F f) {
 
 template <typename F>
 auto visited(F f) {
-  return [f = std::move(f)](auto&& t) { return std::visit(f, std::forward<decltype(t)>(t)); };
+  return [f = std::move(f)](auto&& t, auto&&... ts) {
+    return std::visit([&](auto&& v) { return f(std::forward<decltype(v)>(v), std::forward<decltype(ts)>(ts)...); },
+                      std::forward<decltype(t)>(t));
+  };
+}
+
+template <typename... Ts>
+auto append_fn(Ts&&... ts) {
+  return [t = std::forward_as_tuple(std::forward<Ts>(ts)...)](auto&&... ts) {
+    return std::tuple_cat(std::tuple(std::forward<decltype(ts)>(ts)...), std::move(t));
+  };
+}
+
+inline auto pop_fn() {
+  return [](auto&&... ts, auto&&) { return std::tuple(std::forward<decltype(ts)>(ts)...); };
+}
+
+inline auto nullify() {
+  return [](auto&&...) {};
 }
 
 } // namespace ooze

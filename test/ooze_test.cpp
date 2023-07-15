@@ -4,30 +4,40 @@
 #include "ooze/core.h"
 
 #include <anyf/executor/task_executor.h>
-#include <anyf/graph_execution.h>
 
 namespace ooze {
 
 namespace {
 
-StringResult<Tree<Any>> run(Env e, std::string_view script, std::string_view expr) {
-  RuntimeEnv r = make_default_runtime(std::move(e));
-  return parse_script(r.env, script).and_then([&]() { return ooze::run(r, expr); }).map(await);
+StringResult<Tree<Any>> run(Env env, std::string_view script, std::string_view expr) {
+  auto executor = anyf::make_task_executor();
+
+  return parse_script(std::move(env), script)
+    .append_state(Bindings{})
+    .and_then([&](Env env, Bindings bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
+    .map_state([](Env, Bindings bindings) {
+      BOOST_REQUIRE(bindings.empty());
+      return std::tuple();
+    })
+    .map(await);
 }
 
-auto run_or_assign(Env e, std::string_view script, std::string_view expr) {
-  RuntimeEnv r = make_default_runtime(std::move(e));
+StringResult<std::unordered_map<std::string, Tree<Any>>>
+assign(Env env, std::string_view script, std::string_view expr) {
+  auto executor = anyf::make_task_executor();
 
-  return parse_script(r.env, script)
-    .and_then([&]() { return ooze::run_or_assign(r, expr); })
-    .map([&](Tree<Binding> bindings) {
-      std::unordered_map<std::string, Tree<Any>> assignments;
-      for(auto& [name, tree] : r.bindings) {
-        assignments.emplace(name, await(std::move(tree)));
+  return parse_script(std::move(env), script)
+    .append_state(Bindings{})
+    .and_then([&](Env env, Bindings bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
+    .map([&](Tree<Binding> output, Env env, Bindings bindings) {
+      BOOST_REQUIRE(output.v.index() == 0 && std::get<0>(output.v).size() == 0);
+      std::unordered_map<std::string, Tree<Any>> results;
+      for(auto& [name, tree] : bindings) {
+        results.emplace(std::move(name), await(std::move(tree)));
       }
-
-      return std::pair(await(std::move(bindings)), std::move(assignments));
-    });
+      return std::tuple(std::move(results), std::move(env), Bindings{});
+    })
+    .map_state(nullify());
 }
 
 #define check_any(_EXP, _EXPR)                                                                                         \
@@ -71,6 +81,11 @@ BOOST_AUTO_TEST_CASE(ooze_expr_fn_no_args) {
   check_any_tree(17, check_result(run(create_primative_env(), script, "f()")));
 }
 
+BOOST_AUTO_TEST_CASE(ooze_expr_identity) {
+  constexpr std::string_view script = "fn f(x: i32) -> i32 = x";
+  check_any_tree(5, check_result(run(create_primative_env(), script, "f(5)")));
+}
+
 BOOST_AUTO_TEST_CASE(ooze_ref_param_ref) {
   constexpr std::string_view script = "fn f(x: &i32) -> string = to_string(x)";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(&1)")));
@@ -79,14 +94,6 @@ BOOST_AUTO_TEST_CASE(ooze_ref_param_ref) {
 BOOST_AUTO_TEST_CASE(ooze_ref_assign_ref) {
   constexpr std::string_view script = "fn f(x: i32) -> string { let x = &x; to_string(x) }";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(1)")));
-}
-
-BOOST_AUTO_TEST_CASE(ooze_assign_basic) {
-  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 = sum(sum(x, y), y)";
-  Env env = create_primative_env();
-  env.add_function("sum", [](int x, int y) { return x + y; });
-
-  check_any_tree(17, check_result(run_or_assign(std::move(env), script, "f(5, 6)")).first);
 }
 
 BOOST_AUTO_TEST_CASE(ooze_tuple) {
@@ -227,13 +234,13 @@ BOOST_AUTO_TEST_CASE(ooze_generic) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign) {
-  const auto m = check_result(run_or_assign(create_primative_env(), "", "let x = 1")).second;
+  const auto m = check_result(assign(create_primative_env(), "", "let x = 1"));
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_any_tree(1, check_element("x", m));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign_tuple_destructure) {
-  const auto m = check_result(run_or_assign(create_primative_env(), "", "let (x, y) = (1, 2)")).second;
+  const auto m = check_result(assign(create_primative_env(), "", "let (x, y) = (1, 2)"));
 
   BOOST_REQUIRE_EQUAL(2, m.size());
   check_any_tree(1, check_element("x", m));
@@ -241,13 +248,13 @@ BOOST_AUTO_TEST_CASE(ooze_assign_tuple_destructure) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign_tuple_wildcard) {
-  const auto m = check_result(run_or_assign(create_primative_env(), "", "let (_, x) = (1, 2)")).second;
+  const auto m = check_result(assign(create_primative_env(), "", "let (_, x) = (1, 2)"));
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_any_tree(2, check_element("x", m));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign_tuple) {
-  const auto m = check_result(run_or_assign(create_primative_env(), "", "let x = (1, 2)")).second;
+  const auto m = check_result(assign(create_primative_env(), "", "let x = (1, 2)"));
 
   BOOST_REQUIRE_EQUAL(1, m.size());
   const Tree<Any>& tree = check_element("x", m);
@@ -273,7 +280,7 @@ BOOST_AUTO_TEST_CASE(ooze_assign_deduce_overloads) {
   e.add_function("f", []() { return 5; });
   e.add_function("f", []() { return 3.0f; });
 
-  const auto m = check_result(run_or_assign(std::move(e), "", "let (x, y) : (i32, f32) = (f(), f())")).second;
+  const auto m = check_result(assign(std::move(e), "", "let (x, y) : (i32, f32) = (f(), f())"));
   BOOST_REQUIRE_EQUAL(2, m.size());
   check_any_tree(5, check_element("x", m));
   check_any_tree(3.0f, check_element("y", m));
@@ -282,30 +289,22 @@ BOOST_AUTO_TEST_CASE(ooze_assign_deduce_overloads) {
 BOOST_AUTO_TEST_CASE(ooze_assign_wrong_type) {
   const std::vector<std::string> expected{
     "1:13 error: expected i32, given f32", " | let x: f32 = 1", " |              ^"};
-
-  const auto error = check_error(run_or_assign(create_primative_env(), "", "let x: f32 = 1"));
-  BOOST_CHECK(expected == error);
+  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "let x: f32 = 1")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_undeclared_function) {
   const std::vector<std::string> expected{"1:0 error: use of undeclared function 'f'", " | f()", " | ^~~"};
-
-  const auto error = check_error(run(create_primative_env(), "", "f()"));
-  BOOST_CHECK(expected == error);
+  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_undeclared_binding) {
   const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
-
-  const auto error = check_error(run(create_primative_env(), "", "x"));
-  BOOST_CHECK(expected == error);
+  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "x")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign_bad_pattern) {
   const std::vector<std::string> expected{"1:4 error: expected (_), given ()", " | let (x) = ()", " |     ^~~"};
-
-  const auto error = check_error(run_or_assign(create_primative_env(), "", "let (x) = ()"));
-  BOOST_CHECK(expected == error);
+  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "let (x) = ()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
@@ -313,78 +312,127 @@ BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
   e.add_function("f", [](i32) {});
 
   const std::vector<std::string> expected{"1:2 error: expected string, given i32", " | f('abc')", " |   ^~~~~"};
-
-  const auto error = check_error(run(std::move(e), "", "f('abc')"));
-  BOOST_CHECK(expected == error);
+  BOOST_CHECK(expected == check_error(run(std::move(e), "", "f('abc')")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_to_string) {
-  RuntimeEnv r = make_default_runtime(create_primative_env());
-  BOOST_CHECK_EQUAL("1", check_result(run_to_string(r, "1")));
+  auto executor = anyf::make_task_executor();
+  BOOST_CHECK_EQUAL("1", check_result(run_to_string(executor, create_primative_env(), {}, "1")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_to_string_fn) {
+  auto executor = anyf::make_task_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
-
-  RuntimeEnv r = make_default_runtime(std::move(e));
-
-  BOOST_CHECK_EQUAL("abc", check_result(run_to_string(r, "f()")));
+  BOOST_CHECK_EQUAL("abc", check_result(run_to_string(executor, std::move(e), {}, "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_ref_binding) {
+  auto executor = anyf::make_task_executor();
+
   Env e = create_primative_env();
   e.add_function("f", [](const int& x) { return std::to_string(x); });
 
-  RuntimeEnv r = make_default_runtime(std::move(e));
-  check_result(run_or_assign(r, "let x = 3"));
-  check_any_tree(std::string("3"), await(check_result(run(r, "f(&x)"))));
-  check_any_tree(std::string("3"), await(check_result(run(r, "f(&x)"))));
+  const auto result = run(executor, std::move(e), {}, "let x = 3")
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run(executor, std::move(env), std::move(bindings), "f(&x)");
+                        })
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          check_any_tree(std::string("3"), await(std::move(result)));
+                          return run(executor, std::move(env), std::move(bindings), "f(&x)");
+                        })
+                        .map([](Tree<Binding> result, Env env, Bindings bindings) {
+                          check_any_tree(std::string("3"), await(std::move(result)));
+                          return std::tuple(std::move(env), std::move(bindings));
+                        });
+
+  BOOST_REQUIRE(result);
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
-  RuntimeEnv r = make_default_runtime(create_primative_env());
-  check_result(run_or_assign(r, "let x = 1"));
-  BOOST_CHECK_EQUAL("1", check_result(run_to_string(r, "x")));
-  BOOST_CHECK_EQUAL("1", check_result(run_to_string(r, "x")));
+  auto executor = anyf::make_task_executor();
+
+  const auto result = run(executor, create_primative_env(), {}, "let x = 1")
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run_to_string(executor, std::move(env), std::move(bindings), "x");
+                        })
+                        .and_then([&](std::string result, Env env, Bindings bindings) {
+                          BOOST_REQUIRE_EQUAL("1", result);
+                          return run_to_string(executor, std::move(env), std::move(bindings), "x");
+                        })
+                        .map([](std::string result, Env env, Bindings bindings) {
+                          BOOST_REQUIRE_EQUAL("1", result);
+                          return std::tuple(std::move(env), std::move(bindings));
+                        });
+
+  BOOST_REQUIRE(result);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding_indirect) {
-  Env e = create_primative_env();
-  e.add_function("f", [](const int& i) { return i; });
+BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
+  auto executor = anyf::make_task_executor();
 
-  RuntimeEnv r = make_default_runtime(std::move(e));
-  check_result(run_or_assign(r, "let x = 1"));
-  BOOST_CHECK_EQUAL("1", check_result(run_to_string(r, "f(&x)")));
-  BOOST_CHECK_EQUAL("1", check_result(run_to_string(r, "f(&x)")));
+  Env e = create_primative_env();
+  e.add_function("f", [](const int& x) { return x; });
+
+  const auto result = run(executor, std::move(e), {}, "let x = 1")
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run_to_string(executor, std::move(env), std::move(bindings), "f(&x)");
+                        })
+                        .and_then([&](std::string result, Env env, Bindings bindings) {
+                          BOOST_REQUIRE_EQUAL("1", result);
+                          return run_to_string(executor, std::move(env), std::move(bindings), "f(&x)");
+                        })
+                        .map([](std::string result, Env env, Bindings bindings) {
+                          BOOST_REQUIRE_EQUAL("1", result);
+                          return std::tuple(std::move(env), std::move(bindings));
+                        });
+
+  BOOST_REQUIRE(result);
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
+  auto executor = anyf::make_task_executor();
+
   Env e = create_primative_env();
-  e.add_function("f", [](const int& i) { return i; });
+  e.add_function("f", [](const int& x) { return x; });
 
-  RuntimeEnv r = make_default_runtime(std::move(e));
-  check_result(run_or_assign(r, "let x = 1"));
-  check_result(run_or_assign(r, "let y = f(&x)"));
-  check_result(run_or_assign(r, "let z = f(&x)"));
+  const auto result = run(executor, std::move(e), {}, "let x = 1")
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run(executor, std::move(env), std::move(bindings), "let y = f(&x)");
+                        })
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run(executor, std::move(env), std::move(bindings), "let z = f(&x)");
+                        });
 
-  r.bindings.clear();
-
-  check_result(run_to_string_or_assign(r, "let x = 1"));
-  check_result(run_to_string_or_assign(r, "let y = f(&x)"));
-  check_result(run_to_string_or_assign(r, "let z = f(&x)"));
+  BOOST_REQUIRE(result);
 }
 
 BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
-  RuntimeEnv r = make_default_runtime(create_primative_env());
+  auto executor = anyf::make_task_executor();
 
-  check_result(run_or_assign(r, "let x = 3"));
-  check_result(run_or_assign(r, "let y = 'abc'"));
-  check_result(run_or_assign(r, "let z = (x, y)"));
-  check_result(run_or_assign(r, "let (a, b) = z"));
+  const auto result = run(executor, create_primative_env(), {}, "let x = 3")
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run(executor, std::move(env), std::move(bindings), "let y = 'abc'");
+                        })
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run(executor, std::move(env), std::move(bindings), "let z = (x, y)");
+                        })
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run(executor, std::move(env), std::move(bindings), "let (a, b) = z");
+                        })
+                        .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
+                          return run_to_string(executor, std::move(env), std::move(bindings), "a");
+                        })
+                        .and_then([&](std::string result, Env env, Bindings bindings) {
+                          BOOST_CHECK_EQUAL("3", result);
+                          return run_to_string(executor, std::move(env), std::move(bindings), "b");
+                        })
+                        .map([&](std::string result, Env env, Bindings bindings) {
+                          BOOST_CHECK_EQUAL("abc", result);
+                          return std::tuple(std::move(env), std::move(bindings));
+                        });
 
-  BOOST_CHECK_EQUAL("3", check_result(run_to_string(r, "a")));
-  BOOST_CHECK_EQUAL("abc", check_result(run_to_string(r, "b")));
+  BOOST_REQUIRE(result);
 }
 
 } // namespace ooze

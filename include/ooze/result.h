@@ -124,10 +124,25 @@ public:
   }
 
   template <typename F>
-  Result<T, E> or_else(F f) && {
+  Result<T, E, Ts...> or_else(F f) && {
     return has_value()
              ? std::move(*this)
              : std::apply([&](auto&&... ts) { return f(std::move(error()), std::move(ts)...); }, std::move(_state));
+  }
+
+  template <typename... Ss>
+  auto append_state(Ss&&... ss) && {
+    return std::move(*this).map_state(append_fn(std::forward<Ss>(ss)...));
+  }
+
+  template <typename F>
+  auto map_state(F f) && {
+    return std::apply(
+      [&](auto&&... ts) {
+        return has_value() ? success<E>(std::move(value()), std::move(ts)...)
+                           : fail<T>(std::move(error()), std::move(ts)...);
+      },
+      std::apply(tuple_wrap(std::move(f)), std::move(_state)));
   }
 
   constexpr T&& value() && { return std::move(std::get<0>(_result)); }
@@ -145,6 +160,12 @@ public:
   constexpr std::tuple<Ts...>&& state() && { return std::move(_state); }
   constexpr std::tuple<Ts...>& state() & { return _state; }
   constexpr const std::tuple<Ts...>& state() const& { return _state; }
+
+  constexpr std::tuple<T, Ts...> value_and_state() && {
+    return std::tuple_cat(std::tuple(std::move(value())), std::move(_state));
+  }
+  constexpr std::tuple<T, Ts...>& value_and_state() & { return std::tuple_cat(std::tie(value()), _state); }
+  constexpr const std::tuple<T, Ts...>& value_and_state() const& { return std::tuple_cat(std::tie(value()), _state); }
 
   constexpr bool has_value() const { return _result.index() == 0; }
   constexpr operator bool() const { return has_value(); }
@@ -224,6 +245,21 @@ public:
     return has_value()
              ? std::move(*this)
              : std::apply([&](auto&&... ts) { return f(std::move(error()), std::move(ts)...); }, std::move(_state));
+  }
+
+  template <typename... Ss>
+  auto append_state(Ss&&... ss) && {
+    return std::move(*this).map_state(append_fn(std::forward<Ss>(ss)...));
+  }
+
+  template <typename F>
+  auto map_state(F f) && {
+    return std::apply(
+      [&](auto&&... ts) {
+        return has_value() ? success<E>(std::tuple(), std::move(ts)...)
+                           : fail<void>(std::move(error()), std::move(ts)...);
+      },
+      std::apply(tuple_wrap(std::move(f)), std::move(_state)));
   }
 
   constexpr E&& error() && { return std::move(*_error); }

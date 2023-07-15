@@ -38,14 +38,8 @@ struct Overloaded : Ts... {
 template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
-template <typename T>
-using StringResult = Result<T, std::vector<std::string>>;
-
-inline void dump(const std::vector<std::string>& lines) {
-  for(const std::string& line : lines) {
-    fmt::print("{}\n", line);
-  }
-}
+template <typename T, typename... Ts>
+using StringResult = Result<T, std::vector<std::string>, Ts...>;
 
 template <typename... Ts>
 auto make_vector(Ts&&... ts) {
@@ -54,8 +48,6 @@ auto make_vector(Ts&&... ts) {
   (v.emplace_back(std::forward<Ts>(ts)), ...);
   return v;
 }
-
-inline StringResult<std::vector<std::string>> convert_errors(std::vector<std::string> errors) { return errors; }
 
 inline auto err(std::string msg) { return Failure{std::vector<std::string>{std::move(msg)}}; }
 
