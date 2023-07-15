@@ -33,7 +33,7 @@ UnTypedExpr call(std::string name, Slice s, std::vector<UnTypedExpr> args = {}) 
 }
 
 UnTypedExpr ident(std::string_view name, int offset) {
-  return {{IdentExpr{std::string(name)}}, {offset, offset + (int)name.size()}};
+  return {{Ident{std::string(name)}}, {offset, offset + (int)name.size()}};
 }
 
 UnTypedExpr one(int offset) { return {{Literal{1}}, Slice{offset, offset + 1}}; }

@@ -38,7 +38,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_type) {
 
 BOOST_AUTO_TEST_CASE(pretty_print_expr) {
   const auto one = UnTypedExpr{Literal{1}};
-  const auto ident = UnTypedExpr{IdentExpr{"abc"}};
+  const auto ident = UnTypedExpr{Ident{"abc"}};
 
   BOOST_CHECK_EQUAL("1i32", pretty_print(one));
   BOOST_CHECK_EQUAL("1i32", pretty_print({}, TypedExpr{Literal{1}}));
@@ -57,7 +57,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_assignment) {
-  const auto y_expr = UnTypedExpr{IdentExpr{"y"}};
+  const auto y_expr = UnTypedExpr{Ident{"y"}};
 
   BOOST_CHECK_EQUAL("let x = y",
                     pretty_print(UnTypedAssignment{Pattern{Ident{"x"}}, floating_type<NamedType>(), y_expr}));
@@ -66,7 +66,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_assignment) {
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_scope) {
-  const auto y_expr = UnTypedExpr{IdentExpr{"y"}};
+  const auto y_expr = UnTypedExpr{Ident{"y"}};
   const auto assign = UnTypedAssignment{Pattern{Ident{"x"}}, floating_type<NamedType>(), y_expr};
 
   const auto scope = UnTypedExpr{UnTypedScopeExpr{{}, y_expr}};
@@ -97,7 +97,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_header) {
 
 BOOST_AUTO_TEST_CASE(pretty_print_function) {
   const auto i = leaf_type<NamedType>({"i"});
-  const auto x_expr = UnTypedExpr{IdentExpr{"x"}};
+  const auto x_expr = UnTypedExpr{Ident{"x"}};
 
   BOOST_CHECK_EQUAL("() -> i {\n  x\n}",
                     pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}},
@@ -110,7 +110,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_function) {
 BOOST_AUTO_TEST_CASE(pretty_print_ast) {
   const auto f =
     UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), leaf_type<NamedType>({"i"})}},
-                    UnTypedExpr{IdentExpr{"x"}}};
+                    UnTypedExpr{Ident{"x"}}};
 
   BOOST_CHECK_EQUAL("fn f() -> i = x\n\nfn g() -> i = x", pretty_print(UnTypedAST{{"f", f}, {"g", f}}));
 }

@@ -59,15 +59,15 @@ std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
 
 TypedFunction lift_only_borrowed_idents(TypedFunction f) {
   const auto count_usages = [&](const std::string& name) {
-    return knot::preorder_accumulate(f.expr, 0, [&](int acc, const ast::IdentExpr& i) {
-      return i.name == name ? acc + 1 : acc;
+    return knot::preorder_accumulate(f.expr, 0, [&](int acc, const TypedExpr& e) {
+      return knot::accumulate(e.v, acc, [&](int acc, const ast::Ident& i) { return i.name == name ? acc + 1 : acc; });
     });
   };
 
   const auto get_borrowed_usages = [&](const std::string& name) {
     return knot::preorder_accumulate(f.expr, std::vector<TypedExpr*>{}, [&](auto acc, TypedExpr& e) {
       knot::visit(e.v, [&](const TypedBorrowExpr& b) {
-        knot::visit(b.expr->v, [&](const ast::IdentExpr& i) {
+        knot::visit(b.expr->v, [&](const ast::Ident& i) {
           if(i.name == name) {
             acc.push_back(&e);
           }
@@ -85,7 +85,7 @@ TypedFunction lift_only_borrowed_idents(TypedFunction f) {
              if(uses == borrows.size()) {
                t = borrow_type(std::move(t));
                for(TypedExpr* e : borrows) {
-                 *e = TypedExpr{ast::IdentExpr{i.name}};
+                 *e = TypedExpr{ast::Ident{i.name}};
                }
              }
            });
@@ -251,7 +251,7 @@ run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, Typed
     .map([](TypedFunction f, Env env) {
       TypedScopeExpr scope;
 
-      if(std::holds_alternative<ast::IdentExpr>(f.expr.v)) {
+      if(std::holds_alternative<ast::Ident>(f.expr.v)) {
         knot::visit(f.header.type.input->v, [](std::vector<CompoundType<TypeID>>& v) {
           assert(v.size() == 1);
           v[0] = borrow_type(std::move(v[0]));
@@ -259,11 +259,10 @@ run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, Typed
 
         scope.assignments.push_back(
           {{ast::Ident{"x"}}, borrow_type(std::move(*f.header.type.output)), std::move(f.expr)});
-        scope.result = TypedExpr{TypedCallExpr{"to_string", {TypedExpr{ast::IdentExpr{"x"}}}}};
+        scope.result = TypedExpr{TypedCallExpr{"to_string", {TypedExpr{ast::Ident{"x"}}}}};
       } else {
         scope.assignments.push_back({{ast::Ident{"x"}}, std::move(*f.header.type.output), std::move(f.expr)});
-        scope.result =
-          TypedExpr{TypedCallExpr{"to_string", {TypedExpr{TypedBorrowExpr{TypedExpr{ast::IdentExpr{"x"}}}}}}};
+        scope.result = TypedExpr{TypedCallExpr{"to_string", {TypedExpr{TypedBorrowExpr{TypedExpr{ast::Ident{"x"}}}}}}};
       }
 
       f.header.type.output = leaf_type(anyf::type_id<std::string>());

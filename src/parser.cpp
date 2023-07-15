@@ -83,7 +83,7 @@ auto construct_with_ref(P p) {
 }
 
 auto ident_string() { return construct<std::string>(token_parser(TokenType::Ident)); }
-auto ident_expr() { return construct<IdentExpr>(ident_string()); }
+auto ident() { return construct<Ident>(ident_string()); }
 auto type_ident() { return construct<NamedType>(ident_string()); }
 auto function_ident() { return construct<NamedFunction>(ident_string()); }
 
@@ -114,8 +114,7 @@ auto tuple(P p) {
 }
 
 ParseResult<Pattern> pattern(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
-  return construct_with_ref<Pattern>(
-    choose(tuple(pattern), construct<WildCard>(underscore()), construct<Ident>(ident_string())))(s, loc);
+  return construct_with_ref<Pattern>(choose(tuple(pattern), construct<WildCard>(underscore()), ident()))(s, loc);
 }
 
 using TypeVar =
@@ -161,7 +160,7 @@ auto scope() {
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
   return transform(
-    seq(construct_with_ref<UnTypedExpr>(choose(tuple(expr), scope(), call(), borrow_expr(), ident_expr(), literal())),
+    seq(construct_with_ref<UnTypedExpr>(choose(tuple(expr), scope(), call(), borrow_expr(), ident(), literal())),
         n(seq(symbol("."), construct_with_ref<UnTypedExpr>(call())))),
     [](UnTypedExpr acc, std::vector<UnTypedExpr> chain) {
       return knot::accumulate(std::move(chain), std::move(acc), [](UnTypedExpr acc, UnTypedExpr next) {

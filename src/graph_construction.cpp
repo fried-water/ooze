@@ -127,7 +127,7 @@ add_expr(const Env& e, const ast::BorrowExpr<TypeID, EnvFunctionRef>& borrow, Gr
   return add_expr(e, *borrow.expr, std::move(ctx));
 }
 
-ContextualResult<GraphContext> add_expr(const Env& e, const ast::IdentExpr& ident, GraphContext ctx) {
+ContextualResult<GraphContext> add_expr(const Env& e, const ast::Ident& ident, GraphContext ctx) {
   auto terms = std::accumulate(
     ctx.bindings.rbegin(),
     ctx.bindings.rend(),

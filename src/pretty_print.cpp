@@ -54,7 +54,6 @@ struct Printer {
   }
 
   void pretty_print(std::ostream& os, const Ident& i) { os << i.name; }
-  void pretty_print(std::ostream& os, const IdentExpr& i) { os << i.name; }
   void pretty_print(std::ostream& os, const NamedType& t) { os << t.name; }
   void pretty_print(std::ostream& os, const NamedFunction& f) { os << f.name; }
 

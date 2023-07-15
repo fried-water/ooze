@@ -11,11 +11,6 @@ using Literal = std::variant<bool, std::string, i8, i16, i32, i64, u8, u16, u32,
 
 namespace ast {
 
-struct IdentExpr {
-  std::string name;
-  KNOT_ORDERED(IdentExpr);
-};
-
 struct WildCard {
   KNOT_ORDERED(WildCard);
 };
@@ -68,7 +63,7 @@ struct ScopeExpr {
 
 template <typename T, typename F>
 struct Expr {
-  std::variant<std::vector<Expr<T, F>>, ScopeExpr<T, F>, CallExpr<T, F>, BorrowExpr<T, F>, IdentExpr, Literal> v;
+  std::variant<std::vector<Expr<T, F>>, ScopeExpr<T, F>, CallExpr<T, F>, BorrowExpr<T, F>, Ident, Literal> v;
   Slice ref;
 
   KNOT_ORDERED(Expr);

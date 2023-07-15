@@ -157,7 +157,7 @@ run(anyf::ExecutorRef, Env env, Bindings bindings, const TypesCmd&) {
     TypedFunction to_string_wrap{
       {{make_vector(ast::Pattern{ast::Ident{"x"}})},
        {tuple_type<TypeID>(make_vector(borrow_type(leaf_type(id)))), leaf_type(anyf::type_id<std::string>())}},
-      {TypedCallExpr{{"to_string"}, {{ast::IdentExpr{"x"}}}}}};
+      {TypedCallExpr{{"to_string"}, {{ast::Ident{"x"}}}}}};
 
     types[pretty_print(env, id)] = overload_resolution(env, std::move(to_string_wrap)).has_value();
   }

@@ -280,7 +280,7 @@ struct PropagationVisitor {
         Overloaded{[&](const TypedCallExpr& call) { add_tuple(propagations, call.parameters, &expr); },
                    [&](const std::vector<TypedExpr>& tuple) { add_tuple(propagations, tuple, &expr); },
                    [&](const TypedBorrowExpr& b) { add_pair(propagations, &expr, b.expr.get()); },
-                   [&](const IdentExpr& ident) {
+                   [&](const Ident& ident) {
                      const auto sit = std::find_if(binding_names.rbegin(), binding_names.rend(), [&](const auto& map) {
                        return map.find(ident.name) != map.end();
                      });
@@ -352,7 +352,7 @@ create_initial_candidates(const Env& e, const TypedFunction& f, std::optional<Fu
                    },
                    [&](const TypedCallExpr& c) { return derive_function_type(c, {}, floating_type<TypeID>()); },
                    [&](const TypedBorrowExpr&) { return borrow_type(floating_type<TypeID>()); },
-                   [&](const IdentExpr&) { return floating_type<TypeID>(); }},
+                   [&](const Ident&) { return floating_type<TypeID>(); }},
         expr.v));
   });
 
@@ -464,8 +464,7 @@ ContextualError generate_error(const Env& e, const TypeCheckError& error, const 
         return ContextualError{expr->ref, fmt::format("use of undeclared function '{}'", name)};
       },
       [](const UndeclaredBinding&, const TypedExpr* expr) {
-        return ContextualError{
-          expr->ref, fmt::format("use of undeclared binding '{}'", std::get<IdentExpr>(expr->v).name)};
+        return ContextualError{expr->ref, fmt::format("use of undeclared binding '{}'", std::get<Ident>(expr->v).name)};
       },
       [](const ReturnBorrow&, const TypedExpr* expr) {
         return ContextualError{expr->ref, "cannot return a borrowed value"};
@@ -789,7 +788,7 @@ InferHeaderCtx inferred_header(InferHeaderCtx ctx, const TypedExpr& expr) {
       [&](const TypedBorrowExpr& borrow) { return inferred_header(std::move(ctx), *borrow.expr); },
       [&](const TypedCallExpr& call) { return knot::accumulate(call.parameters, std::move(ctx), inferred_header); },
       [&](const Literal&) { return std::move(ctx); },
-      [&](const IdentExpr& ident) {
+      [&](const Ident& ident) {
         if(std::all_of(ctx.active.begin(), ctx.active.end(), [&](const auto& s) {
              return s.find(ident.name) == s.end();
            })) {
