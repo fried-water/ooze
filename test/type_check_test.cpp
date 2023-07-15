@@ -26,19 +26,20 @@ void test_infer_header(const Env& e, std::string_view expr, std::string_view exp
   const auto expr_result = parse_expr(expr).and_then([&](const auto& s) { return type_name_resolution(e, s); });
 
   int next_ref = 0;
-  const auto header_result = parse_header(exp_header)
-                               .and_then([&](const auto& h) { return type_name_resolution(e, h); })
-                               .map([&](TypedHeader h) {
-                                 knot::preorder(h, [](Slice& ref) { ref = {}; });
-                                 knot::preorder(h, [&](ast::Pattern& p) {
-                                   knot::visit(p.v, [&](const ast::Ident&) {
-                                     BOOST_REQUIRE(next_ref < exp_refs.size());
-                                     p.ref = exp_refs[next_ref++];
-                                   });
-                                 });
+  const auto header_result =
+    parse_header(exp_header)
+      .and_then([&](const auto& h) { return type_name_resolution(e, h); })
+      .map([&](TypedHeader h) {
+        knot::preorder(h, [](Slice& ref) { ref = {}; });
+        knot::preorder(h, [&](ast::Pattern& p) {
+          knot::visit(p.v, [&](const ast::Ident&) {
+            BOOST_REQUIRE(next_ref < exp_refs.size());
+            p.ref = exp_refs[next_ref++];
+          });
+        });
 
-                                 return h;
-                               });
+        return h;
+      });
 
   BOOST_REQUIRE(header_result.has_value());
 
@@ -94,10 +95,8 @@ void test_or(const Env& e,
   BOOST_CHECK(expected.value() == result.value());
 }
 
-void test_or_unresolved(const Env& e,
-                        std::string_view f,
-                        std::optional<std::string_view> exp = {},
-                        bool debug = false) {
+void test_or_unresolved(
+  const Env& e, std::string_view f, std::optional<std::string_view> exp = {}, bool debug = false) {
   const auto fr = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
 
   if(!fr.has_value()) {
@@ -106,18 +105,20 @@ void test_or_unresolved(const Env& e,
   }
 
   int f_idx = 0;
-  const auto expected = parse_function(exp ? *exp : f)
-                          .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); })
-                          .map(clear_refs);
+  const auto expected =
+    parse_function(exp ? *exp : f)
+      .and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); })
+      .map(clear_refs);
 
   BOOST_REQUIRE(expected.has_value());
 
-  const auto result = overload_resolution(e, std::move(fr.value()), {}, debug)
-                        .map([&](auto variant) {
-                          BOOST_REQUIRE(std::holds_alternative<TypedFunction>(variant));
-                          return std::get<TypedFunction>(std::move(variant));
-                        })
-                        .map(clear_refs);
+  const auto result =
+    overload_resolution(e, std::move(fr.value()), {}, debug)
+      .map([&](auto variant) {
+        BOOST_REQUIRE(std::holds_alternative<TypedFunction>(variant));
+        return std::get<TypedFunction>(std::move(variant));
+      })
+      .map(clear_refs);
 
   if(!result.has_value()) {
     fmt::print("Parse error: {}", knot::debug(contextualize(f, result.error())));
@@ -132,10 +133,8 @@ void test_or_unresolved(const Env& e,
   BOOST_CHECK(expected.value() == result.value());
 }
 
-void test_or_error(const Env& e,
-                   std::string_view f,
-                   const std::vector<ContextualError>& expected_errors,
-                   bool debug = false) {
+void test_or_error(
+  const Env& e, std::string_view f, const std::vector<ContextualError>& expected_errors, bool debug = false) {
   const auto fr = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
   BOOST_REQUIRE(fr.has_value());
 
@@ -263,23 +262,25 @@ BOOST_AUTO_TEST_CASE(cp_unpack_tuple_down) {
 }
 
 BOOST_AUTO_TEST_CASE(cp_scope) {
-  constexpr std::string_view input = "(a: i32) -> _ {"
-                                     "  let b = {"
-                                     "    let c = a;"
-                                     "    let a = 'abc';"
-                                     "    (a, c)"
-                                     "  };"
-                                     "  (a, b)"
-                                     "}";
+  constexpr std::string_view input =
+    "(a: i32) -> _ {"
+    "  let b = {"
+    "    let c = a;"
+    "    let a = 'abc';"
+    "    (a, c)"
+    "  };"
+    "  (a, b)"
+    "}";
 
-  constexpr std::string_view output = "(a: i32) -> (i32, (string, i32)) {"
-                                      "  let b : (string, i32) = {"
-                                      "    let c : i32 = a;"
-                                      "    let a : string = 'abc';"
-                                      "    (a, c)"
-                                      "  };"
-                                      "  (a, b)"
-                                      "}";
+  constexpr std::string_view output =
+    "(a: i32) -> (i32, (string, i32)) {"
+    "  let b : (string, i32) = {"
+    "    let c : i32 = a;"
+    "    let a : string = 'abc';"
+    "    (a, c)"
+    "  };"
+    "  (a, b)"
+    "}";
 
   test_or(create_primative_env(), {}, input, output);
 }

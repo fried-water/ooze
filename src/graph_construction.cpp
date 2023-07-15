@@ -18,16 +18,16 @@ Result<T, E> convert(tl::expected<T, E> exp) {
 }
 
 std::vector<ContextualError> to_graph_error(anyf::GraphError error, const CheckedExpr& expr, bool indexed = true) {
-  return std::visit(Overloaded{[&](const CheckedScopeExpr& s) { return to_graph_error(error, *s.result, indexed); },
-                               [&](const std::vector<CheckedExpr>& exprs) {
-                                 return indexed ? to_graph_error(
-                                                    error, exprs[std::get<anyf::AlreadyMoved>(error).index], false)
-                                                : std::vector{ContextualError{expr.ref, "binding already moved"}};
-                               },
-                               [&](const auto&) {
-                                 return std::vector{ContextualError{expr.ref, "binding already moved"}};
-                               }},
-                    expr.v);
+  return std::visit(
+    Overloaded{[&](const CheckedScopeExpr& s) { return to_graph_error(error, *s.result, indexed); },
+               [&](const std::vector<CheckedExpr>& exprs) {
+                 return indexed ? to_graph_error(error, exprs[std::get<anyf::AlreadyMoved>(error).index], false)
+                                : std::vector{ContextualError{expr.ref, "binding already moved"}};
+               },
+               [&](const auto&) {
+                 return std::vector{ContextualError{expr.ref, "binding already moved"}};
+               }},
+    expr.v);
 }
 
 std::vector<ContextualError> to_graph_error(anyf::GraphError error, const std::vector<CheckedExpr>& exprs) {
@@ -128,17 +128,18 @@ add_expr(const Env& e, const ast::BorrowExpr<TypeID, EnvFunctionRef>& borrow, Gr
 }
 
 ContextualResult<GraphContext> add_expr(const Env& e, const ast::IdentExpr& ident, GraphContext ctx) {
-  auto terms = std::accumulate(ctx.bindings.rbegin(),
-                               ctx.bindings.rend(),
-                               std::optional<std::vector<Oterm>>{},
-                               [&](auto acc, const Map<std::string, std::vector<Oterm>>& bindings) {
-                                 if(acc) {
-                                   return acc;
-                                 } else {
-                                   const auto it = bindings.find(ident.name);
-                                   return it != bindings.end() ? std::optional(it->second) : std::nullopt;
-                                 }
-                               });
+  auto terms = std::accumulate(
+    ctx.bindings.rbegin(),
+    ctx.bindings.rend(),
+    std::optional<std::vector<Oterm>>{},
+    [&](auto acc, const Map<std::string, std::vector<Oterm>>& bindings) {
+      if(acc) {
+        return acc;
+      } else {
+        const auto it = bindings.find(ident.name);
+        return it != bindings.end() ? std::optional(it->second) : std::nullopt;
+      }
+    });
 
   assert(terms);
 
@@ -172,18 +173,19 @@ ContextualResult<GraphContext> add_expr(const Env& e, const CheckedExpr& expr, G
 ContextualResult<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFunction& f) {
   std::vector<TypeProperties> input_types;
 
-  knot::preorder(*f.header.type.input,
-                 Overloaded{
-                   [&](TypeID t) {
-                     input_types.push_back(TypeProperties{t, true});
-                     return false;
-                   },
-                   [&](Borrow<TypeID> t) {
-                     assert(std::holds_alternative<TypeID>(t.type->v));
-                     input_types.push_back(TypeProperties{std::get<TypeID>(t.type->v), false});
-                     return false;
-                   },
-                 });
+  knot::preorder(
+    *f.header.type.input,
+    Overloaded{
+      [&](TypeID t) {
+        input_types.push_back(TypeProperties{t, true});
+        return false;
+      },
+      [&](Borrow<TypeID> t) {
+        assert(std::holds_alternative<TypeID>(t.type->v));
+        input_types.push_back(TypeProperties{std::get<TypeID>(t.type->v), false});
+        return false;
+      },
+    });
 
   auto [cg, terms] = anyf::make_graph(input_types);
 
@@ -192,8 +194,9 @@ ContextualResult<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFu
            f.expr,
            append_bindings(f.header.pattern, *f.header.type.input, GraphContext{std::move(cg), {{}}, std::move(terms)}))
     .and_then([&](GraphContext ctx) {
-      return convert(std::move(ctx.cg).finalize(ctx.terms).map_error(
-        [&](anyf::GraphError error) { return to_graph_error(error, f.expr); }));
+      return convert(std::move(ctx.cg).finalize(ctx.terms).map_error([&](anyf::GraphError error) {
+        return to_graph_error(error, f.expr);
+      }));
     });
 }
 

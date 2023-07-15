@@ -103,14 +103,15 @@ BOOST_AUTO_TEST_CASE(lexer_other_literals) {
 
 BOOST_AUTO_TEST_CASE(lexer_multi) {
   // comment and whitespace tokens aren't returned
-  const std::vector<Token> expected = {{TokenType::LiteralInt, 0, 3},
-                                       {TokenType::Ident, 4, 7},
-                                       {TokenType::Keyword, 18, 21},
-                                       {TokenType::Keyword, 22, 24},
-                                       {TokenType::LiteralBool, 25, 29},
-                                       {TokenType::Ident, 30, 36},
-                                       {TokenType::Symbol, 36, 37},
-                                       {TokenType::Symbol, 37, 38}};
+  const std::vector<Token> expected = {
+    {TokenType::LiteralInt, 0, 3},
+    {TokenType::Ident, 4, 7},
+    {TokenType::Keyword, 18, 21},
+    {TokenType::Keyword, 22, 24},
+    {TokenType::LiteralBool, 25, 29},
+    {TokenType::Ident, 30, 36},
+    {TokenType::Symbol, 36, 37},
+    {TokenType::Symbol, 37, 38}};
 
   const auto [actual_tokens, actual_offset] = lex("123 abc //comment\nlet fn true\tfalsey,=");
 

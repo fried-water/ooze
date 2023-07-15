@@ -52,14 +52,16 @@ StringResult<void, Env> parse_scripts(Env e, const std::vector<std::string>& fil
 }
 
 std::vector<std::string> gather_binding_strings(std::vector<Binding> bindings) {
-  return transform_to_vec(std::move(bindings),
-                          [](Binding b) { return anyf::any_cast<std::string>(take(std::move(b)).wait()); });
+  return transform_to_vec(std::move(bindings), [](Binding b) {
+    return anyf::any_cast<std::string>(take(std::move(b)).wait());
+  });
 }
 
 TypedFunction lift_only_borrowed_idents(TypedFunction f) {
   const auto count_usages = [&](const std::string& name) {
-    return knot::preorder_accumulate(
-      f.expr, 0, [&](int acc, const ast::IdentExpr& i) { return i.name == name ? acc + 1 : acc; });
+    return knot::preorder_accumulate(f.expr, 0, [&](int acc, const ast::IdentExpr& i) {
+      return i.name == name ? acc + 1 : acc;
+    });
   };
 
   const auto get_borrowed_usages = [&](const std::string& name) {
@@ -172,17 +174,17 @@ ContextualResult<FunctionGraph, Env> create_graph_and_instantiations(Env e, cons
 ContextualResult<void, Env>
 add_function(Env env, const std::string& name, std::variant<CheckedFunction, TypedFunction> var) {
   return success<std::vector<ContextualError>>(std::move(var), std::move(env))
-    .and_then(
-      visited(Overloaded{[&](TypedFunction f, Env env) {
-                           env.functions[name].push_back({f.header.type, std::move(f)});
-                           return ContextualResult<void, Env>{std::move(env)};
-                         },
-                         [&](CheckedFunction f, Env env) {
-                           return create_graph_and_instantiations(std::move(env), f).map([&](FunctionGraph g, Env env) {
-                             env.functions[name].push_back({std::move(f.header.type), std::move(g)});
-                             return env;
-                           });
-                         }}));
+    .and_then(visited(Overloaded{
+      [&](TypedFunction f, Env env) {
+        env.functions[name].push_back({f.header.type, std::move(f)});
+        return ContextualResult<void, Env>{std::move(env)};
+      },
+      [&](CheckedFunction f, Env env) {
+        return create_graph_and_instantiations(std::move(env), f).map([&](FunctionGraph g, Env env) {
+          env.functions[name].push_back({std::move(f.header.type), std::move(g)});
+          return env;
+        });
+      }}));
 }
 
 ContextualResult<Tree<Binding>, Env, Bindings>
@@ -206,16 +208,16 @@ run_function(anyf::ExecutorRef executor, Env e, Bindings bindings, const Checked
         anyf::execute_graph(g, executor, std::move(value_inputs), std::move(borrowed_inputs));
 
       int idx = 0;
-      const auto converter =
-        Overloaded{// result vector should be in order of a preorder traversal of the leaves in the output type
-                   [&](TypeID t) -> Binding {
-                     return {t, std::move(results[idx++])};
-                   },
+      const auto converter = Overloaded{
+        // result vector should be in order of a preorder traversal of the leaves in the output type
+        [&](TypeID t) -> Binding {
+          return {t, std::move(results[idx++])};
+        },
 
-                   // These can't be part of the output type of executed functions
-                   [](const FunctionType<TypeID>&) -> Binding { exit(1); },
-                   [](const Floating&) -> Binding { exit(1); },
-                   [](const Borrow<TypeID>&) -> Binding { exit(1); }};
+        // These can't be part of the output type of executed functions
+        [](const FunctionType<TypeID>&) -> Binding { exit(1); },
+        [](const Floating&) -> Binding { exit(1); },
+        [](const Borrow<TypeID>&) -> Binding { exit(1); }};
 
       return std::tuple(
         knot::map<Tree<Binding>>(*f.header.type.output, std::cref(converter)), std::move(e), std::move(bindings));
@@ -231,8 +233,9 @@ run_expr(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedExpr expr,
       return overload_resolution_concrete(env, std::move(f)).append_state(std::move(env));
     })
     .append_state(std::move(bindings))
-    .and_then(
-      [&](CheckedFunction f, Env env, Bindings b) { return run_function(executor, std::move(env), std::move(b), f); });
+    .and_then([&](CheckedFunction f, Env env, Bindings b) {
+      return run_function(executor, std::move(env), std::move(b), f);
+    });
 }
 
 ContextualResult<std::string, Env, Bindings>
@@ -272,8 +275,9 @@ run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, Typed
       return overload_resolution_concrete(env, std::move(f)).append_state(std::move(env));
     })
     .append_state(std::move(bindings))
-    .and_then(
-      [&](CheckedFunction f, Env env, Bindings b) { return run_function(executor, std::move(env), std::move(b), f); })
+    .and_then([&](CheckedFunction f, Env env, Bindings b) {
+      return run_function(executor, std::move(env), std::move(b), f);
+    })
     .map([](Tree<Binding> t, Env env, Bindings b) {
       std::vector<anyf::Future> futures = take(std::move(t));
       return std::tuple(anyf::any_cast<std::string>(std::move(futures[0]).wait()), std::move(env), std::move(b));
@@ -294,8 +298,9 @@ run_assign(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedAssignme
                     : ContextualResult<CheckedFunction, Env>{Failure{std::move(result.error())}, std::move(env)};
     })
     .append_state(std::move(bindings))
-    .and_then(
-      [&](CheckedFunction f, Env env, Bindings b) { return run_function(executor, std::move(env), std::move(b), f); })
+    .and_then([&](CheckedFunction f, Env env, Bindings b) {
+      return run_function(executor, std::move(env), std::move(b), f);
+    })
     .map([&](Tree<Binding> results, Env env, Bindings bindings) {
       co_visit(a.pattern, results, [&](const ast::Pattern&, Tree<Binding>& tree, const ast::Ident& ident, const auto&) {
         bindings[ident.name] = std::move(tree);
@@ -378,8 +383,9 @@ run_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, std::strin
           .and_then([&](TypedAssignment assign, Env env, Bindings bindings) {
             return run_assign(executor, std::move(env), std::move(bindings), std::move(assign));
           })
-          .map(
-            [](Env env, Bindings bindings) { return std::tuple(std::string(), std::move(env), std::move(bindings)); });
+          .map([](Env env, Bindings bindings) {
+            return std::tuple(std::string(), std::move(env), std::move(bindings));
+          });
       },
     }))
     .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
@@ -389,9 +395,10 @@ int main(int argc, const char** argv, Env e) {
   const std::optional<Command> cmd = parse_cmd_line(argc, argv);
 
   if(!cmd) {
-    const char* msg = "Usage:\n"
-                      "  run [scripts...]\n"
-                      "  repl [scripts...]\n";
+    const char* msg =
+      "Usage:\n"
+      "  run [scripts...]\n"
+      "  repl [scripts...]\n";
 
     fmt::print("{}", msg);
     return 1;

@@ -77,12 +77,13 @@ auto seq_helper(const ParseState<S, T>& s, int depth, ParseResult<R> r, P p, Ps.
   if constexpr(std::is_same_v<std::tuple<>, std::decay_t<decltype(*p(s, ParseLocation{}).value)>>) {
     if(r) {
       auto r2 = p(s, {r.slice.end, depth + 1});
-      return seq_helper(s,
-                        depth,
-                        ParseResult<R>{{r.slice.begin, r2.slice.end},
-                                       r2 ? std::move(r.value) : std::nullopt,
-                                       merge(std::move(r.error), std::move(r2.error))},
-                        ps...);
+      return seq_helper(
+        s,
+        depth,
+        ParseResult<R>{{r.slice.begin, r2.slice.end},
+                       r2 ? std::move(r.value) : std::nullopt,
+                       merge(std::move(r.error), std::move(r2.error))},
+        ps...);
     } else {
       return seq_helper(s, depth, std::move(r), ps...);
     }
@@ -91,14 +92,15 @@ auto seq_helper(const ParseState<S, T>& s, int depth, ParseResult<R> r, P p, Ps.
 
     if(r) {
       auto r2 = p(s, {r.slice.end, depth + 1});
-      return seq_helper(s,
-                        depth,
-                        ParseResult<R2>{{r.slice.begin, r2.slice.end},
-                                        r2 ? std::optional(std::tuple_cat(std::tuple(std::move(*r.value)),
-                                                                          std::tuple(std::move(*r2.value))))
-                                           : std::nullopt,
-                                        merge(std::move(r.error), std::move(r2.error))},
-                        ps...);
+      return seq_helper(
+        s,
+        depth,
+        ParseResult<R2>{
+          {r.slice.begin, r2.slice.end},
+          r2 ? std::optional(std::tuple_cat(std::tuple(std::move(*r.value)), std::tuple(std::move(*r2.value))))
+             : std::nullopt,
+          merge(std::move(r.error), std::move(r2.error))},
+        ps...);
     } else {
       return seq_helper(s, depth, failing_result<R2>(r.slice, std::move(r.error)), ps...);
     }
@@ -106,10 +108,8 @@ auto seq_helper(const ParseState<S, T>& s, int depth, ParseResult<R> r, P p, Ps.
 }
 
 template <typename R, typename S, typename T>
-auto choose_helper(knot::Type<R>,
-                   const ParseState<S, T>&,
-                   ParseLocation loc,
-                   std::optional<std::pair<std::string, ParseLocation>> err) {
+auto choose_helper(
+  knot::Type<R>, const ParseState<S, T>&, ParseLocation loc, std::optional<std::pair<std::string, ParseLocation>> err) {
   return failing_result<R>({loc.pos, loc.pos}, std::move(err));
 }
 

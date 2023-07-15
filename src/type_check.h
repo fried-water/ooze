@@ -19,9 +19,7 @@ ContextualResult<CompoundType<TypeID>> type_check(const Env&, const ast::Pattern
 ContextualResult<std::variant<CheckedFunction, TypedFunction>>
 overload_resolution(const Env&, TypedFunction, std::optional<FunctionType<TypeID>> type = {}, bool debug = false);
 
-ContextualResult<CheckedFunction> overload_resolution_concrete(const Env&,
-                                                               TypedFunction,
-                                                               std::optional<FunctionType<TypeID>> type = {},
-                                                               bool debug = false);
+ContextualResult<CheckedFunction> overload_resolution_concrete(
+  const Env&, TypedFunction, std::optional<FunctionType<TypeID>> type = {}, bool debug = false);
 
 } // namespace ooze

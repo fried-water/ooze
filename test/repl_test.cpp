@@ -62,8 +62,8 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   std::tie(e, b) = step_and_compare({}, "let x =  5", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
 
-  const std::vector<std::string> one_unknown_binding{"1 binding(s)",
-                                                     fmt::format("  x: type 0x{:x}", anyf::type_id<int>().id)};
+  const std::vector<std::string> one_unknown_binding{
+    "1 binding(s)", fmt::format("  x: type 0x{:x}", anyf::type_id<int>().id)};
 
   std::tie(e, b) = step_and_compare(one_unknown_binding, ":b", std::move(e), std::move(b));
 
@@ -134,20 +134,21 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
   e.add_function("pow", [](int x) { return x * x; });
   e.add_function("concat", [](const std::string& a, const std::string& b) { return a + b; });
 
-  const std::vector<std::string> expected{"9 function(s)",
-                                          "  clone [13 overloads]",
-                                          "  to_string [12 overloads]",
-                                          "  serialize [12 overloads]",
-                                          "  deserialize [12 overloads]",
-                                          "  concat(&string, &string) -> string",
-                                          fmt::format("  create_a() -> {}", pretty_print(e, a_type)),
-                                          "  pow(i32) -> i32",
-                                          "  read(&string) -> string",
-                                          "  read(&string) -> vector<byte>",
-                                          fmt::format("  read_a(&{}) -> ()", pretty_print(e, a_type)),
-                                          fmt::format("  take_a({}) -> ()", pretty_print(e, a_type)),
-                                          "  write(&string, &string) -> ()",
-                                          "  write(&string, &vector<byte>) -> ()"};
+  const std::vector<std::string> expected{
+    "9 function(s)",
+    "  clone [13 overloads]",
+    "  to_string [12 overloads]",
+    "  serialize [12 overloads]",
+    "  deserialize [12 overloads]",
+    "  concat(&string, &string) -> string",
+    fmt::format("  create_a() -> {}", pretty_print(e, a_type)),
+    "  pow(i32) -> i32",
+    "  read(&string) -> string",
+    "  read(&string) -> vector<byte>",
+    fmt::format("  read_a(&{}) -> ()", pretty_print(e, a_type)),
+    fmt::format("  take_a({}) -> ()", pretty_print(e, a_type)),
+    "  write(&string, &string) -> ()",
+    "  write(&string, &vector<byte>) -> ()"};
 
   step_and_compare(expected, ":f", std::move(e), Bindings{});
 }

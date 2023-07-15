@@ -23,24 +23,26 @@ constexpr auto string_re = ctll::fixed_string{"^\".*?\"|^'.*?'"};
 template <auto& T>
 using matcher = ctre::regex_search_t<typename ctre::regex_builder<T>::type>;
 
-constexpr std::tuple MATCHERS = {std::tuple(TokenType::Whitespace, matcher<whitespace_re>{}),
-                                 std::tuple(TokenType::Comment, matcher<comment_re>{}),
-                                 std::tuple(TokenType::Keyword, matcher<keyword_re>{}),
-                                 std::tuple(TokenType::Underscore, matcher<underscore_re>{}),
-                                 std::tuple(TokenType::Symbol, matcher<symbol_re>{}),
-                                 std::tuple(TokenType::LiteralFloat, matcher<float_re>{}),
-                                 std::tuple(TokenType::LiteralInt, matcher<int_re>{}),
-                                 std::tuple(TokenType::LiteralBool, matcher<bool_re>{}),
-                                 std::tuple(TokenType::LiteralString, matcher<string_re>{}),
-                                 std::tuple(TokenType::Ident, matcher<ident_re>{})};
+constexpr std::tuple MATCHERS = {
+  std::tuple(TokenType::Whitespace, matcher<whitespace_re>{}),
+  std::tuple(TokenType::Comment, matcher<comment_re>{}),
+  std::tuple(TokenType::Keyword, matcher<keyword_re>{}),
+  std::tuple(TokenType::Underscore, matcher<underscore_re>{}),
+  std::tuple(TokenType::Symbol, matcher<symbol_re>{}),
+  std::tuple(TokenType::LiteralFloat, matcher<float_re>{}),
+  std::tuple(TokenType::LiteralInt, matcher<int_re>{}),
+  std::tuple(TokenType::LiteralBool, matcher<bool_re>{}),
+  std::tuple(TokenType::LiteralString, matcher<string_re>{}),
+  std::tuple(TokenType::Ident, matcher<ident_re>{})};
 
 template <typename... Ts>
 auto lex_one(const std::tuple<Ts...>& ts, std::string_view sv) {
   const std::array<std::pair<TokenType, int>, sizeof...(Ts)> matches{
     {{std::get<0>(std::get<Ts>(MATCHERS)), (int)std::get<1>(std::get<Ts>(MATCHERS))(sv).to_view().size()}...}};
 
-  return *std::max_element(
-    matches.begin(), matches.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
+  return *std::max_element(matches.begin(), matches.end(), [](const auto& a, const auto& b) {
+    return a.second < b.second;
+  });
 }
 
 } // namespace

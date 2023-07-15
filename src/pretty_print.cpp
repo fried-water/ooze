@@ -36,19 +36,21 @@ struct Printer {
   void pretty_print(std::ostream& os, Floating) { os << '_'; }
 
   void pretty_print(std::ostream& os, const Literal& l) {
-    os << std::visit(Overloaded{[](bool b) { return std::string(b ? "true" : "false"); },
-                                [](const std::string& s) { return fmt::format("\"{}\"", s); },
-                                [](i8 i) { return fmt::format("'{}'", i); },
-                                [](i16 i) { return fmt::format("{}i16", i); },
-                                [](i32 i) { return fmt::format("{}i32", i); },
-                                [](i64 i) { return fmt::format("{}i64", i); },
-                                [](u8 u) { return fmt::format("'{}u8'", u); },
-                                [](u16 u) { return fmt::format("{}u16", u); },
-                                [](u32 u) { return fmt::format("{}u32", u); },
-                                [](u64 u) { return fmt::format("{}u64", u); },
-                                [](f32 f) { return fmt::format("{}f", f); },
-                                [](f64 f) { return fmt::format("{}", f); }},
-                     l);
+    os << std::visit(
+      Overloaded{
+        [](bool b) { return std::string(b ? "true" : "false"); },
+        [](const std::string& s) { return fmt::format("\"{}\"", s); },
+        [](i8 i) { return fmt::format("'{}'", i); },
+        [](i16 i) { return fmt::format("{}i16", i); },
+        [](i32 i) { return fmt::format("{}i32", i); },
+        [](i64 i) { return fmt::format("{}i64", i); },
+        [](u8 u) { return fmt::format("'{}u8'", u); },
+        [](u16 u) { return fmt::format("{}u16", u); },
+        [](u32 u) { return fmt::format("{}u32", u); },
+        [](u64 u) { return fmt::format("{}u64", u); },
+        [](f32 f) { return fmt::format("{}f", f); },
+        [](f64 f) { return fmt::format("{}", f); }},
+      l);
   }
 
   void pretty_print(std::ostream& os, const Ident& i) { os << i.name; }

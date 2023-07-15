@@ -202,10 +202,11 @@ BOOST_AUTO_TEST_CASE(parser_header_one_arg) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_two_args) {
-  const UnTypedHeader expected = header(tuple_pattern({0, 12}, ident_pattern("a", 1), ident_pattern("b", 7)),
-                                        {type("X", 4), type("Y", 10)},
-                                        type("T", 16),
-                                        {0, 17});
+  const UnTypedHeader expected =
+    header(tuple_pattern({0, 12}, ident_pattern("a", 1), ident_pattern("b", 7)),
+           {type("X", 4), type("Y", 10)},
+           type("T", 16),
+           {0, 17});
   check_pass(expected, parse_header("(a: X, b: Y) -> T"));
 }
 
@@ -250,10 +251,11 @@ BOOST_AUTO_TEST_CASE(parser_scope_with_assignment) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment2) {
-  const UnTypedExpr expected = scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}},
-                                      {ident_pattern("y", 17), floating_type<NamedType>(), one(21), {13, 22}}},
-                                     ident("x", 24),
-                                     {0, 27});
+  const UnTypedExpr expected =
+    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}},
+           {ident_pattern("y", 17), floating_type<NamedType>(), one(21), {13, 22}}},
+          ident("x", 24),
+          {0, 27});
   check_pass(expected, parse_expr("{ let x = 1; let y = 1; x }"));
 }
 

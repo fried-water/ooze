@@ -46,13 +46,14 @@ auto release_parser() { return pc::construct<ReleaseCmd>(pc::seq(pc::constant("r
 auto await_parser() { return pc::construct<AwaitCmd>(pc::seq(pc::constant("a", "a"), pc::n(pc::any()))); }
 
 auto cmd_parser() {
-  return pc::choose(help_parser(),
-                    eval_parser(),
-                    bindings_parser(),
-                    functions_parser(),
-                    types_parser(),
-                    release_parser(),
-                    await_parser());
+  return pc::choose(
+    help_parser(),
+    eval_parser(),
+    bindings_parser(),
+    functions_parser(),
+    types_parser(),
+    release_parser(),
+    await_parser());
 }
 
 auto parse_command(std::string_view line) {
@@ -73,12 +74,13 @@ auto parse_command(std::string_view line) {
 std::tuple<std::vector<std::string>, Env, Bindings>
 run(anyf::ExecutorRef, Env env, Bindings bindings, const HelpCmd& help) {
   return std::tuple(
-    std::vector<std::string>{{":h - This message"},
-                             {":b - List all bindings (* means they are not ready, & means they are borrowed)"},
-                             {":f - List all environment and script functions"},
-                             {":t - List all registered types and their capabilities"},
-                             {":r binding - Release the given binding"},
-                             {":a bindings... - Await the given bindings or everything if unspecified"}},
+    std::vector<std::string>{
+      {":h - This message"},
+      {":b - List all bindings (* means they are not ready, & means they are borrowed)"},
+      {":f - List all environment and script functions"},
+      {":t - List all registered types and their capabilities"},
+      {":r binding - Release the given binding"},
+      {":a bindings... - Await the given bindings or everything if unspecified"}},
     std::move(env),
     std::move(bindings));
 }

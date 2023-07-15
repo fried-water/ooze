@@ -101,16 +101,16 @@ template <typename P>
 auto tuple(P p) {
   using T = parser_result_t<std::string_view, Token, P>;
 
-  return transform(seq(symbol("("), choose(symbol(")"), seq(n(seq(p, symbol(","))), p, symbol(")")))),
-                   [](auto v) -> std::vector<T> {
-                     if(v.index() == 0) {
-                       return {};
-                     } else {
-                       auto [vec, last] = split_vec_from_remaining(std::move(std::get<1>(v)));
-                       vec.push_back(std::move(last));
-                       return std::move(vec);
-                     }
-                   });
+  return transform(
+    seq(symbol("("), choose(symbol(")"), seq(n(seq(p, symbol(","))), p, symbol(")")))), [](auto v) -> std::vector<T> {
+      if(v.index() == 0) {
+        return {};
+      } else {
+        auto [vec, last] = split_vec_from_remaining(std::move(std::get<1>(v)));
+        vec.push_back(std::move(last));
+        return std::move(vec);
+      }
+    });
 }
 
 ParseResult<Pattern> pattern(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
@@ -142,8 +142,9 @@ auto binding() {
 }
 
 auto literal() {
-  return transform_if(
-    any(), "literal", [](std::string_view src, Token t) { return to_literal(t.type, src_sv(src, t.ref)); });
+  return transform_if(any(), "literal", [](std::string_view src, Token t) {
+    return to_literal(t.type, src_sv(src, t.ref));
+  });
 }
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>&, ParseLocation);
