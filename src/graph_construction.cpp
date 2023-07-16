@@ -99,7 +99,7 @@ add_expr(const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, Grap
 
 ContextualResult<GraphContext>
 add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphContext ctx) {
-  return add_expr(e, call.parameters, std::move(ctx)).and_then([&](GraphContext ctx) {
+  return add_expr(e, *call.arg, std::move(ctx)).and_then([&](GraphContext ctx) {
     const auto it = e.functions.find(call.function.name);
     assert(it != e.functions.end() && call.function.overload_idx < it->second.size());
     const EnvFunction& env_function = it->second[call.function.overload_idx];
@@ -114,7 +114,7 @@ add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphC
                                    return convert(ctx.cg.add(it->second, ctx.terms));
                                  }},
                       env_function.f)
-      .map_error([&](anyf::GraphError error) { return to_graph_error(error, call.parameters); })
+      .map_error([&](anyf::GraphError error) { return to_graph_error(error, *call.arg); })
       .map([&](std::vector<Oterm> terms) {
         ctx.terms = std::move(terms);
         return std::move(ctx);

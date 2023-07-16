@@ -148,7 +148,7 @@ auto literal() {
 
 ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>&, ParseLocation);
 
-auto call() { return construct<UnTypedCallExpr>(seq(function_ident(), tuple(expr))); }
+auto call() { return construct<UnTypedCallExpr>(seq(function_ident(), construct_with_ref<UnTypedExpr>(tuple(expr)))); }
 
 auto borrow_expr() { return construct<UnTypedBorrowExpr>(seq(symbol("&"), expr)); }
 
@@ -164,8 +164,18 @@ ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, Pars
         n(seq(symbol("."), construct_with_ref<UnTypedExpr>(call())))),
     [](UnTypedExpr acc, std::vector<UnTypedExpr> chain) {
       return knot::accumulate(std::move(chain), std::move(acc), [](UnTypedExpr acc, UnTypedExpr next) {
+        next.ref.begin = acc.ref.begin;
         auto& call = std::get<UnTypedCallExpr>(next.v);
-        call.parameters.insert(call.parameters.begin(), std::move(acc));
+        *call.arg = std::visit(
+          Overloaded{[&](std::vector<UnTypedExpr> args) {
+                       args.insert(args.begin(), std::move(acc));
+                       return UnTypedExpr{std::move(args), next.ref};
+                     },
+                     [&](auto arg) -> UnTypedExpr {
+                       assert(false);
+                       return {};
+                     }},
+          std::move(call.arg->v));
         next.ref.begin = acc.ref.begin;
         return next;
       });

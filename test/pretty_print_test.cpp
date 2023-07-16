@@ -51,9 +51,11 @@ BOOST_AUTO_TEST_CASE(pretty_print_expr) {
 
   BOOST_CHECK_EQUAL("(1i32, abc)", pretty_print(UnTypedExpr{std::vector<UnTypedExpr>{one, ident}}));
 
-  BOOST_CHECK_EQUAL("f(1i32)", pretty_print(UnTypedExpr{UnTypedCallExpr{{"f"}, std::vector<UnTypedExpr>{one}}}));
   BOOST_CHECK_EQUAL("f(1i32)",
-                    pretty_print({}, CheckedExpr{CheckedCallExpr{{"f", 0}, std::vector<CheckedExpr>{{Literal{1}}}}}));
+                    pretty_print(UnTypedExpr{UnTypedCallExpr{{"f"}, UnTypedExpr{std::vector<UnTypedExpr>{one}}}}));
+  BOOST_CHECK_EQUAL(
+    "f(1i32)",
+    pretty_print({}, CheckedExpr{CheckedCallExpr{{"f", 0}, CheckedExpr{std::vector<CheckedExpr>{{Literal{1}}}}}}));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_assignment) {

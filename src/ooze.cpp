@@ -259,10 +259,11 @@ run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, Typed
 
         scope.assignments.push_back(
           {{ast::Ident{"x"}}, borrow_type(std::move(*f.header.type.output)), std::move(f.expr)});
-        scope.result = TypedExpr{TypedCallExpr{"to_string", {TypedExpr{ast::Ident{"x"}}}}};
+        scope.result = TypedExpr{TypedCallExpr{"to_string", {{std::vector{TypedExpr{ast::Ident{"x"}}}}}}};
       } else {
         scope.assignments.push_back({{ast::Ident{"x"}}, std::move(*f.header.type.output), std::move(f.expr)});
-        scope.result = TypedExpr{TypedCallExpr{"to_string", {TypedExpr{TypedBorrowExpr{TypedExpr{ast::Ident{"x"}}}}}}};
+        scope.result = TypedExpr{
+          TypedCallExpr{"to_string", {{std::vector{TypedExpr{TypedBorrowExpr{TypedExpr{ast::Ident{"x"}}}}}}}}};
       }
 
       f.header.type.output = leaf_type(anyf::type_id<std::string>());

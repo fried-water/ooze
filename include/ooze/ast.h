@@ -32,7 +32,7 @@ struct Expr;
 template <typename T, typename F>
 struct CallExpr {
   F function;
-  std::vector<Expr<T, F>> parameters;
+  Indirect<Expr<T, F>> arg;
 
   KNOT_ORDERED(CallExpr);
 };

@@ -124,7 +124,7 @@ struct Printer {
   template <typename T, typename F>
   void pretty_print(std::ostream& os, const CallExpr<T, F>& c) {
     pretty_print(os, c.function);
-    pretty_print(os, c.parameters);
+    pretty_print(os, c.arg);
   }
 
   template <typename T>

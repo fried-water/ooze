@@ -289,7 +289,21 @@ BOOST_AUTO_TEST_CASE(cp_function_return) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
 
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)", {});
+}
+
+BOOST_AUTO_TEST_CASE(cp_function_nested) {
+  Env e = create_primative_env();
+  e.add_function("f", [](i32 x) { return x; });
+
+  test_or(e, {{"f", 0, siso(I, I)}, {"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(f(x))", {});
+}
+
+BOOST_AUTO_TEST_CASE(cp_function_scope_return) {
+  Env e = create_primative_env();
+  e.add_function("f", [](i32 x) { return x; });
+
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = { f(x) }", {});
 }
 
 BOOST_AUTO_TEST_CASE(cp_function_assign) {
@@ -299,25 +313,25 @@ BOOST_AUTO_TEST_CASE(cp_function_assign) {
   test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { let x: i32 = f(x); x }");
 }
 
+BOOST_AUTO_TEST_CASE(cp_function_param) {
+  Env e = create_primative_env();
+  e.add_function("f", [](i32) {});
+  test_or(e, {{"f", 0, sino(I)}}, "(x: i32) -> () = f(x)", "(x: i32) -> () = f(x)");
+}
+
 BOOST_AUTO_TEST_CASE(cp_function_multi) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   e.add_function("f", [](f32 x) { return x; });
 
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(cp_prop_single_function) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
 
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x) -> _ { f(x) }", "(x: i32) -> i32 { f(x) }");
-}
-
-BOOST_AUTO_TEST_CASE(cp_fn_param) {
-  Env e = create_primative_env();
-  e.add_function("f", [](i32) {});
-  test_or(e, {{"f", 0, sino(I)}}, "(x: i32) -> () { f(x) }", "(x: i32) -> () { f(x) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_overload_borrow) {
@@ -325,7 +339,7 @@ BOOST_AUTO_TEST_CASE(cp_fn_overload_borrow) {
   e.add_function("f", [](const i32&) {});
   e.add_function("f", [](i32) {});
 
-  test_or(e, {{"f", 0, sino(borrow_type(I))}}, "(x: &i32) -> () { f(x) }", "(x: &i32) -> () { f(x) }");
+  test_or(e, {{"f", 0, sino(borrow_type(I))}}, "(x: &i32) -> () = f(x)", "(x: &i32) -> () = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_overload_input) {
@@ -333,9 +347,9 @@ BOOST_AUTO_TEST_CASE(cp_fn_overload_input) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return i32(); });
 
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1, siso(F, I)}}, "(x: f32) -> i32 { f(x) }");
-  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(F, I)}}, "(x: i32, y: f32) -> (i32, i32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 1, siso(F, I)}}, "(x: f32) -> i32 = f(x)");
+  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(F, I)}}, "(x: i32, y: f32) -> (i32, i32) = (f(x), f(y))");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_overload_output) {
@@ -343,14 +357,14 @@ BOOST_AUTO_TEST_CASE(cp_fn_overload_output) {
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](i32) { return f32(); });
 
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { f(x) }");
-  test_or(e, {{"f", 1, siso(I, F)}}, "(x: i32) -> f32 { f(x) }");
-  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(I, F)}}, "(x: i32, y: i32) -> (i32, f32) { (f(x), f(y)) }");
+  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 1, siso(I, F)}}, "(x: i32) -> f32 = f(x)");
+  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(I, F)}}, "(x: i32, y: i32) -> (i32, f32) = (f(x), f(y))");
 }
 
 BOOST_AUTO_TEST_CASE(cp_constant) {
-  test_or(create_primative_env(), {}, "() -> _ { 1 }", "() -> i32 { 1 }");
-  test_or(create_primative_env(), {}, "() -> _ { 'abc' }", "() -> string { 'abc' }");
+  test_or(create_primative_env(), {}, "() -> _ = 1", "() -> i32 = 1");
+  test_or(create_primative_env(), {}, "() -> _ = 'abc'", "() -> string = 'abc'");
 }
 
 BOOST_AUTO_TEST_CASE(cp_fn_up) {
@@ -399,7 +413,7 @@ BOOST_AUTO_TEST_CASE(cp_nested_fn_overload) {
   e.add_function("h", []() { return i32(); });
   e.add_function("h", []() { return f32(); });
 
-  test_or(e, {{"f", 0, siso(I, I)}, {"g", 0, siso(I, I)}, {"h", 0, niso(I)}}, "() -> i32 { f(g(h())) }");
+  test_or(e, {{"f", 0, siso(I, I)}, {"g", 0, siso(I, I)}, {"h", 0, niso(I)}}, "() -> i32 = f(g(h()))");
 }
 
 BOOST_AUTO_TEST_CASE(cp_invalid_borrow_expr) {
@@ -410,19 +424,19 @@ BOOST_AUTO_TEST_CASE(cp_invalid_borrow_expr) {
 
 BOOST_AUTO_TEST_CASE(cp_invalid_borrow_pattern) {
   // TODO update error to highlight type instead of pattern
-  test_or_error(create_primative_env(), "(_ : &&i32) -> _ { 1 }", {{{1, 2}, "cannot borrow a borrow"}});
+  test_or_error(create_primative_env(), "(_ : &&i32) -> _ = 1", {{{1, 2}, "cannot borrow a borrow"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_borrow) {
-  test_or_error(create_primative_env(), "() -> _ { &1 }", {{{10, 12}, "cannot return a borrowed value"}});
-  test_or_error(create_primative_env(), "(x : &i32) -> _ { x }", {{{18, 19}, "cannot return a borrowed value"}});
-  test_or_error(create_primative_env(), "() -> _ { (&1) }", {{{11, 13}, "cannot return a borrowed value"}});
+  test_or_error(create_primative_env(), "() -> _ = &1", {{{10, 12}, "cannot return a borrowed value"}});
+  test_or_error(create_primative_env(), "(x : &i32) -> _ = x", {{{18, 19}, "cannot return a borrowed value"}});
+  test_or_error(create_primative_env(), "() -> _ = (&1)", {{{11, 13}, "cannot return a borrowed value"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_return_floating_borrow) {
-  test_or_error(create_primative_env(), "(x) -> _ { &x }", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
-  test_or_error(create_primative_env(), "(x : &_) -> _ { x }", {{{1, 2}, "unable to fully deduce type, deduced: &_"}});
-  test_or_error(create_primative_env(), "(x) -> _ { (&x) }", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
+  test_or_error(create_primative_env(), "(x) -> _ = &x", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
+  test_or_error(create_primative_env(), "(x : &_) -> _ = x", {{{1, 2}, "unable to fully deduce type, deduced: &_"}});
+  test_or_error(create_primative_env(), "(x) -> _ = (&x)", {{{1, 2}, "unable to fully deduce type, deduced: _"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_partial) {
@@ -511,11 +525,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_arg_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(env,
-                "() -> i32 { identity() }",
-                {{{12, 22},
-                  "no matching overload found",
-                  {"deduced identity() -> i32 [1 candidate(s)]", "  identity(i32) -> i32"}}});
+  test_or_error(env, "() -> i32 = ()", {{{12, 14}, "expected (), given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_bind_count) {
@@ -529,8 +539,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_return_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    env, "(x: i32) -> () { identity(x) }", {{{17, 28}, "expected identity(i32) -> i32, given identity(_) -> ()"}});
+  test_or_error(env, "(x: i32) -> () = identity(x)", {{{17, 28}, "expected (i32) -> i32, given _ -> ()"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_multi_overload_match) {
@@ -559,8 +568,7 @@ BOOST_AUTO_TEST_CASE(cp_wrong_return_type) {
   Env e = create_primative_env();
   e.add_function("identity", [](i32 x) { return x; });
 
-  test_or_error(
-    e, "(x: i32) -> u32 { identity(x) }", {{{18, 29}, "expected identity(i32) -> i32, given identity(_) -> u32"}});
+  test_or_error(e, "(x: i32) -> u32 { identity(x) }", {{{18, 29}, "expected (i32) -> i32, given _ -> u32"}});
 }
 
 BOOST_AUTO_TEST_CASE(cp_wrong_value_type) {
