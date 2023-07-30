@@ -129,7 +129,8 @@ run(anyf::ExecutorRef, Env env, Bindings bindings, const FunctionsCmd&) {
   for(const auto& [name, fs] : env.functions) {
     if(std::find(COLLAPSE.begin(), COLLAPSE.end(), name) == COLLAPSE.end()) {
       for(const auto& f : fs) {
-        functions.emplace_back(name, fmt::format("{}{}", name, pretty_print(env, f.type)));
+        functions.emplace_back(
+          name, fmt::format("{}{} -> {}", name, pretty_print(env, *f.type.input), pretty_print(env, *f.type.output)));
       }
     }
   }
@@ -157,7 +158,7 @@ run(anyf::ExecutorRef, Env env, Bindings bindings, const TypesCmd&) {
     TypedFunction to_string_wrap{
       {{make_vector(ast::Pattern{ast::Ident{"x"}})},
        {tuple_type<TypeID>(make_vector(borrow_type(leaf_type(id)))), leaf_type(anyf::type_id<std::string>())}},
-      {TypedCallExpr{{"to_string"}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}}}};
+      {TypedCallExpr{{{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}}}};
 
     types[pretty_print(env, id)] = overload_resolution(env, std::move(to_string_wrap)).has_value();
   }

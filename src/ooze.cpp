@@ -94,8 +94,15 @@ TypedFunction lift_only_borrowed_idents(TypedFunction f) {
 }
 
 ContextualResult<TypedFunction>
-infer_header_from_env(const Bindings& bindings, TypedExpr expr, CompoundType<TypeID> result_type) {
-  TypedHeader h = inferred_header(expr);
+infer_header_from_env(const Env& env, const Bindings& bindings, TypedExpr expr, CompoundType<TypeID> result_type) {
+  Set<std::string> active;
+  for(const auto& [name, fn] : env.functions) {
+    if(bindings.find(name) == bindings.end()) {
+      active.insert(name);
+    }
+  }
+
+  TypedHeader h = inferred_header(expr, std::move(active));
 
   *h.type.output = std::move(result_type);
 
@@ -204,20 +211,28 @@ run_function(anyf::ExecutorRef executor, Env e, Bindings bindings, const Checked
                             borrowed_inputs = to_vec(*borrow(bindings, i.name), std::move(borrowed_inputs));
                           }});
 
-      std::vector<anyf::Future> results =
+      std::vector<anyf::Future> futures =
         anyf::execute_graph(g, executor, std::move(value_inputs), std::move(borrowed_inputs));
 
       int idx = 0;
       const auto converter = Overloaded{
         // result vector should be in order of a preorder traversal of the leaves in the output type
-        [&](TypeID t) -> Binding {
-          return {t, std::move(results[idx++])};
+        [&](TypeID t) {
+          return Binding{{t}, std::move(futures[idx++])};
+        },
+        [&](const FunctionType<TypeID>& t) {
+          return Binding{{t}, std::move(futures[idx++])};
         },
 
         // These can't be part of the output type of executed functions
-        [](const FunctionType<TypeID>&) -> Binding { exit(1); },
-        [](const Floating&) -> Binding { exit(1); },
-        [](const Borrow<TypeID>&) -> Binding { exit(1); }};
+        [](const Floating&) -> Binding {
+          assert(false);
+          exit(1);
+        },
+        [](const Borrow<TypeID>&) -> Binding {
+          assert(false);
+          exit(1);
+        }};
 
       return std::tuple(
         knot::map<Tree<Binding>>(*f.header.type.output, std::cref(converter)), std::move(e), std::move(bindings));
@@ -226,7 +241,7 @@ run_function(anyf::ExecutorRef executor, Env e, Bindings bindings, const Checked
 
 ContextualResult<Tree<Binding>, Env, Bindings>
 run_expr(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedExpr expr, CompoundType<TypeID> type) {
-  return infer_header_from_env(bindings, std::move(expr), std::move(type))
+  return infer_header_from_env(env, bindings, std::move(expr), std::move(type))
     .map(lift_only_borrowed_idents)
     .append_state(std::move(env))
     .and_then([](TypedFunction f, Env env) {
@@ -240,7 +255,7 @@ run_expr(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedExpr expr,
 
 ContextualResult<std::string, Env, Bindings>
 run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedExpr expr) {
-  return infer_header_from_env(bindings, std::move(expr), floating_type<TypeID>())
+  return infer_header_from_env(env, bindings, std::move(expr), floating_type<TypeID>())
     .map(lift_only_borrowed_idents)
     .append_state(std::move(env))
     .and_then([](TypedFunction f, Env env) {
@@ -251,19 +266,22 @@ run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, Typed
     .map([](TypedFunction f, Env env) {
       TypedScopeExpr scope;
 
-      if(std::holds_alternative<ast::Ident>(f.expr.v)) {
-        knot::visit(f.header.type.input->v, [](std::vector<CompoundType<TypeID>>& v) {
-          assert(v.size() == 1);
-          v[0] = borrow_type(std::move(v[0]));
-        });
+      const int args = std::visit(Overloaded{[](const std::vector<CompoundType<TypeID>>& v) { return int(v.size()); },
+                                             [](const auto&) { return 0; }},
+                                  f.header.type.input->v);
+
+      if(std::holds_alternative<ast::Ident>(f.expr.v) && args == 1) {
+        knot::visit(f.header.type.input->v,
+                    [](std::vector<CompoundType<TypeID>>& v) { v[0] = borrow_type(std::move(v[0])); });
 
         scope.assignments.push_back(
           {{ast::Ident{"x"}}, borrow_type(std::move(*f.header.type.output)), std::move(f.expr)});
-        scope.result = TypedExpr{TypedCallExpr{"to_string", {{std::vector{TypedExpr{ast::Ident{"x"}}}}}}};
+        scope.result =
+          TypedExpr{TypedCallExpr{{{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}}};
       } else {
         scope.assignments.push_back({{ast::Ident{"x"}}, std::move(*f.header.type.output), std::move(f.expr)});
-        scope.result = TypedExpr{
-          TypedCallExpr{"to_string", {{std::vector{TypedExpr{TypedBorrowExpr{TypedExpr{ast::Ident{"x"}}}}}}}}};
+        scope.result = TypedExpr{TypedCallExpr{
+          {{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{TypedBorrowExpr{TypedExpr{ast::Ident{"x"}}}}}}}}};
       }
 
       f.header.type.output = leaf_type(anyf::type_id<std::string>());
@@ -286,7 +304,7 @@ run_expr_to_string(anyf::ExecutorRef executor, Env env, Bindings bindings, Typed
 
 ContextualResult<void, Env, Bindings>
 run_assign(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedAssignment a) {
-  return infer_header_from_env(bindings, std::move(*a.expr), std::move(a.type))
+  return infer_header_from_env(env, bindings, std::move(*a.expr), std::move(a.type))
     .map(lift_only_borrowed_idents)
     .append_state(std::move(env))
     .and_then([](TypedFunction f, Env env) {
@@ -310,11 +328,13 @@ run_assign(anyf::ExecutorRef executor, Env env, Bindings bindings, TypedAssignme
 }
 
 struct TypeOfBindingConverter {
-  CompoundType<TypeID> operator()(const Tree<Binding>& tree) {
-    return {knot::map<decltype(CompoundType<TypeID>{}.v)>(tree.v, *this)};
+  CompoundType<TypeID> operator()(const Tree<Binding>& tree) const {
+    return std::visit(Overloaded{[&](const std::vector<Tree<Binding>>& v) {
+                                   return CompoundType<TypeID>{knot::map<std::vector<CompoundType<TypeID>>>(v, *this)};
+                                 },
+                                 [&](const Binding& b) { return b.type; }},
+                      tree.v);
   }
-
-  TypeID operator()(const Binding& b) { return b.type; }
 };
 
 } // namespace

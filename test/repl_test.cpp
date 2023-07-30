@@ -16,7 +16,7 @@ namespace {
       fmt::print("E: {}\n", knot::debug(e));                                                                           \
       fmt::print("A: {}\n", knot::debug(a));                                                                           \
     }                                                                                                                  \
-    BOOST_CHECK(e == a);                                                                                               \
+    check_range(e, a);                                                                                                 \
     return std::tuple(std::move(e1), std::move(b1));                                                                   \
   }(_EXP, _STR, std::move(_ENV), std::move(_BND))
 
@@ -53,6 +53,22 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
   std::tie(e, b) = step_and_compare({"5"}, "take_ptr(x)", std::move(e), std::move(b));
 }
 
+BOOST_AUTO_TEST_CASE(repl_store_function) {
+  auto executor = anyf::make_task_executor();
+  Env e = create_primative_env();
+
+  e.add_function("f", []() { return 37; });
+
+  Bindings b;
+  std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
+
+  BOOST_REQUIRE_EQUAL(1, b.size());
+  Binding& x = std::get<Binding>(b.at("x").v);
+  BOOST_CHECK(function_type(tuple_type<TypeID>({}), leaf_type(anyf::type_id<int>())) == x.type);
+
+  std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
+}
+
 BOOST_AUTO_TEST_CASE(repl_bindings) {
   auto executor = anyf::make_task_executor();
   Env e;
@@ -81,11 +97,22 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   Binding& x = std::get<Binding>(b.at("x").v);
   Binding& y = std::get<Binding>(b.at("y").v);
 
-  BOOST_CHECK(anyf::type_id<int>() == x.type);
-  BOOST_CHECK(anyf::type_id<std::string>() == y.type);
+  BOOST_CHECK(leaf_type(anyf::type_id<int>()) == x.type);
+  BOOST_CHECK(leaf_type(anyf::type_id<std::string>()) == y.type);
 
-  BOOST_CHECK(5 == anyf::any_cast<int>(std::move(x.future).wait()));
-  BOOST_CHECK("abc" == anyf::any_cast<std::string>(std::move(y.future).wait()));
+  BOOST_CHECK_EQUAL(5, anyf::any_cast<int>(std::move(x.future).wait()));
+  BOOST_CHECK_EQUAL("abc", anyf::any_cast<std::string>(std::move(y.future).wait()));
+}
+
+BOOST_AUTO_TEST_CASE(repl_binding_overload_fn) {
+  auto executor = anyf::make_task_executor();
+  Env e = create_primative_env();
+
+  e.add_function("f", []() { return 1; });
+
+  Bindings b;
+  std::tie(e, b) = step_and_compare({}, "let f = 5", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({"5"}, "f", std::move(e), std::move(b));
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {

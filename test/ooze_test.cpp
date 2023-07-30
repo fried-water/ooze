@@ -86,12 +86,12 @@ BOOST_AUTO_TEST_CASE(ooze_expr_identity) {
   check_any_tree(5, check_result(run(create_primative_env(), script, "f(5)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_ref_param_ref) {
+BOOST_AUTO_TEST_CASE(ooze_borrow_param) {
   constexpr std::string_view script = "fn f(x: &i32) -> string = to_string(x)";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(&1)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_ref_assign_ref) {
+BOOST_AUTO_TEST_CASE(ooze_borrow_assign) {
   constexpr std::string_view script = "fn f(x: i32) -> string { let x = &x; to_string(x) }";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(1)")));
 }
@@ -131,6 +131,13 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_assignment) {
   const auto& v = check_vec(2, tree);
   check_any_tree(2, v[0]);
   check_any_tree(1, v[1]);
+}
+
+BOOST_AUTO_TEST_CASE(ooze_fn_parameter) {
+  constexpr std::string_view script =
+    "fn one() -> i32 = 1\n"
+    "fn f(g: fn() -> i32) -> i32 = g()\n";
+  check_any_tree(1, check_result(run(create_primative_env(), script, "f(one)")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_wildcard_parameter) {
@@ -292,22 +299,22 @@ BOOST_AUTO_TEST_CASE(ooze_assign_deduce_overloads) {
 BOOST_AUTO_TEST_CASE(ooze_assign_wrong_type) {
   const std::vector<std::string> expected{
     "1:13 error: expected i32, given f32", " | let x: f32 = 1", " |              ^"};
-  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "let x: f32 = 1")));
+  check_range(expected, check_error(run(create_primative_env(), "", "let x: f32 = 1")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_undeclared_function) {
-  const std::vector<std::string> expected{"1:0 error: use of undeclared function 'f'", " | f()", " | ^~~"};
-  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "f()")));
+  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'f'", " | f()", " | ^"};
+  check_range(expected, check_error(run(create_primative_env(), "", "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_undeclared_binding) {
   const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
-  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "x")));
+  check_range(expected, check_error(run(create_primative_env(), "", "x")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_assign_bad_pattern) {
   const std::vector<std::string> expected{"1:4 error: expected (_), given ()", " | let (x) = ()", " |     ^~~"};
-  BOOST_CHECK(expected == check_error(run(create_primative_env(), "", "let (x) = ()")));
+  check_range(expected, check_error(run(create_primative_env(), "", "let (x) = ()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
@@ -315,7 +322,7 @@ BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
   e.add_function("f", [](i32) {});
 
   const std::vector<std::string> expected{"1:2 error: expected string, given i32", " | f('abc')", " |   ^~~~~"};
-  BOOST_CHECK(expected == check_error(run(std::move(e), "", "f('abc')")));
+  check_range(expected, check_error(run(std::move(e), "", "f('abc')")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_to_string) {
@@ -441,6 +448,15 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
       });
 
   BOOST_REQUIRE(result);
+}
+
+BOOST_AUTO_TEST_CASE(ooze_print_fn) {
+  auto executor = anyf::make_task_executor();
+  Env e = create_primative_env();
+  e.add_function("f", []() { return 1; });
+
+  // TODO improve this error
+  BOOST_REQUIRE(!run_to_string(executor, std::move(e), {}, "f"));
 }
 
 } // namespace ooze

@@ -12,7 +12,7 @@ ContextualResult<TypedExpr> type_name_resolution(const Env&, const UnTypedExpr&)
 ContextualResult<TypedAssignment> type_name_resolution(const Env&, const UnTypedAssignment&);
 ContextualResult<CompoundType<TypeID>> type_name_resolution(const Env&, const CompoundType<NamedType>&);
 
-TypedHeader inferred_header(const TypedExpr&);
+TypedHeader inferred_header(const TypedExpr&, Set<std::string> active);
 
 ContextualResult<CompoundType<TypeID>> type_check(const Env&, const ast::Pattern&, CompoundType<TypeID>);
 

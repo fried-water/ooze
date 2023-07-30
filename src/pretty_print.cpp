@@ -55,7 +55,6 @@ struct Printer {
 
   void pretty_print(std::ostream& os, const Ident& i) { os << i.name; }
   void pretty_print(std::ostream& os, const NamedType& t) { os << t.name; }
-  void pretty_print(std::ostream& os, const NamedFunction& f) { os << f.name; }
 
   void pretty_print(std::ostream& os, const EnvFunctionRef& f) { os << f.name; }
 
@@ -71,12 +70,12 @@ struct Printer {
 
   template <typename T>
   void pretty_print(std::ostream& os, const FunctionType<T>& r) {
-    pretty_print(os, *r.input);
+    pretty_print(os << "fn", *r.input);
     pretty_print(os << " -> ", *r.output);
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const Assignment<T, F>& a) {
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const Assignment<T, Extras...>& a) {
     pretty_print(os << "let ", a.pattern);
     if(!std::holds_alternative<Floating>(a.type.v)) {
       pretty_print(os << ": ", a.type);
@@ -84,8 +83,8 @@ struct Printer {
     pretty_print(os << " = ", a.expr);
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const ScopeExpr<T, F>& b) {
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const ScopeExpr<T, Extras...>& b) {
     _indentation++;
     os << "{\n";
 
@@ -111,19 +110,19 @@ struct Printer {
     pretty_print(os, t.v);
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const Expr<T, F>& e) {
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const Expr<T, Extras...>& e) {
     pretty_print(os, e.v);
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const BorrowExpr<T, F>& b) {
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const BorrowExpr<T, Extras...>& b) {
     pretty_print(os << '&', *b.expr);
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const CallExpr<T, F>& c) {
-    pretty_print(os, c.function);
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const CallExpr<T, Extras...>& c) {
+    pretty_print(os, c.callee);
     pretty_print(os, c.arg);
   }
 
@@ -146,23 +145,24 @@ struct Printer {
       pretty_print(os << ") -> ", *h.type.output);
     } else {
       pretty_print(os, h.pattern);
-      pretty_print(os << ": ", h.type);
+      pretty_print(os << ": ", h.type.input);
+      pretty_print(os << " -> ", h.type.output);
     }
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const Function<T, F>& f) {
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const Function<T, Extras...>& f) {
     pretty_print(os, f.header);
 
-    if(std::holds_alternative<ScopeExpr<T, F>>(f.expr.v)) {
+    if(std::holds_alternative<ScopeExpr<T, Extras...>>(f.expr.v)) {
       pretty_print(os << ' ', f.expr);
     } else {
       pretty_print(os << " = ", f.expr);
     }
   }
 
-  template <typename T, typename F>
-  void pretty_print(std::ostream& os, const std::tuple<std::string, Function<T, F>>& t) {
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const std::tuple<std::string, Function<T, Extras...>>& t) {
     const auto& [name, function] = t;
     pretty_print(os << "fn " << name, function);
   }

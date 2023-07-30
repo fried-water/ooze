@@ -35,7 +35,7 @@ template <typename R, typename T>
 R untype(const Env& e, const T& t) {
   return knot::map<R>(t,
                       Overloaded{[&](TypeID t) { return NamedType{pretty_print(e, t)}; },
-                                 [&](const EnvFunctionRef& r) { return NamedFunction{r.name}; }});
+                                 [&](const EnvFunctionRef& r) { return ast::Ident{r.name}; }});
 }
 
 } // namespace ooze

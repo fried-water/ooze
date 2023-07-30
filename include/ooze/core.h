@@ -3,6 +3,7 @@
 #include "ooze/env.h"
 #include "ooze/result.h"
 #include "ooze/tree.h"
+#include "ooze/type.h"
 
 #include <anyf/borrowed_future.h>
 #include <anyf/executor.h>
@@ -19,7 +20,7 @@ template <typename T, typename... Ts>
 using StringResult = Result<T, std::vector<std::string>, Ts...>;
 
 struct Binding {
-  TypeID type;
+  CompoundType<TypeID> type;
   anyf::Future future;
   anyf::BorrowedFuture borrowed_future;
 };

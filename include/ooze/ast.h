@@ -26,44 +26,54 @@ struct Pattern {
   KNOT_ORDERED(Pattern);
 };
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
 struct Expr;
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
 struct CallExpr {
-  F function;
-  Indirect<Expr<T, F>> arg;
+  Indirect<Expr<T, Extras...>> callee;
+  Indirect<Expr<T, Extras...>> arg;
 
   KNOT_ORDERED(CallExpr);
 };
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
 struct BorrowExpr {
-  Indirect<Expr<T, F>> expr;
+  Indirect<Expr<T, Extras...>> expr;
   KNOT_ORDERED(BorrowExpr);
 };
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
 struct Assignment {
   Pattern pattern;
   CompoundType<T> type;
-  Indirect<Expr<T, F>> expr;
+  Indirect<Expr<T, Extras...>> expr;
   Slice ref;
 
   KNOT_ORDERED(Assignment);
 };
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
 struct ScopeExpr {
-  std::vector<Assignment<T, F>> assignments;
-  Indirect<Expr<T, F>> result;
+  std::vector<Assignment<T, Extras...>> assignments;
+  Indirect<Expr<T, Extras...>> result;
 
   KNOT_ORDERED(ScopeExpr);
 };
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
+using ExprVariant =
+  std::variant<std::vector<Expr<T, Extras...>>,
+               ScopeExpr<T, Extras...>,
+               CallExpr<T, Extras...>,
+               BorrowExpr<T, Extras...>,
+               Ident,
+               Literal,
+               Extras...>;
+
+template <typename T, typename... Extras>
 struct Expr {
-  std::variant<std::vector<Expr<T, F>>, ScopeExpr<T, F>, CallExpr<T, F>, BorrowExpr<T, F>, Ident, Literal> v;
+  ExprVariant<T, Extras...> v;
   Slice ref;
 
   KNOT_ORDERED(Expr);
@@ -78,10 +88,10 @@ struct FunctionHeader {
   KNOT_ORDERED(FunctionHeader);
 };
 
-template <typename T, typename F>
+template <typename T, typename... Extras>
 struct Function {
   FunctionHeader<T> header;
-  Expr<T, F> expr;
+  Expr<T, Extras...> expr;
 
   KNOT_ORDERED(Function);
 };
@@ -93,21 +103,6 @@ struct NamedType {
   KNOT_ORDERED(NamedType);
 };
 
-struct NamedFunction {
-  std::string name;
-  KNOT_ORDERED(NamedFunction);
-};
-
-using UnTypedAssignment = ast::Assignment<NamedType, NamedFunction>;
-using UnTypedScopeExpr = ast::ScopeExpr<NamedType, NamedFunction>;
-using UnTypedCallExpr = ast::CallExpr<NamedType, NamedFunction>;
-using UnTypedBorrowExpr = ast::BorrowExpr<NamedType, NamedFunction>;
-using UnTypedExpr = ast::Expr<NamedType, NamedFunction>;
-using UnTypedHeader = ast::FunctionHeader<NamedType>;
-using UnTypedFunction = ast::Function<NamedType, NamedFunction>;
-
-using UnTypedAST = std::vector<std::tuple<std::string, UnTypedFunction>>;
-
 struct EnvFunctionRef {
   std::string name;
   int overload_idx = 0;
@@ -116,14 +111,24 @@ struct EnvFunctionRef {
   KNOT_ORDERED(EnvFunctionRef);
 };
 
+using UnTypedAssignment = ast::Assignment<NamedType>;
+using UnTypedScopeExpr = ast::ScopeExpr<NamedType>;
+using UnTypedCallExpr = ast::CallExpr<NamedType>;
+using UnTypedBorrowExpr = ast::BorrowExpr<NamedType>;
+using UnTypedExpr = ast::Expr<NamedType>;
+using UnTypedHeader = ast::FunctionHeader<NamedType>;
+using UnTypedFunction = ast::Function<NamedType>;
+
+using UnTypedAST = std::vector<std::tuple<std::string, UnTypedFunction>>;
+
 // Replace type names with type id
-using TypedAssignment = ast::Assignment<anyf::TypeID, NamedFunction>;
-using TypedScopeExpr = ast::ScopeExpr<anyf::TypeID, NamedFunction>;
-using TypedCallExpr = ast::CallExpr<anyf::TypeID, NamedFunction>;
-using TypedBorrowExpr = ast::BorrowExpr<anyf::TypeID, NamedFunction>;
-using TypedExpr = ast::Expr<anyf::TypeID, NamedFunction>;
+using TypedAssignment = ast::Assignment<anyf::TypeID>;
+using TypedScopeExpr = ast::ScopeExpr<anyf::TypeID>;
+using TypedCallExpr = ast::CallExpr<anyf::TypeID>;
+using TypedBorrowExpr = ast::BorrowExpr<anyf::TypeID>;
+using TypedExpr = ast::Expr<anyf::TypeID>;
 using TypedHeader = ast::FunctionHeader<anyf::TypeID>;
-using TypedFunction = ast::Function<anyf::TypeID, NamedFunction>;
+using TypedFunction = ast::Function<anyf::TypeID>;
 
 // Replace function names with specific function overloads
 using CheckedAssignment = ast::Assignment<anyf::TypeID, EnvFunctionRef>;

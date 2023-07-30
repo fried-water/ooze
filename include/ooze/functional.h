@@ -22,6 +22,14 @@ struct Construct {
   };
 };
 
+template <size_t I>
+struct Get {
+  template <typename T>
+  auto&& operator()(T&& t) const {
+    return std::get<I>(std::forward<T>(t));
+  };
+};
+
 template <typename F>
 auto tuple_wrap(F f) {
   return [f = std::move(f)](auto&&... ts) {

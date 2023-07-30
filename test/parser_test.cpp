@@ -28,8 +28,9 @@ void check_single_error(ContextualError expected, ContextualResult<T> result) {
   }
 }
 
-UnTypedExpr call(std::string name, Slice s, UnTypedExpr arg) {
-  return {UnTypedCallExpr{std::move(name), std::move(arg)}, s};
+UnTypedExpr call(UnTypedExpr callee, UnTypedExpr arg, std::optional<Slice> opt_ref = {}) {
+  const Slice ref = opt_ref ? *opt_ref : Slice{std::min(callee.ref.begin, arg.ref.begin), arg.ref.end};
+  return {UnTypedCallExpr{std::move(callee), std::move(arg)}, ref};
 }
 
 UnTypedExpr ident(std::string_view name, int offset) {
@@ -75,19 +76,23 @@ BOOST_AUTO_TEST_CASE(parser_expr_literal) { check_pass(one(0), parse_expr("1"));
 
 BOOST_AUTO_TEST_CASE(parser_expr_ident) { check_pass(ident("abc", 0), parse_expr("abc")); }
 
-BOOST_AUTO_TEST_CASE(parser_expr_call) { check_pass(call("f", {0, 3}, expr_tuple({1, 3})), parse_expr("f()")); }
+BOOST_AUTO_TEST_CASE(parser_expr_call) { check_pass(call(ident("f", 0), expr_tuple({1, 3})), parse_expr("f()")); }
+
+BOOST_AUTO_TEST_CASE(parser_expr_call_call) {
+  check_pass(call(call(ident("f", 0), expr_tuple({1, 3})), expr_tuple({3, 5})), parse_expr("f()()"));
+}
 
 BOOST_AUTO_TEST_CASE(parser_expr_call_one_arg) {
-  check_pass(call("f", {0, 4}, expr_tuple({1, 4}, one(2))), parse_expr("f(1)"));
+  check_pass(call(ident("f", 0), expr_tuple({1, 4}, one(2))), parse_expr("f(1)"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_call_two_arg) {
-  check_pass(call("f", {0, 7}, expr_tuple({1, 7}, one(2), ident("a", 5))), parse_expr("f(1, a)"));
+  check_pass(call(ident("f", 0), expr_tuple({1, 7}, one(2), ident("a", 5))), parse_expr("f(1, a)"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_nested_call) {
   const UnTypedExpr expected = call(
-    "f", {0, 13}, expr_tuple({1, 13}, call("f", {2, 9}, expr_tuple({3, 9}, one(4), ident("a", 7))), ident("b", 11)));
+    ident("f", 0), expr_tuple({1, 13}, call(ident("f", 2), expr_tuple({3, 9}, one(4), ident("a", 7))), ident("b", 11)));
   check_pass(expected, parse_expr("f(f(1, a), b)"));
 }
 
@@ -107,23 +112,31 @@ BOOST_AUTO_TEST_CASE(parser_expr_nested_tuple) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_ufcs) {
-  check_pass(call("b", {0, 5}, expr_tuple({0, 5}, ident("a", 0))), parse_expr("a.b()"));
+  check_pass(call(ident("b", 2), expr_tuple({3, 5}, ident("a", 0)), Slice{0, 5}), parse_expr("a.b()"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_ufcs_literal) {
-  check_pass(call("b", {0, 5}, expr_tuple({0, 5}, one(0))), parse_expr("1.b()"));
+  check_pass(call(ident("b", 2), expr_tuple({3, 5}, one(0)), Slice{0, 5}), parse_expr("1.b()"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_ufcs_function) {
-  check_pass(call("b", {0, 7}, expr_tuple({0, 7}, call("a", {0, 3}, expr_tuple({1, 3})))), parse_expr("a().b()"));
+  check_pass(call(ident("b", 4), expr_tuple({5, 7}, call(ident("a", 0), expr_tuple({1, 3}))), Slice{0, 7}),
+             parse_expr("a().b()"));
+}
+
+BOOST_AUTO_TEST_CASE(parser_expr_ufcs_chain) {
+  check_pass(call(ident("c", 6),
+                  expr_tuple({7, 9}, call(ident("b", 2), expr_tuple({3, 5}, ident("a", 0)), Slice{0, 5})),
+                  Slice{0, 9}),
+             parse_expr("a.b().c()"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_ufcs_multi_parameter) {
-  check_pass(call("b", {0, 6}, expr_tuple({0, 6}, ident("a", 0), one(4))), parse_expr("a.b(1)"));
+  check_pass(call(ident("b", 2), expr_tuple({3, 6}, ident("a", 0), one(4)), Slice{0, 6}), parse_expr("a.b(1)"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_expr_ufcs_tuple) {
-  check_pass(call("b", {0, 9}, expr_tuple({0, 9}, expr_tuple({0, 5}, expr_tuple({1, 4}, one(2))))),
+  check_pass(call(ident("b", 6), expr_tuple({7, 9}, expr_tuple({0, 5}, expr_tuple({1, 4}, one(2)))), Slice{0, 9}),
              parse_expr("((1)).b()"));
 }
 
@@ -177,6 +190,16 @@ BOOST_AUTO_TEST_CASE(parser_type_nested_tuple) {
   check_pass(expected, parse_type("((a), &_)"));
 }
 
+BOOST_AUTO_TEST_CASE(parser_type_fn) {
+  check_pass(function_type<NamedType>(tuple_type<NamedType>({}, {2, 4}), type("a", 8), {0, 9}),
+             parse_type("fn() -> a"));
+}
+
+BOOST_AUTO_TEST_CASE(parser_type_fn_tuple) {
+  check_pass(function_type<NamedType>(tuple_type<NamedType>({type("x", 3)}, {2, 5}), type("a", 9), {0, 10}),
+             parse_type("fn(x) -> a"));
+}
+
 BOOST_AUTO_TEST_CASE(parser_assignment_simple) {
   const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>(), one(8), {0, 9}};
   check_pass(expected, parse_assignment("let a = 1"));
@@ -222,6 +245,24 @@ BOOST_AUTO_TEST_CASE(parser_header_borrow_arg) {
   const UnTypedHeader expected =
     header(tuple_pattern({0, 7}, ident_pattern("a", 1)), {borrow_type(type("X", 5), {4, 6})}, type("T", 11), {0, 12});
   check_pass(expected, parse_header("(a: &X) -> T"));
+}
+
+BOOST_AUTO_TEST_CASE(parser_header_fn_arg) {
+  const UnTypedHeader expected =
+    header(tuple_pattern({0, 14}, ident_pattern("x", 1)),
+           {function_type<NamedType>(tuple_type<NamedType>({}, {6, 8}), type("a", 12), {4, 13})},
+           type("T", 18),
+           {0, 19});
+  check_pass(expected, parse_header("(x: fn() -> a) -> T"));
+}
+
+BOOST_AUTO_TEST_CASE(parser_header_fn_return) {
+  const UnTypedHeader expected =
+    header(tuple_pattern({0, 2}),
+           {},
+           function_type<NamedType>(tuple_type<NamedType>({}, {8, 10}), type("a", 14), {6, 15}),
+           {0, 15});
+  check_pass(expected, parse_header("() -> fn() -> a"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_pattern_arg) {
@@ -322,11 +363,13 @@ BOOST_AUTO_TEST_CASE(parser_no_fn3) { check_single_error({{0, 1}, "expected 'fn'
 
 BOOST_AUTO_TEST_CASE(parser_bad_paren) { check_single_error({{2, 3}, "expected token" /* ? */}, parse("fn)")); }
 
-BOOST_AUTO_TEST_CASE(parser_no_expr) { check_single_error({{1, 2}, "expected literal" /* ? */}, parse_expr("{}")); }
+BOOST_AUTO_TEST_CASE(parser_no_expr) { check_single_error({{1, 2}, "expected 'let'" /* ? */}, parse_expr("{}")); }
 
 BOOST_AUTO_TEST_CASE(parser_no_return_type) {
   check_single_error({{6, 7}, "expected '('" /* ? */}, parse_header("() -> { 1 }"));
 }
+
+BOOST_AUTO_TEST_CASE(parser_fn_no_tupl) { check_single_error({{3, 4}, "expected '('"}, parse_type("fn T -> T")); }
 
 BOOST_AUTO_TEST_CASE(parser_no_return) { check_single_error({{7, 8}, "expected '->'" /* ? */}, parse("fn f() { 1 }")); }
 
@@ -373,7 +416,7 @@ BOOST_AUTO_TEST_CASE(parser_expr_bad_comma) {
 BOOST_AUTO_TEST_CASE(parser_bad_chain) { check_single_error({{18, 19}, "expected '('"}, parse("fn f() -> T { a.b }")); }
 
 BOOST_AUTO_TEST_CASE(parser_bad_chain2) {
-  check_single_error({{16, 17}, "expected token"}, parse("fn f() -> T { a.1 }"));
+  check_single_error({{18, 19}, "expected '('"}, parse("fn f() -> T { a.1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_bad_assignment) {
@@ -389,7 +432,7 @@ BOOST_AUTO_TEST_CASE(parser_let_no_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_no_expr) {
-  check_single_error({{25, 26}, "expected literal"}, parse("fn f() -> T { let x = 0; }"));
+  check_single_error({{25, 26}, "expected 'let'"}, parse("fn f() -> T { let x = 0; }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_bad_second_fn) {
