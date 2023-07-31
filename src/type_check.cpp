@@ -34,7 +34,11 @@ struct ReturnBorrow {};
 struct InvalidBorrow {
   std::string type;
 };
+
 struct UnusedBinding {};
+struct OverusedBinding {
+  int count = 0;
+};
 
 // Ordered by priority
 using TypeCheckErrorVariant =
@@ -45,7 +49,8 @@ using TypeCheckErrorVariant =
                UnableToDeduce,
                InvalidBorrow,
                ReturnBorrow,
-               UnusedBinding>;
+               UnusedBinding,
+               OverusedBinding>;
 
 struct TypeCheckError {
   TypeCheckErrorVariant type;
@@ -217,11 +222,16 @@ struct PropagationVisitor {
   std::vector<const TypedExpr*> undeclared_bindings;
   std::vector<Map<std::string, const Pattern*>> binding_names = {{}};
   Map<Variable, std::vector<VariablePropagation>> propagations;
+  Map<const Pattern*, std::pair<int, int>> binding_usages;
+  bool borrowed = false;
 
   void visit(const Pattern& pattern) {
     knot::preorder(pattern, [&](const Pattern& pattern) {
       knot::visit(pattern.v,
-                  Overloaded{[&](const Ident& ident) { binding_names.back()[ident.name] = &pattern; },
+                  Overloaded{[&](const Ident& ident) {
+                               binding_names.back()[ident.name] = &pattern;
+                               binding_usages.emplace(&pattern, std::pair(0, 0));
+                             },
                              [&](const std::vector<Pattern>& tuple) { add_tuple(propagations, tuple, &pattern); }});
     });
   }
@@ -241,7 +251,13 @@ struct PropagationVisitor {
                        return map.find(ident.name) != map.end();
                      });
                      if(sit != binding_names.rend()) {
-                       add_pair(propagations, &expr, sit->at(ident.name));
+                       const Pattern* binding = sit->at(ident.name);
+                       add_pair(propagations, &expr, binding);
+                       if(borrowed) {
+                         binding_usages[binding].second++;
+                       } else {
+                         binding_usages[binding].first++;
+                       }
                      } else {
                        undeclared_bindings.push_back(&expr);
                      }
@@ -261,7 +277,7 @@ struct PropagationVisitor {
 
                      binding_names.pop_back();
                    }});
-
+      borrowed = std::holds_alternative<TypedBorrowExpr>(expr.v);
       return !std::holds_alternative<TypedScopeExpr>(expr.v);
     });
   }
@@ -273,7 +289,7 @@ auto calculate_propagations(const TypedFunction& f) {
   v.visit(f.header.pattern);
   v.visit(f.expr);
 
-  return std::pair(std::move(v.propagations), std::move(v.undeclared_bindings));
+  return std::tuple(std::move(v.propagations), std::move(v.binding_usages), std::move(v.undeclared_bindings));
 }
 
 template <typename T>
@@ -419,6 +435,9 @@ ContextualError generate_error(const Env& e, const TypeCheckError& error, const 
         return ContextualError{p->ref,
                                fmt::format("unused binding '{}'", std::get<Ident>(p->v).name),
                                {"prefix with an _ to silence this error"}};
+      },
+      [](const OverusedBinding& b, const Pattern* p) {
+        return ContextualError{p->ref, fmt::format("binding '{}' used {} times", std::get<Ident>(p->v).name, b.count)};
       },
       [](const auto&, const auto* var) {
         assert(false);
@@ -665,22 +684,25 @@ find_invalid_borrows(const TypedFunction& f, const Map<Variable, CompoundType<Ty
   return errors;
 }
 
-std::vector<TypeCheckError> find_unused_bindings(
-  const TypedFunction& f, const Map<Variable, std::vector<VariablePropagation>>& propagations, bool debug) {
+std::vector<TypeCheckError> find_binding_usage_errors(const Env& env,
+                                                      const TypedFunction& f,
+                                                      const Map<Variable, CompoundType<TypeID>>& types,
+                                                      const Map<const Pattern*, std::pair<int, int>>& binding_usage) {
   std::vector<TypeCheckError> errors;
 
-  knot::preorder(f, [&](const Pattern& p) {
-    knot::visit(p.v, [&](const Ident& i) {
-      const auto& props = propagations.at(&p);
-      const auto uses = std::count_if(props.begin(), props.end(), [](const auto& p) {
-        return p.wrap && std::holds_alternative<const TypedExpr*>(p.target);
-      });
+  for(const auto [pattern, usage] : binding_usage) {
+    if(usage == std::pair(0, 0) && std::get<Ident>(pattern->v).name[0] != '_') {
+      errors.push_back({UnusedBinding{}, pattern});
+    } else if(usage.first > 1) {
+      const std::optional<TypeID> type = std::visit(
+        Overloaded{[](TypeID t) { return std::optional(t); }, [](const auto&) { return std::optional<TypeID>(); }},
+        types.at(pattern).v);
 
-      if(uses == 0 && i.name[0] != '_') {
-        errors.push_back({UnusedBinding{}, &p});
+      if(type && env.copy_types.find(*type) == env.copy_types.end()) {
+        errors.push_back({OverusedBinding{usage.first}, pattern});
       }
-    });
-  });
+    }
+  }
 
   return errors;
 }
@@ -811,10 +833,7 @@ TypedHeader inferred_header(const TypedExpr& expr, Set<std::string> active) {
 
 ContextualResult<std::variant<CheckedFunction, TypedFunction>>
 overload_resolution(const Env& e, TypedFunction f, std::optional<FunctionType<TypeID>> type_hint, bool debug) {
-  auto prop_result = calculate_propagations(f);
-
-  const Map<Variable, std::vector<VariablePropagation>> propagations = std::move(prop_result.first);
-  const std::vector<const TypedExpr*> undeclared_bindings = std::move(prop_result.second);
+  const auto [propagations, binding_usage, undeclared_bindings] = calculate_propagations(f);
 
   auto cp_result = constraint_propagation(
     e, propagations, undeclared_bindings, create_initial_candidates(e, f, std::move(type_hint)), debug);
@@ -826,7 +845,7 @@ overload_resolution(const Env& e, TypedFunction f, std::optional<FunctionType<Ty
     flatten(cp_errors,
             find_returned_borrows(f, types),
             find_invalid_borrows(f, types),
-            find_unused_bindings(f, propagations, debug));
+            find_binding_usage_errors(e, f, types, binding_usage));
 
   if(errors.empty()) {
     annotate_types(&f, types);
@@ -838,17 +857,15 @@ overload_resolution(const Env& e, TypedFunction f, std::optional<FunctionType<Ty
           .map(Construct<std::variant<CheckedFunction, TypedFunction>>{})
       : std::variant<CheckedFunction, TypedFunction>{f /* TODO move? (errors need to be owning) */};
 
-  return result_and_errors(std::move(result), std::move(errors)).map_error([&](std::vector<TypeCheckError> errors) {
-    return generate_errors(e, std::move(errors), propagations, types);
-  });
+  return result_and_errors(std::move(result), std::move(errors))
+    .map_error([&, p = &propagations](std::vector<TypeCheckError> errors) {
+      return generate_errors(e, std::move(errors), *p, types);
+    });
 }
 
 ContextualResult<CheckedFunction>
 overload_resolution_concrete(const Env& e, TypedFunction f, std::optional<FunctionType<TypeID>> type_hint, bool debug) {
-  auto prop_result = calculate_propagations(f);
-
-  const Map<Variable, std::vector<VariablePropagation>> propagations = std::move(prop_result.first);
-  const std::vector<const TypedExpr*> undeclared_bindings = std::move(prop_result.second);
+  const auto [propagations, binding_usage, undeclared_bindings] = calculate_propagations(f);
 
   auto cp_result = constraint_propagation(
     e, propagations, undeclared_bindings, create_initial_candidates(e, f, std::move(type_hint)), debug);
@@ -860,7 +877,7 @@ overload_resolution_concrete(const Env& e, TypedFunction f, std::optional<Functi
     flatten(cp_errors,
             find_returned_borrows(f, types),
             find_invalid_borrows(f, types),
-            find_unused_bindings(f, propagations, debug),
+            find_binding_usage_errors(e, f, types, binding_usage),
             find_unresolved_errors(types));
 
   if(errors.empty()) {
@@ -868,8 +885,8 @@ overload_resolution_concrete(const Env& e, TypedFunction f, std::optional<Functi
   }
 
   return result_and_errors(find_overloads(e, propagations, undeclared_bindings, f, types), std::move(errors))
-    .map_error([&](std::vector<TypeCheckError> errors) {
-      return generate_errors(e, std::move(errors), propagations, types);
+    .map_error([&, p = &propagations](std::vector<TypeCheckError> errors) {
+      return generate_errors(e, std::move(errors), *p, types);
     });
 }
 

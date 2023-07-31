@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace ooze {
@@ -35,6 +36,7 @@ struct Env {
   std::unordered_map<TypeID, std::string> type_names;
   std::unordered_map<std::string, TypeID> type_ids;
   std::unordered_map<std::string, std::vector<EnvFunction>> functions;
+  std::unordered_set<TypeID> copy_types;
 
   template <typename F>
   void add_function(const std::string& name, F&& f) {
@@ -47,9 +49,22 @@ struct Env {
   }
 
   template <typename T>
-  void add_type(const std::string& name) {
-    type_ids.emplace(name, anyf::type_id<T>());
-    type_names.emplace(anyf::type_id<T>(), name);
+  void add_type(const std::string& name, std::optional<bool> copy_override = {}) {
+    const TypeID type = anyf::type_id<T>();
+
+    type_ids.emplace(name, type);
+    type_names.emplace(type, name);
+
+    constexpr bool is_default_copy =
+      std::is_copy_constructible_v<T> && std::is_trivially_destructible_v<T> && sizeof(T) <= 64;
+
+    const bool is_copy_type =
+      (copy_override.has_value() && *copy_override) || (!copy_override.has_value() && is_default_copy);
+
+    if(is_copy_type) {
+      assert(std::is_copy_constructible_v<T>);
+      copy_types.insert(type);
+    }
 
     if constexpr(std::is_copy_constructible_v<T>) {
       add_function("clone", [](const T& t) { return t; });
