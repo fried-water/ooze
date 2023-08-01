@@ -3,8 +3,6 @@
 #include "ooze/primatives.h"
 #include "ooze/type.h"
 
-#include <anyf/type.h>
-
 namespace ooze {
 
 using Literal = std::variant<bool, std::string, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64>;
@@ -106,7 +104,7 @@ struct NamedType {
 struct EnvFunctionRef {
   std::string name;
   int overload_idx = 0;
-  FunctionType<anyf::TypeID> type;
+  FunctionType<TypeID> type;
 
   KNOT_ORDERED(EnvFunctionRef);
 };
@@ -122,21 +120,21 @@ using UnTypedFunction = ast::Function<NamedType>;
 using UnTypedAST = std::vector<std::tuple<std::string, UnTypedFunction>>;
 
 // Replace type names with type id
-using TypedAssignment = ast::Assignment<anyf::TypeID>;
-using TypedScopeExpr = ast::ScopeExpr<anyf::TypeID>;
-using TypedCallExpr = ast::CallExpr<anyf::TypeID>;
-using TypedBorrowExpr = ast::BorrowExpr<anyf::TypeID>;
-using TypedExpr = ast::Expr<anyf::TypeID>;
-using TypedHeader = ast::FunctionHeader<anyf::TypeID>;
-using TypedFunction = ast::Function<anyf::TypeID>;
+using TypedAssignment = ast::Assignment<TypeID>;
+using TypedScopeExpr = ast::ScopeExpr<TypeID>;
+using TypedCallExpr = ast::CallExpr<TypeID>;
+using TypedBorrowExpr = ast::BorrowExpr<TypeID>;
+using TypedExpr = ast::Expr<TypeID>;
+using TypedHeader = ast::FunctionHeader<TypeID>;
+using TypedFunction = ast::Function<TypeID>;
 
 // Replace function names with specific function overloads
-using CheckedAssignment = ast::Assignment<anyf::TypeID, EnvFunctionRef>;
-using CheckedScopeExpr = ast::ScopeExpr<anyf::TypeID, EnvFunctionRef>;
-using CheckedCallExpr = ast::CallExpr<anyf::TypeID, EnvFunctionRef>;
-using CheckedBorrowExpr = ast::BorrowExpr<anyf::TypeID, EnvFunctionRef>;
-using CheckedExpr = ast::Expr<anyf::TypeID, EnvFunctionRef>;
-using CheckedHeader = ast::FunctionHeader<anyf::TypeID>;
-using CheckedFunction = ast::Function<anyf::TypeID, EnvFunctionRef>;
+using CheckedAssignment = ast::Assignment<TypeID, EnvFunctionRef>;
+using CheckedScopeExpr = ast::ScopeExpr<TypeID, EnvFunctionRef>;
+using CheckedCallExpr = ast::CallExpr<TypeID, EnvFunctionRef>;
+using CheckedBorrowExpr = ast::BorrowExpr<TypeID, EnvFunctionRef>;
+using CheckedExpr = ast::Expr<TypeID, EnvFunctionRef>;
+using CheckedHeader = ast::FunctionHeader<TypeID>;
+using CheckedFunction = ast::Function<TypeID, EnvFunctionRef>;
 
 } // namespace ooze

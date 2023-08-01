@@ -5,8 +5,8 @@
 #include "ooze/primatives.h"
 #include "ooze/result.h"
 #include "ooze/slice.h"
+#include "ooze/span.h"
 
-#include <anyf/span.h>
 #include <fmt/core.h>
 #include <knot/core.h>
 
@@ -27,8 +27,6 @@ using Map = std::unordered_map<Key, Value, knot::Hash>;
 
 template <typename T>
 using Set = std::unordered_set<T, knot::Hash>;
-
-using anyf::Span;
 
 template <class... Ts>
 struct Overloaded : Ts... {

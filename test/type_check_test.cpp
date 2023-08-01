@@ -9,13 +9,8 @@ namespace ooze {
 
 namespace {
 
-const CompoundType<TypeID> I = leaf_type<TypeID>(anyf::type_id<i32>());
-const CompoundType<TypeID> F = leaf_type<TypeID>(anyf::type_id<f32>());
-
-template <typename... Ts>
-auto errors(Ts... ts) {
-  return tl::unexpected{std::vector<ContextualError>{std::move(ts)...}};
-}
+const CompoundType<TypeID> I = leaf_type<TypeID>(type_id<i32>());
+const CompoundType<TypeID> F = leaf_type<TypeID>(type_id<f32>());
 
 constexpr auto clear_refs = [](auto f) {
   knot::preorder(f, [](Slice& ref) { ref = {}; });

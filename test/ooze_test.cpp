@@ -2,15 +2,14 @@
 
 #include "bindings.h"
 #include "ooze/core.h"
-
-#include <anyf/executor/task_executor.h>
+#include "ooze/executor/task_executor.h"
 
 namespace ooze {
 
 namespace {
 
 StringResult<Tree<Any>> run(Env env, std::string_view script, std::string_view expr) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   return parse_script(std::move(env), script)
     .append_state(Bindings{})
@@ -24,7 +23,7 @@ StringResult<Tree<Any>> run(Env env, std::string_view script, std::string_view e
 
 StringResult<std::unordered_map<std::string, Tree<Any>>>
 assign(Env env, std::string_view script, std::string_view expr) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   return parse_script(std::move(env), script)
     .append_state(Bindings{})
@@ -42,8 +41,8 @@ assign(Env env, std::string_view script, std::string_view expr) {
 
 #define check_any(_EXP, _EXPR)                                                                                         \
   [](auto e, const Any& a) {                                                                                           \
-    BOOST_REQUIRE(anyf::holds_alternative<decltype(e)>(a));                                                            \
-    BOOST_REQUIRE(e == anyf::any_cast<decltype(e)>(a));                                                                \
+    BOOST_REQUIRE(holds_alternative<decltype(e)>(a));                                                                  \
+    BOOST_REQUIRE(e == any_cast<decltype(e)>(a));                                                                      \
   }(_EXP, _EXPR)
 
 #define check_any_tree(_EXP, _EXPR)                                                                                    \
@@ -325,19 +324,19 @@ BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_to_string) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   BOOST_CHECK_EQUAL("1", check_result(run_to_string(executor, create_primative_env(), {}, "1")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_to_string_fn) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
   BOOST_CHECK_EQUAL("abc", check_result(run_to_string(executor, std::move(e), {}, "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_ref_binding) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   Env e = create_primative_env();
   e.add_function("f", [](const int& x) { return std::to_string(x); });
@@ -360,7 +359,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_ref_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   const auto result =
     run(executor, create_primative_env(), {}, "let x = 1")
@@ -380,7 +379,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   Env e = create_primative_env();
   e.add_function("f", [](const int& x) { return x; });
@@ -403,7 +402,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   Env e = create_primative_env();
   e.add_function("f", [](const int& x) { return x; });
@@ -421,7 +420,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
 
   const auto result =
     run(executor, create_primative_env(), {}, "let x = 3")
@@ -450,7 +449,7 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
 }
 
 BOOST_AUTO_TEST_CASE(ooze_print_fn) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
 

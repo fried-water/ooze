@@ -1,12 +1,11 @@
 #pragma once
 
+#include "ooze/any_function.h"
 #include "ooze/ast.h"
+#include "ooze/graph.h"
+#include "ooze/traits.h"
 #include "ooze/type.h"
 
-#include <anyf/any_function.h>
-#include <anyf/graph.h>
-#include <anyf/traits.h>
-#include <anyf/type.h>
 #include <knot/core.h>
 
 #include <algorithm>
@@ -17,20 +16,13 @@
 
 namespace ooze {
 
-using anyf::Any;
-using anyf::AnyFunction;
-using anyf::FunctionGraph;
-using anyf::Span;
-using anyf::TypeID;
-using anyf::TypeProperties;
-
 struct EnvFunction {
   FunctionType<TypeID> type;
   std::variant<AnyFunction, FunctionGraph, TypedFunction> f;
   std::vector<std::pair<FunctionType<TypeID>, FunctionGraph>> instatiations;
 };
 
-FunctionType<anyf::TypeID> type_of(const AnyFunction&);
+FunctionType<TypeID> type_of(const AnyFunction&);
 
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
@@ -50,7 +42,7 @@ struct Env {
 
   template <typename T>
   void add_type(const std::string& name, std::optional<bool> copy_override = {}) {
-    const TypeID type = anyf::type_id<T>();
+    const TypeID type = type_id<T>();
 
     type_ids.emplace(name, type);
     type_names.emplace(type, name);
@@ -84,7 +76,7 @@ auto generate_constructor(knot::TypeList<Ts...>) {
 
 template <typename T>
 void add_tieable_type(Env& e, const std::string& name) {
-  const TypeID type = anyf::type_id<T>();
+  const TypeID type = type_id<T>();
 
   e.add_type<T>(name);
 

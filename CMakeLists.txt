@@ -9,8 +9,8 @@ endif()
 
 find_package(fmt REQUIRED)
 
-add_subdirectory(ext/AnyFunction)
 add_subdirectory(ext/ctre)
+add_subdirectory(ext/knot)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_options(-fsanitize=address)
@@ -23,6 +23,8 @@ add_library(ooze
   src/io.cpp
   src/parser.cpp
   src/pretty_print.cpp
+  src/graph.cpp
+  src/graph_execution.cpp
   src/graph_construction.cpp
   src/type_check.cpp
   src/repl.cpp
@@ -34,7 +36,7 @@ target_include_directories(ooze PRIVATE src PUBLIC include)
 target_precompile_headers(ooze PRIVATE src/pch.h)
 target_link_libraries(ooze
   PUBLIC
-    any_function
+    knot
   PRIVATE
     ctre fmt)
 

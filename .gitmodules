@@ -1,3 +1,6 @@
 [submodule "ext/AnyFunction"]
 	path = ext/AnyFunction
 	url = git@github.com:fried-water/AnyFunction.git
+[submodule "knot"]
+	path = ext/knot
+	url = git@github.com:fried-water/knot.git

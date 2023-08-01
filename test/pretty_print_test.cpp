@@ -17,10 +17,10 @@ BOOST_AUTO_TEST_CASE(pretty_print_type) {
   const Env e = create_primative_env();
 
   const auto int_named = leaf_type<NamedType>({"i32"});
-  const auto int_typed = leaf_type<TypeID>(anyf::type_id<int>());
+  const auto int_typed = leaf_type<TypeID>(type_id<int>());
 
-  BOOST_CHECK_EQUAL("i32", pretty_print(e, leaf_type<TypeID>(anyf::type_id<int>())));
-  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", anyf::type_id<int>().id), pretty_print({}, anyf::type_id<int>()));
+  BOOST_CHECK_EQUAL("i32", pretty_print(e, leaf_type<TypeID>(type_id<int>())));
+  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", type_id<int>().id), pretty_print({}, type_id<int>()));
 
   BOOST_CHECK_EQUAL("i32", pretty_print(int_named));
   BOOST_CHECK_EQUAL("i32", pretty_print(e, int_typed));

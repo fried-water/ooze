@@ -1,9 +1,8 @@
 #include "test.h"
 
+#include "ooze/executor/task_executor.h"
 #include "pretty_print.h"
 #include "repl.h"
-
-#include <anyf/executor/task_executor.h>
 
 namespace ooze {
 
@@ -23,14 +22,14 @@ namespace {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(repl_empty) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   const auto [ouptut, env, bindings] = step_repl(executor, {}, {}, "");
   BOOST_CHECK(ouptut.empty());
   BOOST_CHECK(bindings.empty());
 }
 
 BOOST_AUTO_TEST_CASE(repl_run_expr) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("pow", [](int x) { return x * x; });
 
@@ -41,7 +40,7 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_type<std::unique_ptr<int>>("unique_int");
 
@@ -54,7 +53,7 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_store_function) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
 
   e.add_function("f", []() { return 37; });
@@ -64,13 +63,13 @@ BOOST_AUTO_TEST_CASE(repl_store_function) {
 
   BOOST_REQUIRE_EQUAL(1, b.size());
   Binding& x = std::get<Binding>(b.at("x").v);
-  BOOST_CHECK(function_type(tuple_type<TypeID>({}), leaf_type(anyf::type_id<int>())) == x.type);
+  BOOST_CHECK(function_type(tuple_type<TypeID>({}), leaf_type(type_id<int>())) == x.type);
 
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e;
   Bindings b;
 
@@ -79,7 +78,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
 
   const std::vector<std::string> one_unknown_binding{
-    "1 binding(s)", fmt::format("  x: type 0x{:x}", anyf::type_id<int>().id)};
+    "1 binding(s)", fmt::format("  x: type 0x{:x}", type_id<int>().id)};
 
   std::tie(e, b) = step_and_compare(one_unknown_binding, ":b", std::move(e), std::move(b));
 
@@ -89,7 +88,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   e.add_type<int>("i32");
 
   const std::vector<std::string> two_bindings{
-    "2 binding(s)", "  x: i32", fmt::format("  y: {}", pretty_print(e, anyf::type_id<std::string>()))};
+    "2 binding(s)", "  x: i32", fmt::format("  y: {}", pretty_print(e, type_id<std::string>()))};
 
   std::tie(e, b) = step_and_compare(two_bindings, ":b", std::move(e), std::move(b));
   BOOST_REQUIRE(b.size() == 2);
@@ -97,15 +96,15 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   Binding& x = std::get<Binding>(b.at("x").v);
   Binding& y = std::get<Binding>(b.at("y").v);
 
-  BOOST_CHECK(leaf_type(anyf::type_id<int>()) == x.type);
-  BOOST_CHECK(leaf_type(anyf::type_id<std::string>()) == y.type);
+  BOOST_CHECK(leaf_type(type_id<int>()) == x.type);
+  BOOST_CHECK(leaf_type(type_id<std::string>()) == y.type);
 
-  BOOST_CHECK_EQUAL(5, anyf::any_cast<int>(std::move(x.future).wait()));
-  BOOST_CHECK_EQUAL("abc", anyf::any_cast<std::string>(std::move(y.future).wait()));
+  BOOST_CHECK_EQUAL(5, any_cast<int>(std::move(x.future).wait()));
+  BOOST_CHECK_EQUAL("abc", any_cast<std::string>(std::move(y.future).wait()));
 }
 
 BOOST_AUTO_TEST_CASE(repl_binding_overload_fn) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
 
   e.add_function("f", []() { return 1; });
@@ -116,7 +115,7 @@ BOOST_AUTO_TEST_CASE(repl_binding_overload_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
   Bindings b;
 
@@ -131,7 +130,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
   struct A {};
   struct B {};
 
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e;
 
   add_tieable_type<int>(e, "i32");
@@ -148,12 +147,12 @@ BOOST_AUTO_TEST_CASE(repl_types) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_functions) {
-  auto executor = anyf::make_task_executor();
+  auto executor = make_task_executor();
   Env e = create_primative_env();
 
   struct A {};
 
-  const auto a_type = anyf::type_id<A>();
+  const auto a_type = type_id<A>();
 
   e.add_function("create_a", []() { return A{}; });
   e.add_function("read_a", [](const A&) {});

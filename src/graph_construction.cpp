@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "graph_construction.h"
+#include "graph_inner.h"
 #include "ooze/tree.h"
 #include "pretty_print.h"
 
@@ -9,9 +10,6 @@
 namespace ooze {
 
 namespace {
-
-using anyf::FunctionGraph;
-using anyf::Oterm;
 
 std::vector<TypeProperties> input_types(const CompoundType<TypeID>& type) {
   std::vector<TypeProperties> types;
@@ -29,7 +27,7 @@ std::vector<TypeProperties> input_types(const CompoundType<TypeID>& type) {
         return false;
       },
       [&](const FunctionType<TypeID>& t) {
-        types.push_back(TypeProperties{anyf::type_id<anyf::FunctionGraph>(), true});
+        types.push_back(TypeProperties{type_id<FunctionGraph>(), true});
         return false;
       },
     });
@@ -44,7 +42,7 @@ std::vector<TypeID> output_types(const CompoundType<TypeID>& type) {
 }
 
 struct GraphContext {
-  anyf::ConstructingGraph cg;
+  ConstructingGraph cg;
   std::vector<Map<std::string, std::tuple<CompoundType<TypeID>, std::vector<Oterm>>>> bindings;
   std::vector<Oterm> terms;
   std::vector<TypeProperties> fn_input_types;
@@ -208,8 +206,8 @@ ContextualResult<GraphContext> add_expr(const Env& e, const CheckedExpr& expr, G
 
 } // namespace
 
-ContextualResult<anyf::FunctionGraph> create_graph(const Env& e, const CheckedFunction& f) {
-  auto [cg, terms] = anyf::make_graph(input_types(*f.header.type.input));
+ContextualResult<FunctionGraph> create_graph(const Env& e, const CheckedFunction& f) {
+  auto [cg, terms] = make_graph(input_types(*f.header.type.input));
   return add_expr(
            e,
            f.expr,

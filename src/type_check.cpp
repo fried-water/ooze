@@ -303,8 +303,8 @@ CompoundType<TypeID> language_type(const T& t) {
                [&](const std::vector<Pattern>& v) { return floating_tuple_type(v.size()); },
                [&](const TypedBorrowExpr&) { return borrow_type(floating_type<TypeID>()); },
                [&](const Literal& l) {
-                 return leaf_type(std::visit(
-                   [](const auto& ele) { return anyf::type_id(knot::decay(knot::Type<decltype(ele)>{})); }, l));
+                 return leaf_type(
+                   std::visit([](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, l));
                },
                [&](const auto&) { return floating_type<TypeID>(); }},
     t.v);

@@ -32,3 +32,25 @@
     BOOST_REQUIRE_EQUAL(std::distance(e.begin(), e.end()), std::distance(a.begin(), a.end()));                         \
     for(int i = 0; i < int(e.size()); ++i) BOOST_CHECK_EQUAL(e[i], a[i]);                                              \
   }(expected, actual)
+
+struct Sentinal {
+  int copies = 0;
+  int moves = 0;
+
+  Sentinal() = default;
+
+  Sentinal(const Sentinal& x) : copies(x.copies + 1), moves(x.moves) {}
+  Sentinal(Sentinal&& x) : copies(x.copies), moves(x.moves + 1) {}
+
+  Sentinal& operator=(const Sentinal& x) {
+    copies = x.copies + 1;
+    moves = x.moves;
+    return *this;
+  }
+
+  Sentinal& operator=(Sentinal&& x) {
+    copies = x.copies;
+    moves = x.moves + 1;
+    return *this;
+  }
+};
