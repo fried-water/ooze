@@ -12,10 +12,10 @@ class Span {
 
 public:
   using value_type = T;
-  using reference_type = const T&;
-  using pointer_type = const T*;
-  using iterator_type = const T*;
-  using const_iterator_type = const T*;
+  using reference = const T&;
+  using pointer = const T*;
+  using iterator = const T*;
+  using const_iterator = const T*;
 
   Span() = default;
 

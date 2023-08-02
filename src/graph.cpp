@@ -9,15 +9,6 @@ namespace ooze {
 
 namespace {
 
-struct OtermUsage {
-  int values = {};
-  int borrows = {};
-};
-
-} // namespace
-
-namespace {
-
 std::vector<Oterm> make_oterms(int node, Span<TypeProperties> types) {
   std::vector<Oterm> terms;
   terms.reserve(types.size());
@@ -280,14 +271,9 @@ std::vector<Oterm> ConstructingGraph::add_while(FunctionGraph g, Span<Oterm> inp
 FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs) && {
   assert(_state.owned_fwds.size() > 0);
 
-  _state.output_types.reserve(outputs.size());
-  std::transform(outputs.begin(), outputs.end(), std::back_inserter(_state.output_types), [&](Oterm t) {
-    return type_of(_state, t).id;
-  });
+  _state.output_types = transform_to_vec(outputs, [&](Oterm t) { return type_of(_state, t).id; });
 
-  std::vector<TypeProperties> props;
-  props.reserve(outputs.size());
-  std::transform(_state.output_types.begin(), _state.output_types.end(), std::back_inserter(props), [](TypeID t) {
+  std::vector<TypeProperties> props = transform_to_vec(_state.output_types, [](TypeID t) {
     return TypeProperties{t, true};
   });
 

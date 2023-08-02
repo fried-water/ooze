@@ -37,7 +37,7 @@ auto transform_to(R&& range, F&& f, O out = {}) {
 
 template <typename R, typename T = typename std::decay_t<R>::value_type>
 auto to_vec(R&& range, std::vector<T> v = {}) {
-  using category = typename std::decay_t<R>::iterator::iterator_category;
+  using category = typename std::iterator_traits<typename std::decay_t<R>::iterator>::iterator_category;
   if constexpr(std::is_convertible_v<category, std::random_access_iterator_tag>) {
     v.reserve(v.size() + std::distance(std::begin(range), std::end(range)));
   }
@@ -48,7 +48,7 @@ template <typename R,
           typename F,
           typename T = std::decay_t<decltype(std::declval<F>()(std::move(*std::declval<R>().begin())))>>
 auto transform_to_vec(R&& range, F&& f, std::vector<T> v = {}) {
-  using category = typename std::decay_t<R>::iterator::iterator_category;
+  using category = typename std::iterator_traits<typename std::decay_t<R>::iterator>::iterator_category;
   if constexpr(std::is_convertible_v<category, std::random_access_iterator_tag>) {
     v.reserve(v.size() + std::distance(std::begin(range), std::end(range)));
   }
