@@ -2,46 +2,14 @@
 
 #include "ooze/any_function.h"
 #include "ooze/graph.h"
-#include "ooze/result.h"
+
+#include <exception>
 
 namespace ooze {
 
-struct BadArity {
-  int expected = 0;
-  int given = 0;
-
-  KNOT_ORDERED(BadArity);
+struct GraphError final : public std::exception {
+  const char* what() const noexcept override { return "graph_error"; }
 };
-
-struct BadType {
-  int index = 0;
-  TypeID expected;
-  TypeID given;
-
-  KNOT_ORDERED(BadType);
-};
-
-struct AlreadyMoved {
-  int index = 0;
-  TypeID type;
-
-  KNOT_ORDERED(AlreadyMoved);
-};
-
-struct CannotCopy {
-  int index = 0;
-  TypeID type;
-
-  KNOT_ORDERED(CannotCopy);
-};
-
-struct MismatchedBranchTypes {
-  KNOT_ORDERED(MismatchedBranchTypes);
-};
-
-using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy, MismatchedBranchTypes>;
-
-std::string msg(const GraphError& e);
 
 struct Oterm {
   int node_id = 0;
@@ -101,17 +69,16 @@ public:
 
   TypeProperties type(Oterm);
 
-  Result<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm>);
-  Result<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
+  std::vector<Oterm> add(AnyFunction, Span<Oterm>);
+  std::vector<Oterm> add(const FunctionGraph&, Span<Oterm>);
 
-  Result<std::vector<Oterm>, GraphError>
-  add_functional(Span<TypeProperties>, std::vector<TypeID>, Oterm fn, Span<Oterm>);
+  std::vector<Oterm> add_functional(Span<TypeProperties>, std::vector<TypeID>, Oterm fn, Span<Oterm>);
 
-  Result<std::vector<Oterm>, GraphError> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
-  Result<std::vector<Oterm>, GraphError> add_select(Oterm cond, Span<Oterm> if_, Span<Oterm> else_);
-  Result<std::vector<Oterm>, GraphError> add_while(FunctionGraph, Span<Oterm>);
+  std::vector<Oterm> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
+  std::vector<Oterm> add_select(Oterm cond, Span<Oterm> if_, Span<Oterm> else_);
+  std::vector<Oterm> add_while(FunctionGraph, Span<Oterm>);
 
-  Result<FunctionGraph, GraphError> finalize(Span<Oterm>) &&;
+  FunctionGraph finalize(Span<Oterm>) &&;
 
   friend std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties>);
 };

@@ -95,12 +95,12 @@ ValueForward& fwd_of(FunctionGraph::State& g, Oterm t) {
   }
 }
 
-std::optional<GraphError> check_types(const FunctionGraph::State& g,
-                                      const std::unordered_map<Oterm, OtermUsage, knot::Hash>& usage,
-                                      Span<TypeProperties> expected_types,
-                                      Span<Oterm> inputs) {
+void check_types(const FunctionGraph::State& g,
+                 const std::unordered_map<Oterm, OtermUsage, knot::Hash>& usage,
+                 Span<TypeProperties> expected_types,
+                 Span<Oterm> inputs) {
   if(inputs.size() != expected_types.size()) {
-    return GraphError{BadArity{int(expected_types.size()), int(inputs.size())}};
+    throw GraphError{};
   }
 
   // inputs moved in this invocation alone
@@ -112,23 +112,21 @@ std::optional<GraphError> check_types(const FunctionGraph::State& g,
     const TypeProperties given_type = type_of(g, oterm);
 
     if(given_type.id != input_type.id) {
-      return GraphError{BadType{i, input_type.id, given_type.id}};
+      throw GraphError{};
     } else if(!input_type.value || is_copyable(input_type.id)) {
       // always fine
     } else if(!given_type.value) {
-      return GraphError{CannotCopy{oterm.port, input_type.id}};
+      throw GraphError{};
     } else {
       const auto usage_it = usage.find(oterm);
       const auto cur_it = std::find(moved_inputs.begin(), moved_inputs.end(), oterm);
       if(cur_it != moved_inputs.end() || (usage_it != usage.end() && usage_it->second.values > 0)) {
-        return GraphError{AlreadyMoved{i, input_type.id}};
+        throw GraphError{};
       } else {
         moved_inputs.push_back(oterm);
       }
     }
   }
-
-  return {};
 }
 
 void add_edges(FunctionGraph::State& g,
@@ -167,15 +165,12 @@ ValueForward fixup_fwd(TypeProperties type, ValueForward fwd) {
   return fwd;
 }
 
-Result<std::vector<Oterm>, GraphError>
-add_internal(FunctionGraph::State& g,
-             std::unordered_map<Oterm, OtermUsage, knot::Hash>& usage,
-             Expr expr,
-             Span<Oterm> inputs,
-             Span<TypeProperties> input_types) {
-  if(const auto check_failure = check_types(g, usage, input_types, inputs); check_failure) {
-    return Failure{*check_failure};
-  }
+std::vector<Oterm> add_internal(FunctionGraph::State& g,
+                                std::unordered_map<Oterm, OtermUsage, knot::Hash>& usage,
+                                Expr expr,
+                                Span<Oterm> inputs,
+                                Span<TypeProperties> input_types) {
+  check_types(g, usage, input_types, inputs);
 
   add_edges(g, usage, inputs, input_types);
 
@@ -191,17 +186,15 @@ add_internal(FunctionGraph::State& g,
 
 TypeProperties ConstructingGraph::type(Oterm oterm) { return type_of(_state->g, oterm); }
 
-Result<std::vector<Oterm>, GraphError> ConstructingGraph::add(AnyFunction f, Span<Oterm> inputs) {
+std::vector<Oterm> ConstructingGraph::add(AnyFunction f, Span<Oterm> inputs) {
   const auto shared_f = std::make_shared<const AnyFunction>(std::move(f));
   return add_internal(_state->g, _state->usage, shared_f, inputs, shared_f->input_types());
 }
 
-Result<std::vector<Oterm>, GraphError> ConstructingGraph::add(const FunctionGraph& g_outer, Span<Oterm> inputs) {
+std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g_outer, Span<Oterm> inputs) {
   const FunctionGraph::State& g = *g_outer.state;
 
-  if(const auto check_result = check_types(_state->g, _state->usage, g.input_types, inputs); check_result) {
-    return Failure{*check_result};
-  }
+  check_types(_state->g, _state->usage, g.input_types, inputs);
 
   const int offset = int(_state->g.owned_fwds.size()) - 1;
 
@@ -239,7 +232,7 @@ Result<std::vector<Oterm>, GraphError> ConstructingGraph::add(const FunctionGrap
   return outputs;
 }
 
-Result<std::vector<Oterm>, GraphError> ConstructingGraph::add_functional(
+std::vector<Oterm> ConstructingGraph::add_functional(
   Span<TypeProperties> fn_input_types, std::vector<TypeID> outputs, Oterm fn, Span<Oterm> fn_inputs) {
   // TODO: find a way to type check fn arguments and derive fn types
 
@@ -256,11 +249,10 @@ Result<std::vector<Oterm>, GraphError> ConstructingGraph::add_functional(
   return add_internal(_state->g, _state->usage, SExpr{std::move(outputs)}, inputs, input_types);
 }
 
-Result<std::vector<Oterm>, GraphError>
-ConstructingGraph::add_if(FunctionGraph if_branch, FunctionGraph else_branch, Span<Oterm> inputs) {
+std::vector<Oterm> ConstructingGraph::add_if(FunctionGraph if_branch, FunctionGraph else_branch, Span<Oterm> inputs) {
   if(if_branch.state->input_types != else_branch.state->input_types ||
      if_branch.state->output_types != else_branch.state->output_types) {
-    return Failure{GraphError{MismatchedBranchTypes{}}};
+    throw GraphError{};
   }
 
   std::vector<TypeProperties> input_types;
@@ -272,10 +264,9 @@ ConstructingGraph::add_if(FunctionGraph if_branch, FunctionGraph else_branch, Sp
     _state->g, _state->usage, IfExpr{std::move(if_branch), std::move(else_branch)}, inputs, input_types);
 }
 
-Result<std::vector<Oterm>, GraphError>
-ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_branch, Span<Oterm> else_branch) {
+std::vector<Oterm> ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_branch, Span<Oterm> else_branch) {
   if(if_branch.size() != else_branch.size()) {
-    return Failure{GraphError{MismatchedBranchTypes{}}};
+    throw GraphError{};
   }
 
   std::vector<TypeProperties> types;
@@ -284,7 +275,7 @@ ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_branch, Span<Oterm> els
 
   for(size_t i = 0; i < if_branch.size(); i++) {
     if(types[i] != type(else_branch[i])) {
-      return Failure{GraphError{MismatchedBranchTypes{}}};
+      throw GraphError{};
     }
   }
 
@@ -310,7 +301,7 @@ ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_branch, Span<Oterm> els
   return add_internal(_state->g, _state->usage, SelectExpr{std::move(types)}, inputs, input_types);
 }
 
-Result<std::vector<Oterm>, GraphError> ConstructingGraph::add_while(FunctionGraph g, Span<Oterm> inputs) {
+std::vector<Oterm> ConstructingGraph::add_while(FunctionGraph g, Span<Oterm> inputs) {
   std::vector<TypeProperties> input_types;
   input_types.reserve(g.state->input_types.size() + 1);
   input_types.push_back(TypeProperties{type_id<bool>(), true});
@@ -319,7 +310,7 @@ Result<std::vector<Oterm>, GraphError> ConstructingGraph::add_while(FunctionGrap
   return add_internal(_state->g, _state->usage, WhileExpr{std::move(g)}, inputs, input_types);
 }
 
-Result<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> outputs) && {
+FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs) && {
   assert(_state->g.owned_fwds.size() > 0);
 
   _state->g.output_types.reserve(outputs.size());
@@ -333,9 +324,7 @@ Result<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> output
     return TypeProperties{t, true};
   });
 
-  if(const auto check_result = check_types(_state->g, _state->usage, props, outputs); check_result) {
-    return Failure{*check_result};
-  }
+  check_types(_state->g, _state->usage, props, outputs);
 
   add_edges(_state->g, _state->usage, outputs, props);
 
@@ -361,18 +350,7 @@ std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypePro
 
 FunctionGraph make_graph(AnyFunction f) {
   auto [cg, inputs] = make_graph(f.input_types());
-  return *std::move(cg).finalize(*cg.add(std::move(f), inputs));
-}
-
-std::string msg(const GraphError& e) {
-  return std::visit(
-    Overloaded{
-      [](const BadArity& e) { return fmt::format("Expected {} arguments, given {}", e.expected, e.given); },
-      [](const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); },
-      [](const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); },
-      [](const CannotCopy& e) { return fmt::format("Input argument {} cannot be copied moved", e.index); },
-      [](const MismatchedBranchTypes&) { return fmt::format("If and else branch graphs have different types"); }},
-    e);
+  return std::move(cg).finalize(cg.add(std::move(f), inputs));
 }
 
 ConstructingGraph::ConstructingGraph(std::vector<TypeProperties> _input_types)

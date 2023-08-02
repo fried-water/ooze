@@ -45,38 +45,37 @@ i64 accumulate(const std::vector<int>& v) { return std::accumulate(v.begin(), v.
 
 auto create_pipeline(int seed) {
   auto [cg, size] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto create_output = cg.add(AnyFunction(create_vector), size).value();
-  const auto shuffle_output = cg.add(AnyFunction(create_shuffle(seed)), create_output).value();
-  const auto sort_output =
-    cg.add(AnyFunction([](std::vector<int> v) { return sorted(std::move(v)); }), shuffle_output).value();
-  const auto acc_output = cg.add(AnyFunction(accumulate), sort_output).value();
-  return std::move(cg).finalize(acc_output).value();
+  const auto create_output = cg.add(AnyFunction(create_vector), size);
+  const auto shuffle_output = cg.add(AnyFunction(create_shuffle(seed)), create_output);
+  const auto sort_output = cg.add(AnyFunction([](std::vector<int> v) { return sorted(std::move(v)); }), shuffle_output);
+  const auto acc_output = cg.add(AnyFunction(accumulate), sort_output);
+  return std::move(cg).finalize(acc_output);
 }
 
 auto create_graph() {
   auto [cg, size] = make_graph(make_type_properties(TypeList<int>{}));
 
   const std::array ps = {
-    cg.add(create_pipeline(0), size).value()[0],
-    cg.add(create_pipeline(1), size).value()[0],
-    cg.add(create_pipeline(2), size).value()[0],
-    cg.add(create_pipeline(3), size).value()[0],
-    cg.add(create_pipeline(4), size).value()[0],
-    cg.add(create_pipeline(5), size).value()[0],
-    cg.add(create_pipeline(6), size).value()[0],
-    cg.add(create_pipeline(7), size).value()[0]};
+    cg.add(create_pipeline(0), size)[0],
+    cg.add(create_pipeline(1), size)[0],
+    cg.add(create_pipeline(2), size)[0],
+    cg.add(create_pipeline(3), size)[0],
+    cg.add(create_pipeline(4), size)[0],
+    cg.add(create_pipeline(5), size)[0],
+    cg.add(create_pipeline(6), size)[0],
+    cg.add(create_pipeline(7), size)[0]};
 
   const auto sumf = AnyFunction([](i64 x, i64 y) { return x + y; });
 
-  const auto o1 = cg.add(sumf, {ps[0], ps[1]}).value()[0];
-  const auto o2 = cg.add(sumf, {ps[2], ps[3]}).value()[0];
-  const auto o3 = cg.add(sumf, {ps[4], ps[5]}).value()[0];
-  const auto o4 = cg.add(sumf, {ps[6], ps[7]}).value()[0];
+  const auto o1 = cg.add(sumf, {ps[0], ps[1]})[0];
+  const auto o2 = cg.add(sumf, {ps[2], ps[3]})[0];
+  const auto o3 = cg.add(sumf, {ps[4], ps[5]})[0];
+  const auto o4 = cg.add(sumf, {ps[6], ps[7]})[0];
 
-  const auto o5 = cg.add(sumf, {o1, o2}).value()[0];
-  const auto o6 = cg.add(sumf, {o3, o4}).value()[0];
+  const auto o5 = cg.add(sumf, {o1, o2})[0];
+  const auto o6 = cg.add(sumf, {o3, o4})[0];
 
-  return std::move(cg).finalize(cg.add(sumf, {o5, o6}).value()).value();
+  return std::move(cg).finalize(cg.add(sumf, {o5, o6}));
 }
 
 template <typename MakeExecutor>
@@ -139,14 +138,14 @@ BOOST_AUTO_TEST_CASE(test_executor_ref_count) {
 
 BOOST_AUTO_TEST_CASE(test_graph_direct) {
   auto [cg, s] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto g = std::move(cg).finalize(s).value();
+  const auto g = std::move(cg).finalize(s);
   BOOST_CHECK_EQUAL(7, execute_siso_graph<int>(g, make_seq_executor(), 7));
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_value) {
   const auto take = [](int i) { return i; };
   auto [cg, s] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto g = std::move(cg).finalize(cg.add(AnyFunction(take), s).value()).value();
+  const auto g = std::move(cg).finalize(cg.add(AnyFunction(take), s));
   BOOST_CHECK_EQUAL(7, execute_siso_graph<int>(g, make_seq_executor(), 7));
 }
 
@@ -154,14 +153,14 @@ BOOST_AUTO_TEST_CASE(test_graph_ref) {
   const auto take_ref = AnyFunction([](const int& i) { return i; });
 
   auto [cg, s] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto g = std::move(cg).finalize(cg.add(take_ref, s).value()).value();
+  const auto g = std::move(cg).finalize(cg.add(take_ref, s));
   BOOST_CHECK_EQUAL(7, execute_siso_graph<int>(g, make_seq_executor(), 7));
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_functional_no_args) {
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph>{}));
 
-  const auto g = *std::move(cg).finalize(*cg.add_functional({}, {type_id<int>()}, inputs[0], {}));
+  const auto g = std::move(cg).finalize(cg.add_functional({}, {type_id<int>()}, inputs[0], {}));
 
   auto ex = make_seq_executor();
 
@@ -180,7 +179,7 @@ BOOST_AUTO_TEST_CASE(test_graph_functional_no_args) {
 BOOST_AUTO_TEST_CASE(test_graph_functional) {
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int>{}));
   const auto g =
-    *std::move(cg).finalize(*cg.add_functional({{type_id<int>(), true}}, {type_id<int>()}, inputs[0], {inputs[1]}));
+    std::move(cg).finalize(cg.add_functional({{type_id<int>(), true}}, {type_id<int>()}, inputs[0], {inputs[1]}));
 
   auto ex = make_seq_executor();
 
@@ -201,7 +200,7 @@ BOOST_AUTO_TEST_CASE(test_graph_functional) {
 BOOST_AUTO_TEST_CASE(test_graph_functional_ref) {
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int>{}));
   const auto g =
-    *std::move(cg).finalize(*cg.add_functional({{type_id<int>(), false}}, {type_id<int>()}, inputs[0], {inputs[1]}));
+    std::move(cg).finalize(cg.add_functional({{type_id<int>(), false}}, {type_id<int>()}, inputs[0], {inputs[1]}));
 
   auto ex = make_seq_executor();
 
@@ -223,7 +222,7 @@ BOOST_AUTO_TEST_CASE(test_graph_while) {
   const auto body = [](int x, const int& limit) { return std::tuple(x + 1 < limit, x + 1); };
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, const int&>{}));
-  const auto g = *std::move(cg).finalize(*cg.add_while(make_graph(AnyFunction(body)), inputs));
+  const auto g = std::move(cg).finalize(cg.add_while(make_graph(AnyFunction(body)), inputs));
 
   auto ex = make_seq_executor();
 
@@ -251,7 +250,7 @@ BOOST_AUTO_TEST_CASE(test_graph_if) {
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int>{}));
   const auto g =
-    *std::move(cg).finalize(*cg.add_if(make_graph(AnyFunction(identity)), make_graph(AnyFunction(add1)), inputs));
+    std::move(cg).finalize(cg.add_if(make_graph(AnyFunction(identity)), make_graph(AnyFunction(add1)), inputs));
 
   auto ex = make_seq_executor();
 
@@ -271,7 +270,7 @@ BOOST_AUTO_TEST_CASE(test_graph_if) {
 
 BOOST_AUTO_TEST_CASE(test_graph_select) {
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, int>{}));
-  const auto g = *std::move(cg).finalize(*cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
+  const auto g = std::move(cg).finalize(cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
 
   auto ex = make_seq_executor();
 
@@ -295,7 +294,7 @@ BOOST_AUTO_TEST_CASE(test_graph_zero_arg_function) {
   const auto constant = []() { return 3; };
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<>{}));
-  const auto g = *std::move(cg).finalize(*cg.add(AnyFunction(constant), inputs));
+  const auto g = std::move(cg).finalize(cg.add(AnyFunction(constant), inputs));
 
   Executor ex = make_seq_executor();
   auto outputs = execute_graph(g, ex, {}, {});
@@ -312,13 +311,13 @@ BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<Sentinal, Sentinal, Sentinal>{}));
 
-  const Oterm o1 = cg.add(take, {cg.add(take, {inputs[0]}).value()[0]}).value()[0];
-  const Oterm o2 = cg.add(take, {inputs[1]}).value()[0];
+  const Oterm o1 = cg.add(take, {cg.add(take, {inputs[0]})[0]})[0];
+  const Oterm o2 = cg.add(take, {inputs[1]})[0];
   const Oterm o3 = inputs[1];
-  const Oterm o4 = cg.add(take_ref, {inputs[2]}).value()[0];
+  const Oterm o4 = cg.add(take_ref, {inputs[2]})[0];
   const Oterm o5 = inputs[2];
 
-  const auto g = std::move(cg).finalize({o1, o2, o3, o4, o5}).value();
+  const auto g = std::move(cg).finalize({o1, o2, o3, o4, o5});
   auto ex = make_seq_executor();
   std::vector<Future> futures = execute_graph(
     g, ex, make_vector(Future(ex, Any(Sentinal{})), Future(ex, Any(Sentinal{})), Future(ex, Any(Sentinal{}))), {});
@@ -341,7 +340,7 @@ BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
 BOOST_AUTO_TEST_CASE(test_graph_move_only) {
   const auto take = [](std::unique_ptr<int> ptr) { return *ptr; };
   auto [cg, ptr] = make_graph(make_type_properties(TypeList<std::unique_ptr<int>>{}));
-  const auto g = std::move(cg).finalize(cg.add(AnyFunction(take), ptr).value()).value();
+  const auto g = std::move(cg).finalize(cg.add(AnyFunction(take), ptr));
   BOOST_CHECK_EQUAL(5, execute_siso_graph<int>(g, make_seq_executor(), std::make_unique<int>(5)));
 }
 
@@ -349,7 +348,7 @@ BOOST_AUTO_TEST_CASE(test_graph_fwd) {
   const auto fwd = [](Sentinal&& s) -> Sentinal&& { return std::move(s); };
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<Sentinal>{}));
-  const auto g = std::move(cg).finalize(cg.add(AnyFunction(fwd), inputs).value()).value();
+  const auto g = std::move(cg).finalize(cg.add(AnyFunction(fwd), inputs));
 
   const Sentinal result = execute_siso_graph<Sentinal>(g, make_seq_executor(), Sentinal{});
 
@@ -364,7 +363,7 @@ BOOST_AUTO_TEST_CASE(test_graph_forwarded_ref) {
 
   cg.add(AnyFunction{[](const Sentinal&, Sentinal) {}}, std::array{inputs[0], inputs[0]});
 
-  const auto g = std::move(cg).finalize({}).value();
+  const auto g = std::move(cg).finalize({});
 
   auto [b1, post_future1] = borrow(Future(ex, Sentinal{}));
   auto [b2, post_future2] = borrow(Future(ex, Sentinal{}));
@@ -392,11 +391,10 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
                                std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(i));
                                return s + " out";
                              }},
-                             std::array{input_terms[i]})
-                        .value()[0]);
+                             std::array{input_terms[i]})[0]);
   }
 
-  const auto g = std::move(cg).finalize(outputs).value();
+  const auto g = std::move(cg).finalize(outputs);
 
   Executor ex = make_task_executor();
 

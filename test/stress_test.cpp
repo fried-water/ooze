@@ -22,20 +22,19 @@ FunctionGraph create_graph(int depth) {
   auto [cg, input] = make_graph({make_type_properties(Type<int>{})});
   int num_inputs = 1 << depth;
   for(int i = 0; i < num_inputs; i++) {
-    edges.emplace(std::pair(depth, i), cg.add(AnyFunction(identity), {input}).value()[0]);
+    edges.emplace(std::pair(depth, i), cg.add(AnyFunction(identity), {input})[0]);
   }
 
   for(int layer = depth - 1; layer >= 0; layer--) {
     int nodes_on_layer = 1 << layer;
     for(int i = 0; i < nodes_on_layer; i++) {
-      edges.emplace(
-        std::pair(layer, i),
-        cg.add(AnyFunction(sum), {edges.at(std::pair(layer + 1, i * 2)), edges.at(std::pair(layer + 1, i * 2 + 1))})
-          .value()[0]);
+      edges.emplace(std::pair(layer, i),
+                    cg.add(AnyFunction(sum),
+                           {edges.at(std::pair(layer + 1, i * 2)), edges.at(std::pair(layer + 1, i * 2 + 1))})[0]);
     }
   }
 
-  return std::move(cg).finalize({edges.at(std::pair(0, 0))}).value();
+  return std::move(cg).finalize({edges.at(std::pair(0, 0))});
 }
 
 } // namespace
@@ -71,7 +70,7 @@ BOOST_AUTO_TEST_CASE(stress_test_functional) {
   auto ex = make_task_executor();
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int, int>{}));
-  const auto g = *std::move(cg).finalize(*cg.add_functional(
+  const auto g = std::move(cg).finalize(cg.add_functional(
     {{type_id<int>(), true}, {type_id<int>(), false}}, {type_id<int>()}, inputs[0], {inputs[1], inputs[2]}));
 
   for(int i = 0; i < num_executions; i++) {
@@ -94,7 +93,7 @@ BOOST_AUTO_TEST_CASE(stress_test_if) {
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int>{}));
   const auto g =
-    *std::move(cg).finalize(*cg.add_if(make_graph(AnyFunction(identity)), make_graph(AnyFunction(add1)), inputs));
+    std::move(cg).finalize(cg.add_if(make_graph(AnyFunction(identity)), make_graph(AnyFunction(add1)), inputs));
 
   for(int i = 0; i < num_executions; i++) {
     std::vector<Future> owned_inputs;
@@ -111,7 +110,7 @@ BOOST_AUTO_TEST_CASE(stress_test_select) {
   auto ex = make_task_executor();
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, int>{}));
-  const auto g = *std::move(cg).finalize(*cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
+  const auto g = std::move(cg).finalize(cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
 
   for(int i = 0; i < num_executions; i++) {
     std::vector<Future> owned_inputs;
@@ -131,7 +130,7 @@ BOOST_AUTO_TEST_CASE(stress_test_while) {
   const auto body = [](int x, const int& limit) { return std::tuple(x + 1 < limit, x + 1); };
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, const int&>{}));
-  const auto g = *std::move(cg).finalize(*cg.add_while(make_graph(AnyFunction(body)), inputs));
+  const auto g = std::move(cg).finalize(cg.add_while(make_graph(AnyFunction(body)), inputs));
 
   for(int i = 0; i < num_executions; i++) {
     const int limit = i % 10;
