@@ -54,18 +54,24 @@ struct WhileExpr {
 
 using Expr = std::variant<std::shared_ptr<const AnyFunction>, SExpr, IfExpr, SelectExpr, WhileExpr>;
 
+struct FunctionGraph::State {
+  std::vector<TypeProperties> input_types;
+  std::vector<TypeID> output_types;
+
+  std::vector<std::vector<ValueForward>> owned_fwds;
+  std::vector<ValueForward> input_borrowed_fwds;
+
+  std::vector<std::pair<int, int>> input_counts;
+  std::vector<Expr> exprs;
+};
+
 class ConstructingGraph {
-  struct State;
-  std::unique_ptr<State> _state;
+  FunctionGraph::State _state;
 
   explicit ConstructingGraph(std::vector<TypeProperties>);
 
 public:
   ConstructingGraph() = default;
-  ~ConstructingGraph();
-
-  ConstructingGraph(ConstructingGraph&&);
-  ConstructingGraph& operator=(ConstructingGraph&&);
 
   TypeProperties type(Oterm);
 
@@ -86,17 +92,6 @@ public:
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties> input_types);
 
 FunctionGraph make_graph(AnyFunction);
-
-struct FunctionGraph::State {
-  std::vector<TypeProperties> input_types;
-  std::vector<TypeID> output_types;
-
-  std::vector<std::vector<ValueForward>> owned_fwds;
-  std::vector<ValueForward> input_borrowed_fwds;
-
-  std::vector<std::pair<int, int>> input_counts;
-  std::vector<Expr> exprs;
-};
 
 inline int num_outputs(const Expr& e) {
   return int(std::visit(

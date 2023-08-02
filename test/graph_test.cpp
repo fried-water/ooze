@@ -304,11 +304,6 @@ BOOST_AUTO_TEST_CASE(bad_type) {
   BOOST_CHECK_THROW(cg.add(identity, {inputs[0]}), GraphError);
 }
 
-BOOST_AUTO_TEST_CASE(move_only) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<MoveOnly>{}));
-  BOOST_CHECK_THROW(cg.add(AnyFunction([](MoveOnly, MoveOnly) {}), {inputs[0], inputs[0]}), GraphError);
-}
-
 BOOST_AUTO_TEST_CASE(cannot_copy) {
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<const MoveOnly&>{}));
   BOOST_CHECK_THROW(cg.add(AnyFunction([](MoveOnly) {}), {inputs[0]}), GraphError);
