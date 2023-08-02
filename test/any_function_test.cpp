@@ -6,6 +6,15 @@ namespace ooze {
 
 namespace {
 
+template <typename Range, typename F, std::size_t... Is>
+decltype(auto) apply_range(Range&& range, F&& f, std::index_sequence<Is...>) {
+  if constexpr(std::is_reference_v<Range>) {
+    return std::forward<F>(f)(range[Is]...);
+  } else {
+    return std::forward<F>(f)(std::move(range[Is])...);
+  }
+}
+
 template <typename... Outputs, typename... Inputs>
 std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inputs) {
   auto any_values = make_vector<Any>(inputs...);
@@ -13,9 +22,10 @@ std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inp
 
   BOOST_CHECK(sizeof...(Outputs) == result.size());
 
-  return apply_range<sizeof...(Outputs)>(std::move(result), [](auto&&... anys) {
-    return std::tuple(any_cast<Outputs>(std::move(anys))...);
-  });
+  return apply_range(
+    std::move(result),
+    [](auto&&... anys) { return std::tuple(any_cast<Outputs>(std::move(anys))...); },
+    std::make_index_sequence<sizeof...(Outputs)>());
 }
 
 void void_fp() {}

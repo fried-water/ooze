@@ -1,5 +1,7 @@
 #include "ooze/core.h"
 
+#include <fmt/core.h>
+
 #include <chrono>
 #include <thread>
 

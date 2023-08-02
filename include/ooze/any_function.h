@@ -45,17 +45,24 @@ private:
 };
 
 namespace details {
+
 template <typename... Ts, typename F, std::size_t... Is>
 std::vector<Any> call_with_anys(TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
   if(inputs.size() != sizeof...(Ts) || ((type_id(decay(Type<Ts>{})) != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
-  auto&& result = invoke_normalize_void_return(f, std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
-  if constexpr(is_tuple(decay(Type<decltype(result)>{}))) {
-    return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
+  if constexpr(Type<void>{} == return_type(decay(Type<F>({})))) {
+    std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+    return {};
   } else {
-    return make_vector<Any>(std::move(result));
+    auto&& result = std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+
+    if constexpr(is_tuple(decay(Type<decltype(result)>{}))) {
+      return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
+    } else {
+      return make_vector<Any>(std::move(result));
+    }
   }
 }
 
