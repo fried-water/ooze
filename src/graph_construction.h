@@ -7,6 +7,6 @@
 
 namespace ooze {
 
-ContextualResult<FunctionGraph> create_graph(const Env&, const CheckedFunction&);
+FunctionGraph create_graph(const Env&, const CheckedFunction&);
 
 } // namespace ooze

@@ -160,21 +160,16 @@ ContextualResult<FunctionGraph, Env> create_graph_and_instantiations(Env e, cons
     }
   }
 
-  if(!errors.empty()) {
+  if(errors.empty()) {
+    for(int i = checked_functions.size() - 1; i >= 0; i--) {
+      const auto& [call, f] = checked_functions[i];
+      e.functions.at(call.name)[call.overload_idx].instatiations.emplace_back(call.type, create_graph(e, f));
+    }
+
+    return ContextualResult<FunctionGraph>{create_graph(e, f)}.append_state(std::move(e));
+  } else {
     return {Failure{std::move(errors)}, std::move(e)};
   }
-
-  for(int i = checked_functions.size() - 1; i >= 0; i--) {
-    const auto& [call, f] = checked_functions[i];
-
-    if(auto result = create_graph(e, f); result) {
-      e.functions.at(call.name)[call.overload_idx].instatiations.emplace_back(call.type, std::move(*result));
-    } else {
-      errors = to_vec(std::move(result.error()), std::move(errors));
-    }
-  }
-
-  return (errors.empty() ? create_graph(e, f) : Failure{std::move(errors)}).append_state(std::move(e));
 }
 
 ContextualResult<void, Env>
