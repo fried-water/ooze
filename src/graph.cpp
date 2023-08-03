@@ -193,7 +193,6 @@ std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g_outer, Span<Ote
 
 std::vector<Oterm> ConstructingGraph::add_functional(
   Span<TypeProperties> fn_input_types, std::vector<TypeID> outputs, Oterm fn, Span<Oterm> fn_inputs) {
-  // TODO: find a way to type check fn arguments and derive fn types
 
   std::vector<Oterm> inputs;
   inputs.reserve(fn_inputs.size() + 1);
@@ -227,9 +226,7 @@ std::vector<Oterm> ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_bran
     throw GraphError{};
   }
 
-  std::vector<TypeProperties> types;
-  types.reserve(if_branch.size());
-  std::transform(if_branch.begin(), if_branch.end(), std::back_inserter(types), [&](Oterm o) { return type(o); });
+  std::vector<TypeProperties> types = transform_to_vec(if_branch, [&](Oterm o) { return type(o); });
 
   for(size_t i = 0; i < if_branch.size(); i++) {
     if(types[i] != type(else_branch[i])) {
