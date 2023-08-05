@@ -54,9 +54,10 @@ public:
     _block->value = std::move(value);
 
     std::unique_lock lk(_block->mutex);
+    const bool ready = decrement(_block->value_ready);
+    lk.unlock();
 
-    if(decrement(_block->value_ready)) {
-      lk.unlock();
+    if(ready) {
       _block->cv.notify_one();
 
       if(_block->continuation) {

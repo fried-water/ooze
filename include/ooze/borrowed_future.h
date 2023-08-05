@@ -74,16 +74,17 @@ public:
 private:
   std::shared_ptr<BorrowedSharedBlock> _block;
 
-  friend std::pair<BorrowedFuture, Future> borrow(Future);
+  friend std::pair<BorrowedFuture, Future> borrow(Future, int);
 
   BorrowedFuture(std::shared_ptr<BorrowedSharedBlock> block) : _block(std::move(block)) {}
 };
 
-inline std::pair<BorrowedFuture, Future> borrow(Future f) {
+inline std::pair<BorrowedFuture, Future> borrow(Future f, int expected_continuations = 4) {
   auto executor = f.executor();
   auto [new_p, new_f] = make_promise_future(executor);
 
   auto block = std::make_shared<BorrowedSharedBlock>(std::move(new_p), executor);
+  block->continuations.reserve(expected_continuations);
 
   std::move(f).then([b = block](Any value) mutable {
     b->value = std::move(value);
