@@ -58,10 +58,10 @@ struct SelectBlock {
   std::vector<Promise> promises;
 };
 
-struct WhileBlock {
+struct ConvergeBlock {
   ExecutorRef e;
   std::atomic<int> ref_count;
-  WhileExpr w;
+  ConvergeExpr expr;
   std::vector<Future> owned_inputs;
   std::vector<BorrowedFuture> borrowed_inputs;
   std::vector<Promise> promises;
@@ -169,14 +169,9 @@ void invoke_async(Future cond, SelectBlock* b) {
   });
 }
 
-void invoke_async(Future cond, WhileBlock* b) {
+void invoke_async(Future cond, ConvergeBlock* b) {
   std::move(cond).then([b](Any cond) {
     if(any_cast<bool>(cond)) {
-      auto res = execute_graph(b->w.body, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
-      b->owned_inputs =
-        std::vector<Future>(std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
-      invoke_async(std::move(res.front()), b);
-    } else {
       for(int i = 0; i < b->owned_inputs.size(); i++) {
         std::move(b->owned_inputs[i]).then([i, b](Any a) mutable {
           std::move(b->promises[i]).send(std::move(a));
@@ -189,6 +184,11 @@ void invoke_async(Future cond, WhileBlock* b) {
       if(decrement(b->ref_count) == 1) {
         delete b;
       }
+    } else {
+      auto res = execute_graph(b->expr.body, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+      b->owned_inputs =
+        std::vector<Future>(std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
+      invoke_async(std::move(res.front()), b);
     }
   });
 }
@@ -345,16 +345,16 @@ std::vector<Future> execute_graph(const FunctionGraph& g_outer,
                                                 std::make_move_iterator(s.inputs[i].end())),
                             std::move(promises)});
         },
-        [&](const WhileExpr& e) {
+        [&](const ConvergeExpr& e) {
           invoke_async(
             std::move(s.inputs[i].front()),
-            new WhileBlock{executor,
-                           int(promises.size()) + 1,
-                           e,
-                           std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
-                                               std::make_move_iterator(s.inputs[i].end())),
-                           std::move(s.borrowed_inputs[i]),
-                           std::move(promises)});
+            new ConvergeBlock{executor,
+                              int(promises.size()) + 1,
+                              e,
+                              std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
+                                                  std::make_move_iterator(s.inputs[i].end())),
+                              std::move(s.borrowed_inputs[i]),
+                              std::move(promises)});
         }},
       g.exprs[i]);
 

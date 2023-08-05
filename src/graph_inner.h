@@ -48,11 +48,11 @@ struct SelectExpr {
   std::vector<TypeProperties> types;
 };
 
-struct WhileExpr {
+struct ConvergeExpr {
   FunctionGraph body;
 };
 
-using Expr = std::variant<std::shared_ptr<const AnyFunction>, SExpr, IfExpr, SelectExpr, WhileExpr>;
+using Expr = std::variant<std::shared_ptr<const AnyFunction>, SExpr, IfExpr, SelectExpr, ConvergeExpr>;
 
 struct FunctionGraph::State {
   std::vector<TypeProperties> input_types;
@@ -82,7 +82,7 @@ public:
 
   std::vector<Oterm> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
   std::vector<Oterm> add_select(Oterm cond, Span<Oterm> if_, Span<Oterm> else_);
-  std::vector<Oterm> add_while(FunctionGraph, Span<Oterm>);
+  std::vector<Oterm> add_converge(FunctionGraph, Span<Oterm>);
 
   FunctionGraph finalize(Span<Oterm>) &&;
 
@@ -99,7 +99,7 @@ inline int num_outputs(const Expr& e) {
                [](const SExpr& e) { return e.types.size(); },
                [](const IfExpr& e) { return e.if_branch.state->output_types.size(); },
                [](const SelectExpr& e) { return e.types.size(); },
-               [](const WhileExpr& e) { return e.body.state->output_types.size() - 1; }},
+               [](const ConvergeExpr& e) { return e.body.state->output_types.size() - 1; }},
     e));
 }
 

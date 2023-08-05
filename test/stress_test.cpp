@@ -123,20 +123,20 @@ BOOST_AUTO_TEST_CASE(stress_test_select) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(stress_test_while) {
+BOOST_AUTO_TEST_CASE(stress_test_converge) {
   const int num_executions = 100;
   auto ex = make_task_executor();
 
-  const auto body = [](int x, const int& limit) { return std::tuple(x + 1 < limit, x + 1); };
+  const auto body = [](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); };
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, const int&>{}));
-  const auto g = std::move(cg).finalize(cg.add_while(make_graph(AnyFunction(body)), inputs));
+  const auto g = std::move(cg).finalize(cg.add_converge(make_graph(AnyFunction(body)), inputs));
 
   for(int i = 0; i < num_executions; i++) {
     const int limit = i % 10;
 
     std::vector<Future> owned_inputs;
-    owned_inputs.push_back(Future(ex, Any(0 < limit)));
+    owned_inputs.push_back(Future(ex, Any(0 >= limit)));
     owned_inputs.push_back(Future(ex, Any(0)));
 
     std::vector<BorrowedFuture> borrowed_inputs;

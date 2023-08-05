@@ -62,8 +62,8 @@ TypeProperties type_of(const FunctionGraph::State& g, Oterm t) {
                    return TypeProperties{i.if_branch.state->output_types[t.port], true};
                  },
                  [&](const SelectExpr& s) { return s.types[t.port]; },
-                 [&](const WhileExpr& w) {
-                   return TypeProperties{w.body.state->output_types[t.port + 1], true};
+                 [&](const ConvergeExpr& c) {
+                   return TypeProperties{c.body.state->output_types[t.port + 1], true};
                  }},
       g.exprs[t.node_id - 1]);
   } else {
@@ -256,13 +256,13 @@ std::vector<Oterm> ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_bran
   return add_internal(_state, SelectExpr{std::move(types)}, inputs, input_types);
 }
 
-std::vector<Oterm> ConstructingGraph::add_while(FunctionGraph g, Span<Oterm> inputs) {
+std::vector<Oterm> ConstructingGraph::add_converge(FunctionGraph g, Span<Oterm> inputs) {
   std::vector<TypeProperties> input_types;
   input_types.reserve(g.state->input_types.size() + 1);
   input_types.push_back(TypeProperties{type_id<bool>(), true});
   input_types.insert(input_types.end(), g.state->input_types.begin(), g.state->input_types.end());
 
-  return add_internal(_state, WhileExpr{std::move(g)}, inputs, input_types);
+  return add_internal(_state, ConvergeExpr{std::move(g)}, inputs, input_types);
 }
 
 FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs) && {
