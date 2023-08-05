@@ -43,89 +43,93 @@ std::vector<TypeID> output_types(const CompoundType<TypeID>& type) {
 struct GraphContext {
   ConstructingGraph cg;
   std::vector<Map<std::string, std::tuple<CompoundType<TypeID>, std::vector<Oterm>>>> bindings;
+};
+
+struct GraphResult {
   std::vector<Oterm> terms;
   std::vector<TypeProperties> fn_input_types;
   std::vector<TypeID> fn_output_types;
 };
 
-GraphContext append_bindings(const ast::Pattern& pattern, const CompoundType<TypeID>& type, GraphContext ctx) {
+GraphContext append_bindings(
+  const ast::Pattern& pattern, const CompoundType<TypeID>& type, const std::vector<Oterm>& terms, GraphContext ctx) {
   int i = 0;
   co_visit(pattern,
            type,
            Overloaded{[&](const auto&, const auto& type, const ast::Ident& ident, const auto&) {
                         ctx.bindings.back()[ident.name] =
                           std::tuple(type, knot::preorder_accumulate(type, std::vector<Oterm>{}, [&](auto v, TypeID) {
-                                       v.push_back(ctx.terms[i++]);
+                                       v.push_back(terms[i++]);
                                        return v;
                                      }));
                       },
                       [&](const ast::WildCard&, const auto& type) { knot::preorder(type, [&](TypeID) { i++; }); }});
-
-  ctx.terms = {};
-
   return ctx;
 }
 
-GraphContext add_expr(const Env&, const CheckedExpr&, GraphContext);
+std::pair<GraphContext, GraphResult> add_expr(const Env&, const CheckedExpr&, GraphContext);
 
-GraphContext add_expr(const Env& e, const std::vector<CheckedExpr>& exprs, GraphContext ctx) {
-  std::vector<Oterm> terms;
-
-  for(const CheckedExpr& expr : exprs) {
-    ctx = add_expr(e, expr, std::move(ctx));
-    terms.insert(terms.end(), ctx.terms.begin(), ctx.terms.end());
-  }
-
-  ctx.terms = std::move(terms);
-
-  return ctx;
+std::pair<GraphContext, GraphResult> add_expr(const Env& e, const std::vector<CheckedExpr>& exprs, GraphContext ctx) {
+  return knot::accumulate(exprs, std::pair(std::move(ctx), GraphResult{}), [&](auto pair, const CheckedExpr& expr) {
+    auto [ctx, result] = add_expr(e, expr, std::move(pair.first));
+    return std::pair(std::move(ctx), GraphResult{to_vec(std::move(result.terms), std::move(pair.second.terms))});
+  });
 }
 
-GraphContext add_expr(const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, GraphContext ctx) {
+std::pair<GraphContext, GraphResult>
+add_expr(const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, GraphContext ctx) {
   ctx.bindings.emplace_back();
 
   ctx = knot::accumulate(scope.assignments, std::move(ctx), [&](GraphContext ctx, const CheckedAssignment& assignment) {
-    ctx = add_expr(e, *assignment.expr, std::move(ctx));
-    return append_bindings(assignment.pattern, assignment.type, std::move(ctx));
+    GraphResult res;
+    std::tie(ctx, res) = add_expr(e, *assignment.expr, std::move(ctx));
+    return append_bindings(assignment.pattern, assignment.type, res.terms, std::move(ctx));
   });
-  ctx = add_expr(e, *scope.result, std::move(ctx));
+
+  GraphResult res;
+  std::tie(ctx, res) = add_expr(e, *scope.result, std::move(ctx));
   ctx.bindings.pop_back();
 
-  return ctx;
+  return {std::move(ctx), std::move(res)};
 }
 
-GraphContext add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphContext ctx) {
-  ctx = add_expr(e, *call.arg, std::move(ctx));
+std::pair<GraphContext, GraphResult>
+add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphContext ctx) {
+  GraphResult args_result;
+  std::tie(ctx, args_result) = add_expr(e, *call.arg, std::move(ctx));
   if(const auto* ref = std::get_if<EnvFunctionRef>(&call.callee->v); ref) {
     const auto it = e.functions.find(ref->name);
     assert(it != e.functions.end() && ref->overload_idx < it->second.size());
     const EnvFunction& env_function = it->second[ref->overload_idx];
 
-    ctx.terms = std::visit(
-      Overloaded{[&](const auto& f) { return ctx.cg.add(f, ctx.terms); },
+    GraphResult result = {std::visit(
+      Overloaded{[&](const auto& f) { return ctx.cg.add(f, args_result.terms); },
                  [&](const TypedFunction&) {
                    const auto it = find_if(env_function.instatiations,
                                            applied([&](const auto& type, const auto&) { return ref->type == type; }));
                    assert(it != env_function.instatiations.end());
-                   return ctx.cg.add(it->second, ctx.terms);
+                   return ctx.cg.add(it->second, args_result.terms);
                  }},
-      env_function.f);
-    return ctx;
+      env_function.f)};
+    return {std::move(ctx), std::move(result)};
   } else {
-    std::vector<Oterm> fn_terms = std::move(ctx.terms);
-    ctx = add_expr(e, *call.callee, std::move(ctx));
-    assert(ctx.terms.size() == 1);
-    ctx.terms = ctx.cg.add_functional(ctx.fn_input_types, std::move(ctx.fn_output_types), ctx.terms.front(), fn_terms);
-    ctx.fn_input_types = {};
-    return ctx;
+    auto [ctx2, callee_result] = add_expr(e, *call.callee, std::move(ctx));
+    assert(callee_result.terms.size() == 1);
+    GraphResult result = {ctx2.cg.add_functional(
+      callee_result.fn_input_types,
+      std::move(callee_result.fn_output_types),
+      callee_result.terms.front(),
+      args_result.terms)};
+    return {std::move(ctx2), std::move(result)};
   }
 }
 
-GraphContext add_expr(const Env& e, const ast::BorrowExpr<TypeID, EnvFunctionRef>& borrow, GraphContext ctx) {
+std::pair<GraphContext, GraphResult>
+add_expr(const Env& e, const ast::BorrowExpr<TypeID, EnvFunctionRef>& borrow, GraphContext ctx) {
   return add_expr(e, *borrow.expr, std::move(ctx));
 }
 
-GraphContext add_expr(const Env& e, const ast::Ident& ident, GraphContext ctx) {
+std::pair<GraphContext, GraphResult> add_expr(const Env& e, const ast::Ident& ident, GraphContext ctx) {
   auto terms_types = std::accumulate(
     ctx.bindings.rbegin(),
     ctx.bindings.rend(),
@@ -141,23 +145,23 @@ GraphContext add_expr(const Env& e, const ast::Ident& ident, GraphContext ctx) {
 
   assert(terms_types);
 
-  ctx.terms = std::move(std::get<1>(*terms_types));
+  GraphResult result = {std::move(std::get<1>(*terms_types))};
 
   knot::visit(std::get<0>(*terms_types).v, [&](const FunctionType<TypeID>& f) {
-    ctx.fn_input_types = input_types(*f.input);
-    ctx.fn_output_types = output_types(*f.output);
+    result.fn_input_types = input_types(*f.input);
+    result.fn_output_types = output_types(*f.output);
   });
 
-  return ctx;
+  return {std::move(ctx), std::move(result)};
 }
 
-GraphContext add_expr(const Env& e, const Literal& literal, GraphContext ctx) {
-  ctx.terms =
-    std::visit([&](const auto& value) { return ctx.cg.add(AnyFunction([=]() { return value; }), {}); }, literal);
-  return ctx;
+std::pair<GraphContext, GraphResult> add_expr(const Env& e, const Literal& literal, GraphContext ctx) {
+  GraphResult result{
+    std::visit([&](const auto& value) { return ctx.cg.add(AnyFunction([=]() { return value; }), {}); }, literal)};
+  return {std::move(ctx), std::move(result)};
 }
 
-GraphContext add_expr(const Env& e, const EnvFunctionRef& fn_ref, GraphContext ctx) {
+std::pair<GraphContext, GraphResult> add_expr(const Env& e, const EnvFunctionRef& fn_ref, GraphContext ctx) {
   const EnvFunction& ef = e.functions.at(fn_ref.name)[fn_ref.overload_idx];
 
   AnyFunction f = std::visit(
@@ -170,14 +174,12 @@ GraphContext add_expr(const Env& e, const EnvFunctionRef& fn_ref, GraphContext c
                }},
     ef.f);
 
-  ctx.terms = ctx.cg.add(std::move(f), {});
-  ctx.fn_input_types = input_types(*fn_ref.type.input);
-  ctx.fn_output_types = output_types(*fn_ref.type.output);
+  GraphResult result{ctx.cg.add(std::move(f), {}), input_types(*fn_ref.type.input), output_types(*fn_ref.type.output)};
 
-  return ctx;
+  return {std::move(ctx), std::move(result)};
 }
 
-GraphContext add_expr(const Env& e, const CheckedExpr& expr, GraphContext ctx) {
+std::pair<GraphContext, GraphResult> add_expr(const Env& e, const CheckedExpr& expr, GraphContext ctx) {
   return std::visit([&](const auto& sub_expr) { return add_expr(e, sub_expr, std::move(ctx)); }, expr.v);
 }
 
@@ -185,11 +187,9 @@ GraphContext add_expr(const Env& e, const CheckedExpr& expr, GraphContext ctx) {
 
 FunctionGraph create_graph(const Env& e, const CheckedFunction& f) {
   auto [cg, terms] = make_graph(input_types(*f.header.type.input));
-  GraphContext ctx = add_expr(
-    e,
-    f.expr,
-    append_bindings(f.header.pattern, *f.header.type.input, GraphContext{std::move(cg), {{}}, std::move(terms)}));
-  return std::move(ctx.cg).finalize(ctx.terms);
+  auto [ctx, result] = add_expr(
+    e, f.expr, append_bindings(f.header.pattern, *f.header.type.input, terms, GraphContext{std::move(cg), {{}}}));
+  return std::move(ctx.cg).finalize(result.terms);
 }
 
 } // namespace ooze
