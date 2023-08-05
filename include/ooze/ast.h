@@ -36,6 +36,15 @@ struct CallExpr {
 };
 
 template <typename T, typename... Extras>
+struct SelectExpr {
+  Indirect<Expr<T, Extras...>> condition;
+  Indirect<Expr<T, Extras...>> if_expr;
+  Indirect<Expr<T, Extras...>> else_expr;
+
+  KNOT_ORDERED(SelectExpr);
+};
+
+template <typename T, typename... Extras>
 struct BorrowExpr {
   Indirect<Expr<T, Extras...>> expr;
   KNOT_ORDERED(BorrowExpr);
@@ -63,6 +72,7 @@ template <typename T, typename... Extras>
 using ExprVariant =
   std::variant<std::vector<Expr<T, Extras...>>,
                ScopeExpr<T, Extras...>,
+               SelectExpr<T, Extras...>,
                CallExpr<T, Extras...>,
                BorrowExpr<T, Extras...>,
                Ident,
@@ -111,6 +121,7 @@ struct EnvFunctionRef {
 
 using UnTypedAssignment = ast::Assignment<NamedType>;
 using UnTypedScopeExpr = ast::ScopeExpr<NamedType>;
+using UnTypedSelectExpr = ast::SelectExpr<NamedType>;
 using UnTypedCallExpr = ast::CallExpr<NamedType>;
 using UnTypedBorrowExpr = ast::BorrowExpr<NamedType>;
 using UnTypedExpr = ast::Expr<NamedType>;
@@ -122,6 +133,7 @@ using UnTypedAST = std::vector<std::tuple<std::string, UnTypedFunction>>;
 // Replace type names with type id
 using TypedAssignment = ast::Assignment<TypeID>;
 using TypedScopeExpr = ast::ScopeExpr<TypeID>;
+using TypedSelectExpr = ast::SelectExpr<TypeID>;
 using TypedCallExpr = ast::CallExpr<TypeID>;
 using TypedBorrowExpr = ast::BorrowExpr<TypeID>;
 using TypedExpr = ast::Expr<TypeID>;
@@ -131,6 +143,7 @@ using TypedFunction = ast::Function<TypeID>;
 // Replace function names with specific function overloads
 using CheckedAssignment = ast::Assignment<TypeID, EnvFunctionRef>;
 using CheckedScopeExpr = ast::ScopeExpr<TypeID, EnvFunctionRef>;
+using CheckedSelectExpr = ast::SelectExpr<TypeID, EnvFunctionRef>;
 using CheckedCallExpr = ast::CallExpr<TypeID, EnvFunctionRef>;
 using CheckedBorrowExpr = ast::BorrowExpr<TypeID, EnvFunctionRef>;
 using CheckedExpr = ast::Expr<TypeID, EnvFunctionRef>;

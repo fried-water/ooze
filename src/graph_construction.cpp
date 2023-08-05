@@ -94,6 +94,23 @@ add_expr(const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, Grap
 }
 
 std::pair<GraphContext, GraphResult>
+add_expr(const Env& e, const ast::SelectExpr<TypeID, EnvFunctionRef>& select, GraphContext ctx) {
+  GraphResult cond_result;
+  GraphResult if_result;
+  GraphResult else_result;
+
+  std::tie(ctx, cond_result) = add_expr(e, *select.condition, std::move(ctx));
+  std::tie(ctx, if_result) = add_expr(e, *select.if_expr, std::move(ctx));
+  std::tie(ctx, else_result) = add_expr(e, *select.else_expr, std::move(ctx));
+
+  assert(cond_result.terms.size() == 1);
+  assert(if_result.terms.size() == else_result.terms.size());
+
+  GraphResult result = {ctx.cg.add_select(cond_result.terms[0], if_result.terms, else_result.terms)};
+  return {std::move(ctx), std::move(result)};
+}
+
+std::pair<GraphContext, GraphResult>
 add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, GraphContext ctx) {
   GraphResult args_result;
   std::tie(ctx, args_result) = add_expr(e, *call.arg, std::move(ctx));

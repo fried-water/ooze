@@ -300,6 +300,34 @@ BOOST_AUTO_TEST_CASE(cp_fn_call) {
   test_or(create_primative_env(), {}, "(f) -> i32 = f()", "(f: fn() -> i32) -> i32 = f()");
 }
 
+BOOST_AUTO_TEST_CASE(cp_fn_select_from_return) {
+  test_or(create_primative_env(),
+          {},
+          "(a, b, c) -> i32 = select a { b } else { c }",
+          "(a: bool, b: i32, c: i32) -> i32 = select a { b } else { c }");
+}
+
+BOOST_AUTO_TEST_CASE(cp_fn_select_from_arg) {
+  test_or(create_primative_env(),
+          {},
+          "(a, b: i32, c) -> _ = select a { b } else { c }",
+          "(a: bool, b: i32, c: i32) -> i32 = select a { b } else { c }");
+}
+
+BOOST_AUTO_TEST_CASE(cp_fn_select_from_constant) {
+  test_or(create_primative_env(),
+          {},
+          "(a, b) -> _ = select a { b } else { 1 }",
+          "(a: bool, b: i32) -> i32 = select a { b } else { 1 }");
+}
+
+BOOST_AUTO_TEST_CASE(cp_fn_select_from_cond) {
+  test_or(create_primative_env(),
+          {},
+          "(a, b) -> _ = select a { a } else { b }",
+          "(a: bool, b: bool) -> bool = select a { a } else { b }");
+}
+
 BOOST_AUTO_TEST_CASE(cp_fn_assign) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });

@@ -103,6 +103,13 @@ struct Printer {
     os << "}";
   }
 
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const SelectExpr<T, Extras...>& e) {
+    pretty_print(os << "select ", e.condition);
+    pretty_print(os << " ", e.if_expr);
+    pretty_print(os << " else ", e.else_expr);
+  }
+
   void pretty_print(std::ostream& os, const Pattern& p) { pretty_print(os, p.v); }
 
   template <typename T>

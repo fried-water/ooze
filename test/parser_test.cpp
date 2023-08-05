@@ -46,6 +46,10 @@ UnTypedExpr expr_tuple(Slice ref, Children... children) {
 
 UnTypedExpr expr_borrow(UnTypedExpr e) { return {UnTypedBorrowExpr{std::move(e)}, {e.ref.begin - 1, e.ref.end}}; }
 
+UnTypedExpr select(UnTypedExpr cond, UnTypedExpr if_, UnTypedExpr else_, Slice ref) {
+  return {UnTypedSelectExpr{std::move(cond), std::move(if_), std::move(else_)}, ref};
+}
+
 UnTypedExpr scope(std::vector<UnTypedAssignment> assignments, UnTypedExpr expr, Slice ref) {
   return {UnTypedScopeExpr{std::move(assignments), std::move(expr)}, ref};
 }
@@ -291,6 +295,11 @@ BOOST_AUTO_TEST_CASE(parser_header_return_tuple1) {
   check_pass(expected, parse_header("() -> (T)"));
 }
 
+BOOST_AUTO_TEST_CASE(parser_select) {
+  check_pass(select(ident("a", 7), scope({}, one(11), {9, 14}), scope({}, one(22), {20, 25}), {0, 25}),
+             parse_expr("select a { 1 } else { 1 }"));
+}
+
 BOOST_AUTO_TEST_CASE(parser_scope_simple) { check_pass(scope({}, one(2), {0, 5}), parse_expr("{ 1 }")); }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment) {
@@ -386,6 +395,10 @@ BOOST_AUTO_TEST_CASE(parser_bad_fn_name) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_no_fn_keyword) { check_single_error({{0, 1}, "expected 'fn'"}, parse("f() -> T { 1 }")); }
+
+BOOST_AUTO_TEST_CASE(parser_select_no_scope) {
+  check_single_error({{9, 10}, "expected '{'"}, parse_expr("select a 1 else 1"));
+}
 
 BOOST_AUTO_TEST_CASE(parser_no_scope) { check_single_error({{11, 11}, "expected '='"}, parse("fn f() -> T")); }
 

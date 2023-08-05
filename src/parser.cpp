@@ -189,9 +189,18 @@ auto scope() {
   return construct<UnTypedScopeExpr>(seq(symbol("{"), n(seq(assignment(), symbol(";"))), expr, symbol("}")));
 }
 
+auto select_expr() {
+  return construct<UnTypedSelectExpr>(
+    seq(keyword("select"),
+        expr,
+        construct_with_ref<UnTypedExpr>(scope()),
+        keyword("else"),
+        construct_with_ref<UnTypedExpr>(scope())));
+}
+
 ParseResult<UnTypedExpr> non_call_expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
   return construct_with_ref<UnTypedExpr>(
-    transform(choose(tuple(expr), scope(), borrow_expr(), ident(), literal()), [](auto v) {
+    transform(choose(tuple(expr), scope(), select_expr(), borrow_expr(), ident(), literal()), [](auto v) {
       return std::visit([](auto&& ele) { return ast::ExprVariant<NamedType>{std::move(ele)}; }, std::move(v));
     }))(s, loc);
 }

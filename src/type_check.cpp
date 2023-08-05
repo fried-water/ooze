@@ -262,6 +262,11 @@ struct PropagationVisitor {
                        undeclared_bindings.push_back(&expr);
                      }
                    },
+                   [&](const TypedSelectExpr& select) {
+                     add_pair(propagations, select.if_expr.get(), select.else_expr.get(), DirectProp{});
+                     add_pair(propagations, select.if_expr.get(), &expr, DirectProp{});
+                     add_pair(propagations, select.else_expr.get(), &expr, DirectProp{});
+                   },
                    [&](const TypedScopeExpr& scope) {
                      binding_names.emplace_back();
 
@@ -315,17 +320,23 @@ create_initial_candidates(const Env& e, const TypedFunction& f, std::optional<Fu
   std::deque<std::pair<Variable, CompoundType<TypeID>>> candidates;
 
   // Push types according to language rules
-  knot::preorder(f,
-                 Overloaded{
-                   [&](const TypedExpr& expr) {
-                     candidates.emplace_back(&expr, language_type(expr));
-                     knot::visit(expr.v, [&](const TypedCallExpr& call) {
+  knot::preorder(
+    f,
+    Overloaded{
+      [&](const TypedExpr& expr) {
+        candidates.emplace_back(&expr, language_type(expr));
+        knot::visit(
+          expr.v,
+          Overloaded{[&](const TypedCallExpr& call) {
                        candidates.emplace_back(
                          call.callee.get(), function_type<TypeID>(floating_type<TypeID>(), floating_type<TypeID>()));
-                     });
-                   },
-                   [&](const Pattern& pattern) { candidates.emplace_back(&pattern, language_type(pattern)); },
-                 });
+                     },
+                     [&](const TypedSelectExpr& select) {
+                       candidates.emplace_back(select.condition.get(), leaf_type(type_id<bool>()));
+                     }});
+      },
+      [&](const Pattern& pattern) { candidates.emplace_back(&pattern, language_type(pattern)); },
+    });
 
   knot::preorder(f.expr, [&](const TypedAssignment& assign) { candidates.emplace_back(&assign.pattern, assign.type); });
 
@@ -772,6 +783,11 @@ InferHeaderCtx inferred_header(InferHeaderCtx ctx, const TypedExpr& expr) {
         ctx.active.pop_back();
 
         return std::move(ctx);
+      },
+      [&](const TypedSelectExpr& select) {
+        return knot::accumulate(select, std::move(ctx), [](auto ctx, const auto& sub_expr) {
+          return inferred_header(std::move(ctx), *sub_expr);
+        });
       },
       [&](const TypedBorrowExpr& borrow) { return inferred_header(std::move(ctx), *borrow.expr); },
       [&](const TypedCallExpr& call) {

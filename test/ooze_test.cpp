@@ -219,6 +219,12 @@ BOOST_AUTO_TEST_CASE(ooze_scope) {
   check_any_tree(1, v2[2]);
 }
 
+BOOST_AUTO_TEST_CASE(ooze_select) {
+  constexpr std::string_view script = "fn f(b: bool) -> i32  = select b { 1 } else { 2 }";
+  check_any_tree(1, check_result(run(create_primative_env(), script, "f(true)")));
+  check_any_tree(2, check_result(run(create_primative_env(), script, "f(false)")));
+}
+
 BOOST_AUTO_TEST_CASE(ooze_out_of_order, *boost::unit_test::disabled()) {
   constexpr std::string_view script =
     "fn f() -> _ = g()\n"
