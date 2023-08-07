@@ -219,14 +219,15 @@ BOOST_AUTO_TEST_CASE(test_graph_functional_ref) {
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_converge) {
-  const auto body = [](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); };
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, bool, int, const int&>{}));
+  const auto g = std::move(cg).finalize(cg.add_converge(inputs[0], inputs[1], Span<Oterm>(inputs).subspan(2)));
 
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, const int&>{}));
-  const auto g = std::move(cg).finalize(cg.add_converge(make_graph(AnyFunction(body)), inputs));
+  const auto body = make_graph(AnyFunction([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); }));
 
   auto ex = make_seq_executor();
 
   std::vector<Future> owned_inputs;
+  owned_inputs.push_back(Future(ex, Any(body)));
   owned_inputs.push_back(Future(ex, Any(false)));
   owned_inputs.push_back(Future(ex, Any(5)));
 
@@ -236,6 +237,7 @@ BOOST_AUTO_TEST_CASE(test_graph_converge) {
   auto outputs = execute_graph(g, ex, std::move(owned_inputs), std::move(borrowed_inputs));
   BOOST_CHECK_EQUAL(10, any_cast<int>(std::move(outputs.front()).wait()));
 
+  owned_inputs.push_back(Future(ex, Any(body)));
   owned_inputs.push_back(Future(ex, Any(true)));
   owned_inputs.push_back(Future(ex, Any(7)));
   borrowed_inputs.push_back(borrow(Future(ex, Any(10))).first);

@@ -61,7 +61,7 @@ struct SelectBlock {
 struct ConvergeBlock {
   ExecutorRef e;
   std::atomic<int> ref_count;
-  ConvergeExpr expr;
+  std::variant<FunctionGraph, Future> fn;
   std::vector<Future> owned_inputs;
   std::vector<BorrowedFuture> borrowed_inputs;
   std::vector<Promise> promises;
@@ -119,76 +119,64 @@ void invoke_async(ExecutorRef e,
   }
 }
 
+template <typename Block>
+void forward_results_then_delete(std::vector<Future> results, Block* b) {
+  for(int i = 0; i < int(results.size()); i++) {
+    std::move(results[i]).then([i, b](Any a) mutable {
+      std::move(b->promises[i]).send(std::move(a));
+      if(decrement(b->ref_count) == 1) {
+        delete b;
+      }
+    });
+  }
+}
+
 void invoke_async(Future fn, FunctionalBlock* b) {
   std::move(fn).then([b](Any cond) {
-    std::vector<Future> results =
-      execute_graph(any_cast<FunctionGraph>(cond), b->e, std::move(b->owned_inputs), b->borrowed_inputs);
-
-    for(int i = 0; i < int(results.size()); i++) {
-      std::move(results[i]).then([i, b](Any a) mutable {
-        std::move(b->promises[i]).send(std::move(a));
-        if(decrement(b->ref_count) == 1) {
-          delete b;
-        }
-      });
-    }
+    forward_results_then_delete(
+      execute_graph(any_cast<FunctionGraph>(cond), b->e, std::move(b->owned_inputs), b->borrowed_inputs), b);
   });
 }
 
 void invoke_async(Future cond, IfBlock* b) {
   std::move(cond).then([b](Any cond) {
-    std::vector<Future> results = execute_graph(
-      any_cast<bool>(cond) ? b->expr.if_branch : b->expr.else_branch,
-      b->e,
-      std::move(b->owned_inputs),
-      b->borrowed_inputs);
-
-    for(int i = 0; i < int(results.size()); i++) {
-      std::move(results[i]).then([i, b](Any a) mutable {
-        std::move(b->promises[i]).send(std::move(a));
-        if(decrement(b->ref_count) == 1) {
-          delete b;
-        }
-      });
-    }
+    forward_results_then_delete(
+      execute_graph(any_cast<bool>(cond) ? b->expr.if_branch : b->expr.else_branch,
+                    b->e,
+                    std::move(b->owned_inputs),
+                    b->borrowed_inputs),
+      b);
   });
 }
 
 void invoke_async(Future cond, SelectBlock* b) {
   std::move(cond).then([b](Any cond) {
-    std::vector<Future> results = any_cast<bool>(cond) ? std::move(b->if_branch) : std::move(b->else_branch);
-
-    for(int i = 0; i < int(results.size()); i++) {
-      std::move(results[i]).then([i, b](Any a) mutable {
-        std::move(b->promises[i]).send(std::move(a));
-        if(decrement(b->ref_count) == 1) {
-          delete b;
-        }
-      });
-    }
+    forward_results_then_delete(any_cast<bool>(cond) ? std::move(b->if_branch) : std::move(b->else_branch), b);
   });
 }
 
 void invoke_async(Future cond, ConvergeBlock* b) {
   std::move(cond).then([b](Any cond) {
     if(any_cast<bool>(cond)) {
-      for(int i = 0; i < b->owned_inputs.size(); i++) {
-        std::move(b->owned_inputs[i]).then([i, b](Any a) mutable {
-          std::move(b->promises[i]).send(std::move(a));
-          if(decrement(b->ref_count) == 1) {
-            delete b;
-          }
-        });
-      }
-
-      if(decrement(b->ref_count) == 1) {
-        delete b;
-      }
+      forward_results_then_delete(std::move(b->owned_inputs), b);
     } else {
-      auto res = execute_graph(b->expr.body, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
-      b->owned_inputs =
-        std::vector<Future>(std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
-      invoke_async(std::move(res.front()), b);
+      const auto invoke_and_rerun = [](const FunctionGraph& g, ConvergeBlock* b) {
+        auto res = execute_graph(g, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+        b->owned_inputs =
+          std::vector<Future>(std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
+        invoke_async(std::move(res.front()), b);
+      };
+      std::visit(
+        Overloaded{// Don't take by value so the graph stays in the block
+                   [&](const FunctionGraph& g) { invoke_and_rerun(g, b); },
+                   // Future needs to be held by value incase block is freed when the loop finishes before cleaning up
+                   [&](Future f) {
+                     std::move(f).then([=](Any any) {
+                       b->fn = any_cast<FunctionGraph>(std::move(any));
+                       invoke_and_rerun(std::get<FunctionGraph>(b->fn), b);
+                     });
+                   }},
+        std::move(b->fn));
     }
   });
 }
@@ -347,11 +335,11 @@ std::vector<Future> execute_graph(const FunctionGraph& g_outer,
         },
         [&](const ConvergeExpr& e) {
           invoke_async(
-            std::move(s.inputs[i].front()),
+            std::move(s.inputs[i][1]),
             new ConvergeBlock{executor,
-                              int(promises.size()) + 1,
-                              e,
-                              std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
+                              int(promises.size()),
+                              std::move(s.inputs[i][0]),
+                              std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 2),
                                                   std::make_move_iterator(s.inputs[i].end())),
                               std::move(s.borrowed_inputs[i]),
                               std::move(promises)});
