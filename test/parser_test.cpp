@@ -205,23 +205,22 @@ BOOST_AUTO_TEST_CASE(parser_type_fn_tuple) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_simple) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>(), one(8), {0, 9}};
+  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>(), one(8)};
   check_pass(expected, parse_assignment("let a = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_type) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), type("X", 7), one(11), {0, 12}};
+  const UnTypedAssignment expected{ident_pattern("a", 4), type("X", 7), one(11)};
   check_pass(expected, parse_assignment("let a: X = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_implicit) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>({7, 8}), one(11), {0, 12}};
+  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>({7, 8}), one(11)};
   check_pass(expected, parse_assignment("let a: _ = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_tuple) {
-  const UnTypedAssignment expected{
-    tuple_pattern({4, 6}), tuple_type<NamedType>({}, {8, 10}), expr_tuple({13, 15}), {0, 15}};
+  const UnTypedAssignment expected{tuple_pattern({4, 6}), tuple_type<NamedType>({}, {8, 10}), expr_tuple({13, 15})};
   check_pass(expected, parse_assignment("let (): () = ()"));
 }
 
@@ -304,14 +303,14 @@ BOOST_AUTO_TEST_CASE(parser_scope_simple) { check_pass(scope({}, one(2), {0, 5})
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment) {
   const UnTypedExpr expected =
-    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}}}, ident("x", 13), {0, 16});
+    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10)}}, ident("x", 13), {0, 16});
   check_pass(expected, parse_expr("{ let x = 1; x }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment2) {
   const UnTypedExpr expected =
-    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10), {2, 11}},
-           {ident_pattern("y", 17), floating_type<NamedType>(), one(21), {13, 22}}},
+    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10)},
+           {ident_pattern("y", 17), floating_type<NamedType>(), one(21)}},
           ident("x", 24),
           {0, 27});
   check_pass(expected, parse_expr("{ let x = 1; let y = 1; x }"));
@@ -331,8 +330,8 @@ BOOST_AUTO_TEST_CASE(parser_scope_return_multi_tuple) {
 
 BOOST_AUTO_TEST_CASE(parser_scope_nested) {
   const UnTypedExpr expected =
-    scope({{ident_pattern("x", 6), floating_type<NamedType>(), scope({}, one(12), {10, 15}), {2, 15}}},
-          scope({{ident_pattern("y", 23), floating_type<NamedType>(), scope({}, ident("x", 29), {27, 32}), {19, 32}}},
+    scope({{ident_pattern("x", 6), floating_type<NamedType>(), scope({}, one(12), {10, 15})}},
+          scope({{ident_pattern("y", 23), floating_type<NamedType>(), scope({}, ident("x", 29), {27, 32})}},
                 scope({}, ident("y", 36), {34, 39}),
                 {17, 41}),
           {0, 43});

@@ -183,7 +183,7 @@ ParseResult<UnTypedExpr> call_expr(const ParseState<std::string_view, Token>& s,
 
 auto borrow_expr() { return construct<UnTypedBorrowExpr>(seq(symbol("&"), expr)); }
 
-auto assignment() { return construct_with_ref<UnTypedAssignment>(seq(keyword("let"), binding(), symbol("="), expr)); }
+auto assignment() { return construct<UnTypedAssignment>(seq(keyword("let"), binding(), symbol("="), expr)); }
 
 auto scope() {
   return construct<UnTypedScopeExpr>(seq(symbol("{"), n(seq(assignment(), symbol(";"))), expr, symbol("}")));

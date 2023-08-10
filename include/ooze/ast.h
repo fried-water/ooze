@@ -55,7 +55,6 @@ struct Assignment {
   Pattern pattern;
   CompoundType<T> type;
   Indirect<Expr<T, Extras...>> expr;
-  Slice ref;
 
   KNOT_ORDERED(Assignment);
 };
