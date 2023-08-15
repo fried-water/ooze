@@ -27,6 +27,7 @@ add_library(ooze
   src/graph_execution.cpp
   src/graph_construction.cpp
   src/type_check.cpp
+  src/sema.cpp
   src/repl.cpp
   src/user_msg.cpp
   src/ooze.cpp)

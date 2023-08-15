@@ -11,9 +11,8 @@ ContextualResult<UnTypedFunction> parse_function(std::string_view);
 ContextualResult<UnTypedAST> parse(std::string_view);
 
 // Exposed for unit testing
-ContextualResult<UnTypedHeader> parse_header(std::string_view);
 ContextualResult<UnTypedAssignment> parse_assignment(std::string_view);
-ContextualResult<ast::Pattern> parse_pattern(std::string_view);
+ContextualResult<UnTypedPattern> parse_pattern(std::string_view);
 ContextualResult<CompoundType<NamedType>> parse_type(std::string_view);
 
 } // namespace ooze

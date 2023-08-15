@@ -18,8 +18,10 @@ struct Ident {
   KNOT_ORDERED(Ident);
 };
 
+template <typename T>
 struct Pattern {
-  std::variant<std::vector<Pattern>, WildCard, Ident> v;
+  std::variant<std::vector<Pattern<T>>, WildCard, Ident> v;
+  CompoundType<T> type = floating_type<T>();
   Slice ref;
   KNOT_ORDERED(Pattern);
 };
@@ -52,8 +54,7 @@ struct BorrowExpr {
 
 template <typename T, typename... Extras>
 struct Assignment {
-  Pattern pattern;
-  CompoundType<T> type;
+  Pattern<T> pattern;
   Indirect<Expr<T, Extras...>> expr;
 
   KNOT_ORDERED(Assignment);
@@ -81,23 +82,14 @@ using ExprVariant =
 template <typename T, typename... Extras>
 struct Expr {
   ExprVariant<T, Extras...> v;
+  CompoundType<T> type = floating_type<T>();
   Slice ref;
-
   KNOT_ORDERED(Expr);
-};
-
-template <typename T>
-struct FunctionHeader {
-  Pattern pattern;
-  FunctionType<T> type;
-  Slice ref;
-
-  KNOT_ORDERED(FunctionHeader);
 };
 
 template <typename T, typename... Extras>
 struct Function {
-  FunctionHeader<T> header;
+  Pattern<T> pattern;
   Expr<T, Extras...> expr;
 
   KNOT_ORDERED(Function);
@@ -118,25 +110,25 @@ struct EnvFunctionRef {
   KNOT_ORDERED(EnvFunctionRef);
 };
 
+using UnTypedPattern = ast::Pattern<NamedType>;
 using UnTypedAssignment = ast::Assignment<NamedType>;
 using UnTypedScopeExpr = ast::ScopeExpr<NamedType>;
 using UnTypedSelectExpr = ast::SelectExpr<NamedType>;
 using UnTypedCallExpr = ast::CallExpr<NamedType>;
 using UnTypedBorrowExpr = ast::BorrowExpr<NamedType>;
 using UnTypedExpr = ast::Expr<NamedType>;
-using UnTypedHeader = ast::FunctionHeader<NamedType>;
 using UnTypedFunction = ast::Function<NamedType>;
 
 using UnTypedAST = std::vector<std::tuple<std::string, UnTypedFunction>>;
 
 // Replace type names with type id
+using TypedPattern = ast::Pattern<TypeID>;
 using TypedAssignment = ast::Assignment<TypeID>;
 using TypedScopeExpr = ast::ScopeExpr<TypeID>;
 using TypedSelectExpr = ast::SelectExpr<TypeID>;
 using TypedCallExpr = ast::CallExpr<TypeID>;
 using TypedBorrowExpr = ast::BorrowExpr<TypeID>;
 using TypedExpr = ast::Expr<TypeID>;
-using TypedHeader = ast::FunctionHeader<TypeID>;
 using TypedFunction = ast::Function<TypeID>;
 
 // Replace function names with specific function overloads
@@ -146,7 +138,6 @@ using CheckedSelectExpr = ast::SelectExpr<TypeID, EnvFunctionRef>;
 using CheckedCallExpr = ast::CallExpr<TypeID, EnvFunctionRef>;
 using CheckedBorrowExpr = ast::BorrowExpr<TypeID, EnvFunctionRef>;
 using CheckedExpr = ast::Expr<TypeID, EnvFunctionRef>;
-using CheckedHeader = ast::FunctionHeader<TypeID>;
 using CheckedFunction = ast::Function<TypeID, EnvFunctionRef>;
 
 } // namespace ooze

@@ -8,6 +8,7 @@
 #include "parser_combinators.h"
 #include "pretty_print.h"
 #include "repl.h"
+#include "sema.h"
 #include "type_check.h"
 
 #include <iostream>
@@ -152,11 +153,14 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 
   for(const auto& [id, name] : env.type_names) {
     TypedFunction to_string_wrap{
-      {{make_vector(ast::Pattern{ast::Ident{"x"}})},
-       {tuple_type<TypeID>(make_vector(borrow_type(leaf_type(id)))), leaf_type(type_id<std::string>())}},
-      {TypedCallExpr{{{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}}}};
+      TypedPattern{ast::Ident{"x"}, borrow_type(leaf_type(id))},
+      {TypedCallExpr{{{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}},
+       leaf_type(type_id<std::string>())}};
 
-    types[pretty_print(env, id)] = overload_resolution(env, std::move(to_string_wrap)).has_value();
+    types[pretty_print(env, id)] =
+      type_check(env, std::move(to_string_wrap))
+        .and_then([&](TypedFunction f) { return overload_resolution(env, f); })
+        .has_value();
   }
 
   std::vector<std::string> output{fmt::format("{} type(s)", types.size())};

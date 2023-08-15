@@ -75,10 +75,21 @@ auto keyword(std::string_view sv) {
 
 auto underscore() { return nullify(token_parser(TokenType::Underscore)); }
 
+Slice char_slice(Span<Token> tokens, Slice token_slice) {
+  return {tokens[token_slice.begin].ref.begin, tokens[token_slice.end - 1].ref.end};
+}
+
 template <typename T, typename P>
 auto construct_with_ref(P p) {
   return transform(p, [](const auto&, auto tokens, Slice s, auto&&... ts) {
-    return T{std::forward<decltype(ts)>(ts)..., Slice{tokens[s.begin].ref.begin, tokens[s.end - 1].ref.end}};
+    return T{std::forward<decltype(ts)>(ts)..., char_slice(tokens, s)};
+  });
+}
+
+template <typename T, typename P>
+auto construct_with_type_ref(P p) {
+  return transform(p, [](const auto&, auto tokens, Slice s, auto t) {
+    return T{std::move(t), floating_type<NamedType>(), char_slice(tokens, s)};
   });
 }
 
@@ -112,8 +123,9 @@ auto tuple(P p) {
     });
 }
 
-ParseResult<Pattern> pattern(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
-  return construct_with_ref<Pattern>(choose(tuple(pattern), construct<WildCard>(underscore()), ident()))(s, loc);
+ParseResult<UnTypedPattern> pattern(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+  return construct_with_type_ref<UnTypedPattern>(choose(tuple(pattern), construct<WildCard>(underscore()), ident()))(
+    s, loc);
 }
 
 using TypeVar =
@@ -140,9 +152,12 @@ ParseResult<CompoundType<NamedType>> type(const ParseState<std::string_view, Tok
 }
 
 auto binding() {
-  return seq(pattern, transform(maybe(seq(symbol(":"), type)), [](auto opt_pattern) {
-               return opt_pattern ? std::move(*opt_pattern) : floating_type<NamedType>();
-             }));
+  return transform(seq(pattern, maybe(seq(symbol(":"), type))), [](auto pattern, auto opt_type) {
+    if(opt_type) {
+      pattern.type = std::move(*opt_type);
+    }
+    return pattern;
+  });
 }
 
 auto literal() {
@@ -159,8 +174,8 @@ ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, Pars
   return transform(
     seq(call_expr,
         n(seq(symbol("."),
-              construct_with_ref<UnTypedExpr>(
-                construct<UnTypedCallExpr>(seq(non_call_expr, construct_with_ref<UnTypedExpr>(tuple(expr)))))))),
+              construct_with_type_ref<UnTypedExpr>(
+                construct<UnTypedCallExpr>(seq(non_call_expr, construct_with_type_ref<UnTypedExpr>(tuple(expr)))))))),
     [](UnTypedExpr acc, std::vector<UnTypedExpr> chain) {
       return knot::accumulate(std::move(chain), std::move(acc), [](auto acc, auto call) {
         auto& args = std::get<std::vector<UnTypedExpr>>(std::get<UnTypedCallExpr>(call.v).arg->v);
@@ -173,17 +188,23 @@ ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, Pars
 
 ParseResult<UnTypedExpr> call_expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
   return transform(
-    seq(non_call_expr, n(construct_with_ref<UnTypedExpr>(tuple(expr)))),
+    seq(non_call_expr, n(construct_with_type_ref<UnTypedExpr>(tuple(expr)))),
     [](UnTypedExpr callee, std::vector<UnTypedExpr> arg_sets) {
       return knot::accumulate(std::move(arg_sets), std::move(callee), [](UnTypedExpr acc, UnTypedExpr args) {
-        return UnTypedExpr{UnTypedCallExpr{std::move(acc), std::move(args)}, {acc.ref.begin, args.ref.end}};
+        return UnTypedExpr{
+          UnTypedCallExpr{std::move(acc), std::move(args)}, floating_type<NamedType>(), {acc.ref.begin, args.ref.end}};
       });
     })(s, loc);
 }
 
 auto borrow_expr() { return construct<UnTypedBorrowExpr>(seq(symbol("&"), expr)); }
 
-auto assignment() { return construct<UnTypedAssignment>(seq(keyword("let"), binding(), symbol("="), expr)); }
+auto assignment() {
+  return transform(seq(keyword("let"), binding(), symbol("="), expr), [](UnTypedPattern pattern, UnTypedExpr expr) {
+    expr.type = pattern.type;
+    return UnTypedAssignment{std::move(pattern), std::move(expr)};
+  });
+}
 
 auto scope() {
   return construct<UnTypedScopeExpr>(seq(symbol("{"), n(seq(assignment(), symbol(";"))), expr, symbol("}")));
@@ -193,40 +214,27 @@ auto select_expr() {
   return construct<UnTypedSelectExpr>(
     seq(keyword("select"),
         expr,
-        construct_with_ref<UnTypedExpr>(scope()),
+        construct_with_type_ref<UnTypedExpr>(scope()),
         keyword("else"),
-        construct_with_ref<UnTypedExpr>(scope())));
+        construct_with_type_ref<UnTypedExpr>(scope())));
 }
 
 ParseResult<UnTypedExpr> non_call_expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
-  return construct_with_ref<UnTypedExpr>(
+  return construct_with_type_ref<UnTypedExpr>(
     transform(choose(tuple(expr), scope(), select_expr(), borrow_expr(), ident(), literal()), [](auto v) {
       return std::visit([](auto&& ele) { return ast::ExprVariant<NamedType>{std::move(ele)}; }, std::move(v));
     }))(s, loc);
 }
 
-auto function_header() {
-  return transform(
-    seq(transform(tuple(seq(binding())),
-                  [](const auto&, auto tokens, Slice s, auto bindings) {
-                    const Slice char_slice{tokens[s.begin].ref.begin, tokens[s.end - 1].ref.end};
-                    return std::tuple(
-                      Pattern{transform_to_vec(std::move(bindings), [](auto&& b) { return std::move(std::get<0>(b)); }),
-                              char_slice},
-                      transform_to_vec(std::move(bindings), [](auto&& b) { return std::move(std::get<1>(b)); }));
-                  }),
-        symbol("->"),
-        type),
-    [](const auto&, auto tokens, Slice s, auto pattern, auto inputs, auto result_type) {
-      return UnTypedHeader{std::move(pattern),
-                           {tuple_type(std::move(inputs), pattern.ref), std::move(result_type)},
-                           Slice{tokens[s.begin].ref.begin, tokens[s.end - 1].ref.end}};
-    });
-}
-
 auto function() {
-  return construct<UnTypedFunction>(
-    seq(function_header(), choose(construct_with_ref<UnTypedExpr>(scope()), seq(symbol("="), expr))));
+  return transform(seq(construct_with_type_ref<UnTypedPattern>(tuple(seq(binding()))),
+                       symbol("->"),
+                       type,
+                       choose(construct_with_type_ref<UnTypedExpr>(scope()), seq(symbol("="), expr))),
+                   [](UnTypedPattern pattern, CompoundType<NamedType> output_type, UnTypedExpr expr) {
+                     expr.type = std::move(output_type);
+                     return UnTypedFunction{std::move(pattern), std::move(expr)};
+                   });
 }
 
 template <typename Parser>
@@ -261,9 +269,8 @@ ContextualResult<UnTypedAST> parse(std::string_view src) {
   return parse_string(n(seq(keyword("fn"), ident_string(), function())), src);
 }
 
-ContextualResult<UnTypedHeader> parse_header(std::string_view src) { return parse_string(function_header(), src); }
 ContextualResult<UnTypedAssignment> parse_assignment(std::string_view src) { return parse_string(assignment(), src); }
-ContextualResult<Pattern> parse_pattern(std::string_view src) { return parse_string(pattern, src); }
+ContextualResult<UnTypedPattern> parse_pattern(std::string_view src) { return parse_string(pattern, src); }
 ContextualResult<CompoundType<NamedType>> parse_type(std::string_view src) { return parse_string(type, src); }
 
 } // namespace ooze

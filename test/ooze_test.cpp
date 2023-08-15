@@ -361,7 +361,10 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_ref_binding) {
         return std::tuple(std::move(env), std::move(bindings));
       });
 
-  BOOST_REQUIRE(result);
+  if(!result) {
+    fmt::print("{}\n", knot::debug(result.error()));
+    BOOST_CHECK(result);
+  }
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
@@ -381,7 +384,10 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
         return std::tuple(std::move(env), std::move(bindings));
       });
 
-  BOOST_REQUIRE(result);
+  if(!result) {
+    fmt::print("{}\n", knot::debug(result.error()));
+    BOOST_CHECK(result);
+  }
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
@@ -404,7 +410,10 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
         return std::tuple(std::move(env), std::move(bindings));
       });
 
-  BOOST_REQUIRE(result);
+  if(!result) {
+    fmt::print("{}\n", knot::debug(result.error()));
+    BOOST_CHECK(result);
+  }
 }
 
 BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
@@ -422,7 +431,10 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
         return run(executor, std::move(env), std::move(bindings), "let z = f(&x)");
       });
 
-  BOOST_REQUIRE(result);
+  if(!result) {
+    fmt::print("{}\n", knot::debug(result.error()));
+    BOOST_CHECK(result);
+  }
 }
 
 BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
@@ -451,7 +463,10 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
         return std::tuple(std::move(env), std::move(bindings));
       });
 
-  BOOST_REQUIRE(result);
+  if(!result) {
+    fmt::print("{}\n", knot::debug(result.error()));
+    BOOST_CHECK(result);
+  }
 }
 
 BOOST_AUTO_TEST_CASE(ooze_print_fn) {
@@ -460,7 +475,7 @@ BOOST_AUTO_TEST_CASE(ooze_print_fn) {
   e.add_function("f", []() { return 1; });
 
   // TODO improve this error
-  BOOST_REQUIRE(!run_to_string(executor, std::move(e), {}, "f"));
+  BOOST_CHECK(!run_to_string(executor, std::move(e), {}, "f"));
 }
 
 } // namespace ooze

@@ -30,48 +30,68 @@ void check_single_error(ContextualError expected, ContextualResult<T> result) {
 
 UnTypedExpr call(UnTypedExpr callee, UnTypedExpr arg, std::optional<Slice> opt_ref = {}) {
   const Slice ref = opt_ref ? *opt_ref : Slice{std::min(callee.ref.begin, arg.ref.begin), arg.ref.end};
-  return {UnTypedCallExpr{std::move(callee), std::move(arg)}, ref};
+  return {UnTypedCallExpr{std::move(callee), std::move(arg)}, floating_type<NamedType>(), ref};
 }
 
 UnTypedExpr ident(std::string_view name, int offset) {
-  return {{Ident{std::string(name)}}, {offset, offset + (int)name.size()}};
+  return {{Ident{std::string(name)}}, floating_type<NamedType>(), {offset, offset + (int)name.size()}};
 }
 
-UnTypedExpr one(int offset) { return {{Literal{1}}, Slice{offset, offset + 1}}; }
+UnTypedExpr one(int offset) { return {{Literal{1}}, floating_type<NamedType>(), Slice{offset, offset + 1}}; }
 
 template <typename... Children>
 UnTypedExpr expr_tuple(Slice ref, Children... children) {
-  return {std::vector<UnTypedExpr>{std::move(children)...}, ref};
+  return {std::vector<UnTypedExpr>{std::move(children)...}, floating_type<NamedType>(), ref};
 }
 
-UnTypedExpr expr_borrow(UnTypedExpr e) { return {UnTypedBorrowExpr{std::move(e)}, {e.ref.begin - 1, e.ref.end}}; }
+UnTypedExpr expr_borrow(UnTypedExpr e) {
+  return {UnTypedBorrowExpr{std::move(e)}, floating_type<NamedType>(), {e.ref.begin - 1, e.ref.end}};
+}
 
 UnTypedExpr select(UnTypedExpr cond, UnTypedExpr if_, UnTypedExpr else_, Slice ref) {
-  return {UnTypedSelectExpr{std::move(cond), std::move(if_), std::move(else_)}, ref};
+  return {UnTypedSelectExpr{std::move(cond), std::move(if_), std::move(else_)}, floating_type<NamedType>(), ref};
 }
 
 UnTypedExpr scope(std::vector<UnTypedAssignment> assignments, UnTypedExpr expr, Slice ref) {
-  return {UnTypedScopeExpr{std::move(assignments), std::move(expr)}, ref};
+  return {UnTypedScopeExpr{std::move(assignments), std::move(expr)}, floating_type<NamedType>(), ref};
 }
 
-Pattern ident_pattern(std::string_view name, int offset) {
-  return {{Ident{std::string(name)}}, {offset, offset + (int)name.size()}};
+UnTypedPattern ident_pattern(std::string_view name, int offset) {
+  return {{Ident{std::string(name)}}, floating_type<NamedType>(), {offset, offset + (int)name.size()}};
 }
 
-Pattern wildcard_pattern(int offset) { return {{WildCard{}}, {offset, offset + 1}}; }
+UnTypedPattern wildcard_pattern(int offset) { return {{WildCard{}}, floating_type<NamedType>(), {offset, offset + 1}}; }
 
 template <typename... Children>
-Pattern tuple_pattern(Slice ref, Children... children) {
-  return {std::vector<Pattern>{std::move(children)...}, ref};
+UnTypedPattern tuple_pattern(Slice ref, Children... children) {
+  return {std::vector<UnTypedPattern>{std::move(children)...}, floating_type<NamedType>(), ref};
 }
 
 CompoundType<NamedType> type(std::string_view name, int offset) {
   return {NamedType{std::string(name)}, {offset, offset + (int)name.size()}};
 }
 
-UnTypedHeader
-header(Pattern pattern, std::vector<CompoundType<NamedType>> inputs, CompoundType<NamedType> output, Slice ref) {
-  return {std::move(pattern), {{{std::move(inputs), pattern.ref}}, std::move(output)}, ref};
+template <typename T>
+T typed(T t, CompoundType<NamedType> type) {
+  t.type = std::move(type);
+  return t;
+}
+
+UnTypedAssignment
+assignment(UnTypedPattern pattern, UnTypedExpr expr, CompoundType<NamedType> t = floating_type<NamedType>()) {
+  return {typed(std::move(pattern), t), typed(std::move(expr), t)};
+}
+
+UnTypedFunction function(UnTypedPattern pattern,
+                         std::vector<CompoundType<NamedType>> inputs,
+                         CompoundType<NamedType> output,
+                         UnTypedExpr expr) {
+  auto* patterns = std::get_if<std::vector<UnTypedPattern>>(&pattern.v);
+  BOOST_REQUIRE(patterns && patterns->size() == inputs.size());
+  for(int i = 0; i < inputs.size(); i++) {
+    (*patterns)[i].type = std::move(inputs[i]);
+  }
+  return {std::move(pattern), typed(std::move(expr), std::move(output))};
 }
 
 } // namespace
@@ -205,93 +225,92 @@ BOOST_AUTO_TEST_CASE(parser_type_fn_tuple) {
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_simple) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>(), one(8)};
-  check_pass(expected, parse_assignment("let a = 1"));
+  check_pass(assignment(ident_pattern("a", 4), one(8)), parse_assignment("let a = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_type) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), type("X", 7), one(11)};
-  check_pass(expected, parse_assignment("let a: X = 1"));
+  check_pass(assignment(ident_pattern("a", 4), one(11), type("X", 7)), parse_assignment("let a: X = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_implicit) {
-  const UnTypedAssignment expected{ident_pattern("a", 4), floating_type<NamedType>({7, 8}), one(11)};
-  check_pass(expected, parse_assignment("let a: _ = 1"));
+  check_pass(assignment(ident_pattern("a", 4), one(11), floating_type<NamedType>({7, 8})),
+             parse_assignment("let a: _ = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_assignment_tuple) {
-  const UnTypedAssignment expected{tuple_pattern({4, 6}), tuple_type<NamedType>({}, {8, 10}), expr_tuple({13, 15})};
-  check_pass(expected, parse_assignment("let (): () = ()"));
+  check_pass(assignment(tuple_pattern({4, 6}), expr_tuple({13, 15}), tuple_type<NamedType>({}, {8, 10})),
+             parse_assignment("let (): () = ()"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_no_args) {
-  const UnTypedHeader expected = header(tuple_pattern({0, 2}), {}, type("T", 6), {0, 7});
-  check_pass(expected, parse_header("() -> T"));
+  check_pass(function(tuple_pattern({0, 2}), {}, type("T", 6), one(10)), parse_function("() -> T = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_one_arg) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 6}, ident_pattern("a", 1)), {type("X", 4)}, type("T", 10), {0, 11});
-  check_pass(expected, parse_header("(a: X) -> T"));
+  check_pass(function(tuple_pattern({0, 6}, ident_pattern("a", 1)), {type("X", 4)}, type("T", 10), one(14)),
+             parse_function("(a: X) -> T = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_two_args) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 12}, ident_pattern("a", 1), ident_pattern("b", 7)),
-           {type("X", 4), type("Y", 10)},
-           type("T", 16),
-           {0, 17});
-  check_pass(expected, parse_header("(a: X, b: Y) -> T"));
+  const UnTypedFunction expected =
+    function(tuple_pattern({0, 12}, ident_pattern("a", 1), ident_pattern("b", 7)),
+             {type("X", 4), type("Y", 10)},
+             type("T", 16),
+             one(20));
+  check_pass(expected, parse_function("(a: X, b: Y) -> T = 1"));
 }
 
+// function(UnTypedPattern pattern, std::vector<CompoundType<NamedType>> inputs, CompoundType<NamedType> output,
+// UnTypedExpr expr)
+
 BOOST_AUTO_TEST_CASE(parser_header_borrow_arg) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 7}, ident_pattern("a", 1)), {borrow_type(type("X", 5), {4, 6})}, type("T", 11), {0, 12});
-  check_pass(expected, parse_header("(a: &X) -> T"));
+  check_pass(
+    function(tuple_pattern({0, 7}, ident_pattern("a", 1)), {borrow_type(type("X", 5), {4, 6})}, type("T", 11), one(15)),
+    parse_function("(a: &X) -> T = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_fn_arg) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 14}, ident_pattern("x", 1)),
-           {function_type<NamedType>(tuple_type<NamedType>({}, {6, 8}), type("a", 12), {4, 13})},
-           type("T", 18),
-           {0, 19});
-  check_pass(expected, parse_header("(x: fn() -> a) -> T"));
+  const UnTypedFunction expected =
+    function(tuple_pattern({0, 14}, ident_pattern("x", 1)),
+             {function_type<NamedType>(tuple_type<NamedType>({}, {6, 8}), type("a", 12), {4, 13})},
+             type("T", 18),
+             one(22));
+  check_pass(expected, parse_function("(x: fn() -> a) -> T = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_fn_return) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 2}),
-           {},
-           function_type<NamedType>(tuple_type<NamedType>({}, {8, 10}), type("a", 14), {6, 15}),
-           {0, 15});
-  check_pass(expected, parse_header("() -> fn() -> a"));
+  const UnTypedFunction expected =
+    function(tuple_pattern({0, 2}),
+             {},
+             function_type<NamedType>(tuple_type<NamedType>({}, {8, 10}), type("a", 14), {6, 15}),
+             one(18));
+  check_pass(expected, parse_function("() -> fn() -> a = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_pattern_arg) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 17}, tuple_pattern({1, 7}, ident_pattern("a", 2), ident_pattern("b", 5))),
-           {tuple_type<NamedType>({type("X", 10), borrow_type(type("Y", 14), {13, 15})}, {9, 16})},
-           type("T", 21),
-           {0, 22});
-  check_pass(expected, parse_header("((a, b): (X, &Y)) -> T"));
+  const UnTypedFunction expected =
+    function(tuple_pattern({0, 17}, tuple_pattern({1, 7}, ident_pattern("a", 2), ident_pattern("b", 5))),
+             {tuple_type<NamedType>({type("X", 10), borrow_type(type("Y", 14), {13, 15})}, {9, 16})},
+             type("T", 21),
+             one(25));
+  check_pass(expected, parse_function("((a, b): (X, &Y)) -> T = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_unspecified_arg) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 3}, ident_pattern("a", 1)), {floating_type<NamedType>()}, type("T", 7), {0, 8});
-  check_pass(expected, parse_header("(a) -> T"));
+  const UnTypedFunction expected =
+    function(tuple_pattern({0, 3}, ident_pattern("a", 1)), {floating_type<NamedType>()}, type("T", 7), one(11));
+  check_pass(expected, parse_function("(a) -> T = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_return_tuple_empty) {
-  const UnTypedHeader expected = header(tuple_pattern({0, 2}), {}, tuple_type<NamedType>({}, {6, 8}), {0, 8});
-  check_pass(expected, parse_header("() -> ()"));
+  const UnTypedFunction expected = function(tuple_pattern({0, 2}), {}, tuple_type<NamedType>({}, {6, 8}), one(11));
+  check_pass(expected, parse_function("() -> () = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_header_return_tuple1) {
-  const UnTypedHeader expected =
-    header(tuple_pattern({0, 2}), {}, tuple_type<NamedType>({type("T", 7)}, {6, 9}), {0, 9});
-  check_pass(expected, parse_header("() -> (T)"));
+  const UnTypedFunction expected =
+    function(tuple_pattern({0, 2}), {}, tuple_type<NamedType>({type("T", 7)}, {6, 9}), one(12));
+  check_pass(expected, parse_function("() -> (T) = 1"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_select) {
@@ -302,17 +321,13 @@ BOOST_AUTO_TEST_CASE(parser_select) {
 BOOST_AUTO_TEST_CASE(parser_scope_simple) { check_pass(scope({}, one(2), {0, 5}), parse_expr("{ 1 }")); }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment) {
-  const UnTypedExpr expected =
-    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10)}}, ident("x", 13), {0, 16});
+  const UnTypedExpr expected = scope({assignment(ident_pattern("x", 6), one(10))}, ident("x", 13), {0, 16});
   check_pass(expected, parse_expr("{ let x = 1; x }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_scope_with_assignment2) {
-  const UnTypedExpr expected =
-    scope({{ident_pattern("x", 6), floating_type<NamedType>(), one(10)},
-           {ident_pattern("y", 17), floating_type<NamedType>(), one(21)}},
-          ident("x", 24),
-          {0, 27});
+  const UnTypedExpr expected = scope(
+    {assignment(ident_pattern("x", 6), one(10)), assignment(ident_pattern("y", 17), one(21))}, ident("x", 24), {0, 27});
   check_pass(expected, parse_expr("{ let x = 1; let y = 1; x }"));
 }
 
@@ -330,8 +345,8 @@ BOOST_AUTO_TEST_CASE(parser_scope_return_multi_tuple) {
 
 BOOST_AUTO_TEST_CASE(parser_scope_nested) {
   const UnTypedExpr expected =
-    scope({{ident_pattern("x", 6), floating_type<NamedType>(), scope({}, one(12), {10, 15})}},
-          scope({{ident_pattern("y", 23), floating_type<NamedType>(), scope({}, ident("x", 29), {27, 32})}},
+    scope({assignment(ident_pattern("x", 6), scope({}, one(12), {10, 15}))},
+          scope({assignment(ident_pattern("y", 23), scope({}, ident("x", 29), {27, 32}))},
                 scope({}, ident("y", 36), {34, 39}),
                 {17, 41}),
           {0, 43});
@@ -342,23 +357,22 @@ BOOST_AUTO_TEST_CASE(parser_scope_nested) {
 BOOST_AUTO_TEST_CASE(parser_ast_empty) { check_pass(UnTypedAST{}, parse("")); }
 
 BOOST_AUTO_TEST_CASE(parser_ast_simple) {
-  const UnTypedAST expected{
-    {"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}}};
+  const UnTypedAST expected{{"f", {function(tuple_pattern({4, 6}), {}, type("T", 10), scope({}, one(14), {12, 17}))}}};
   check_pass(expected, parse("fn f() -> T { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_ast_non_scope) {
   const UnTypedAST expected{
     {"f",
-     {header(tuple_pattern({4, 7}, ident_pattern("x", 5)), {floating_type<NamedType>()}, type("T", 11), {4, 12}),
-      ident("x", 15)}}};
+     {function(
+       tuple_pattern({4, 7}, ident_pattern("x", 5)), {floating_type<NamedType>()}, type("T", 11), ident("x", 15))}}};
   check_pass(expected, parse("fn f(x) -> T = x"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_multiple_functions) {
   const UnTypedAST expected{
-    {"f", {header(tuple_pattern({4, 6}), {}, type("T", 10), {4, 11}), scope({}, one(14), {12, 17})}},
-    {"g", {header(tuple_pattern({22, 24}), {}, type("T", 28), {22, 29}), scope({}, one(32), {30, 35})}},
+    {"f", {function(tuple_pattern({4, 6}), {}, type("T", 10), scope({}, one(14), {12, 17}))}},
+    {"g", {function(tuple_pattern({22, 24}), {}, type("T", 28), scope({}, one(32), {30, 35}))}},
   };
   check_pass(expected, parse("fn f() -> T { 1 } fn g() -> T { 1 }"));
 }
@@ -374,7 +388,7 @@ BOOST_AUTO_TEST_CASE(parser_bad_paren) { check_single_error({{2, 3}, "expected t
 BOOST_AUTO_TEST_CASE(parser_no_expr) { check_single_error({{1, 2}, "expected 'let'" /* ? */}, parse_expr("{}")); }
 
 BOOST_AUTO_TEST_CASE(parser_no_return_type) {
-  check_single_error({{6, 7}, "expected '('" /* ? */}, parse_header("() -> { 1 }"));
+  check_single_error({{6, 7}, "expected '('" /* ? */}, parse_function("() -> { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(parser_fn_no_tupl) { check_single_error({{3, 4}, "expected '('"}, parse_type("fn T -> T")); }

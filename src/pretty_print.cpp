@@ -77,8 +77,8 @@ struct Printer {
   template <typename T, typename... Extras>
   void pretty_print(std::ostream& os, const Assignment<T, Extras...>& a) {
     pretty_print(os << "let ", a.pattern);
-    if(!std::holds_alternative<Floating>(a.type.v)) {
-      pretty_print(os << ": ", a.type);
+    if(!std::holds_alternative<Floating>(a.pattern.type.v)) {
+      pretty_print(os << ": ", a.pattern.type);
     }
     pretty_print(os << " = ", a.expr);
   }
@@ -110,7 +110,10 @@ struct Printer {
     pretty_print(os << " else ", e.else_expr);
   }
 
-  void pretty_print(std::ostream& os, const Pattern& p) { pretty_print(os, p.v); }
+  template <typename T>
+  void pretty_print(std::ostream& os, const Pattern<T>& p) {
+    pretty_print(os, p.v);
+  }
 
   template <typename T>
   void pretty_print(std::ostream& os, const CompoundType<T>& t) {
@@ -133,33 +136,34 @@ struct Printer {
     pretty_print(os, c.arg);
   }
 
-  template <typename T>
-  void pretty_print(std::ostream& os, const FunctionHeader<T>& h) {
-    const auto* pattern_vec = std::get_if<std::vector<Pattern>>(&h.pattern.v);
-    const auto* in_vec = std::get_if<std::vector<CompoundType<T>>>(&h.type.input->v);
+  template <typename T, typename... Extras>
+  void pretty_print(std::ostream& os, const Function<T, Extras...>& f) {
+    const auto* pattern_vec = std::get_if<std::vector<Pattern<T>>>(&f.pattern.v);
+    const auto* in_vec = std::get_if<std::vector<CompoundType<T>>>(&f.pattern.type.v);
 
     if(in_vec && pattern_vec && in_vec->size() == pattern_vec->size()) {
       os << '(';
       if(!in_vec->empty()) {
-        pretty_print(os, pattern_vec->front());
-        pretty_print(os << ": ", in_vec->front());
+        const auto print_element = [&](const Pattern<T>& p, const CompoundType<T>& t) {
+          pretty_print(os, p);
+          pretty_print(os << ": ", std::holds_alternative<Floating>(t.v) ? p.type : t);
+        };
+
+        print_element(pattern_vec->front(), in_vec->front());
 
         for(int i = 1; i < in_vec->size(); i++) {
-          pretty_print(os << ", ", (*pattern_vec)[i]);
-          pretty_print(os << ": ", (*in_vec)[i]);
+          print_element((*pattern_vec)[i], (*in_vec)[i]);
         }
       }
-      pretty_print(os << ") -> ", *h.type.output);
+      os << ")";
     } else {
-      pretty_print(os, h.pattern);
-      pretty_print(os << ": ", h.type.input);
-      pretty_print(os << " -> ", h.type.output);
+      pretty_print(os, f.pattern);
+      if(!std::holds_alternative<Floating>(f.pattern.type.v)) {
+        pretty_print(os << ": ", f.pattern.type);
+      }
     }
-  }
 
-  template <typename T, typename... Extras>
-  void pretty_print(std::ostream& os, const Function<T, Extras...>& f) {
-    pretty_print(os, f.header);
+    pretty_print(os << " -> ", f.expr.type);
 
     if(std::holds_alternative<ScopeExpr<T, Extras...>>(f.expr.v)) {
       pretty_print(os << ' ', f.expr);
@@ -201,19 +205,18 @@ std::string pretty_print(const UnTypedAST& ast) {
 
 std::string pretty_print(const Env& e, TypeID t) { return Printer{&e}(t); }
 
-std::string pretty_print(const ast::Pattern& p) { return Printer{}(p); }
+std::string pretty_print(const UnTypedPattern& p) { return Printer{}(p); }
+std::string pretty_print(const TypedPattern& p) { return Printer{}(p); }
 
 std::string pretty_print(const CompoundType<NamedType>& t) { return Printer{}(t); }
 std::string pretty_print(const Env& e, const CompoundType<TypeID>& t) { return Printer{&e}(t); }
 std::string pretty_print(const Env& e, const FunctionType<TypeID>& t) { return Printer{&e}(t); }
 
 std::string pretty_print(const UnTypedFunction& f) { return Printer{}(f); }
-std::string pretty_print(const UnTypedHeader& h) { return Printer{}(h); }
 std::string pretty_print(const UnTypedAssignment& asgn) { return Printer{}(asgn); }
 std::string pretty_print(const UnTypedExpr& expr) { return Printer{}(expr); }
 
 std::string pretty_print(const Env& e, const TypedFunction& f) { return Printer{&e}(f); }
-std::string pretty_print(const Env& e, const TypedHeader& h) { return Printer{&e}(h); }
 std::string pretty_print(const Env& e, const TypedAssignment& asgn) { return Printer{&e}(asgn); }
 std::string pretty_print(const Env& e, const TypedExpr& expr) { return Printer{&e}(expr); }
 

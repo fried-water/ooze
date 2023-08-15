@@ -7,10 +7,11 @@ namespace ooze {
 using namespace ast;
 
 BOOST_AUTO_TEST_CASE(pretty_print_pattern) {
-  BOOST_CHECK_EQUAL("abc", pretty_print(Pattern{Ident{"abc"}}));
-  BOOST_CHECK_EQUAL("_", pretty_print(Pattern{WildCard{}}));
-  BOOST_CHECK_EQUAL("()", pretty_print(Pattern{std::vector<Pattern>{}}));
-  BOOST_CHECK_EQUAL("(abc, _)", pretty_print(Pattern{std::vector<Pattern>{{Ident{"abc"}}, {WildCard{}}}}));
+  BOOST_CHECK_EQUAL("abc", pretty_print(UnTypedPattern{Ident{"abc"}}));
+  BOOST_CHECK_EQUAL("_", pretty_print(UnTypedPattern{WildCard{}}));
+  BOOST_CHECK_EQUAL("()", pretty_print(UnTypedPattern{std::vector<UnTypedPattern>{}}));
+  BOOST_CHECK_EQUAL("(abc, _)",
+                    pretty_print(UnTypedPattern{std::vector<UnTypedPattern>{{Ident{"abc"}}, {WildCard{}}}}));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_type) {
@@ -62,15 +63,14 @@ BOOST_AUTO_TEST_CASE(pretty_print_expr) {
 BOOST_AUTO_TEST_CASE(pretty_print_assignment) {
   const auto y_expr = UnTypedExpr{Ident{"y"}};
 
-  BOOST_CHECK_EQUAL("let x = y",
-                    pretty_print(UnTypedAssignment{Pattern{Ident{"x"}}, floating_type<NamedType>(), y_expr}));
+  BOOST_CHECK_EQUAL("let x = y", pretty_print(UnTypedAssignment{UnTypedPattern{Ident{"x"}}, y_expr}));
   BOOST_CHECK_EQUAL("let x: i32 = y",
-                    pretty_print(UnTypedAssignment{Pattern{Ident{"x"}}, leaf_type<NamedType>({"i32"}), y_expr}));
+                    pretty_print(UnTypedAssignment{UnTypedPattern{Ident{"x"}, leaf_type<NamedType>({"i32"})}, y_expr}));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_scope) {
   const auto y_expr = UnTypedExpr{Ident{"y"}};
-  const auto assign = UnTypedAssignment{Pattern{Ident{"x"}}, floating_type<NamedType>(), y_expr};
+  const auto assign = UnTypedAssignment{UnTypedPattern{Ident{"x"}}, y_expr};
 
   const auto scope = UnTypedExpr{UnTypedScopeExpr{{}, y_expr}};
 
@@ -80,40 +80,38 @@ BOOST_AUTO_TEST_CASE(pretty_print_scope) {
   BOOST_CHECK_EQUAL("{\n  let x = y;\n  let x = y;\n  y\n}",
                     pretty_print(UnTypedExpr{UnTypedScopeExpr{{assign, assign}, y_expr}}));
 
-  const auto nested_scope =
-    UnTypedExpr{UnTypedScopeExpr{{UnTypedAssignment{Pattern{Ident{"x"}}, floating_type<NamedType>(), scope}},
-                                 UnTypedExpr{UnTypedScopeExpr{{}, y_expr}}}};
+  const auto nested_scope = UnTypedExpr{UnTypedScopeExpr{
+    {UnTypedAssignment{UnTypedPattern{Ident{"x"}}, scope}}, UnTypedExpr{UnTypedScopeExpr{{}, y_expr}}}};
 
   BOOST_CHECK_EQUAL("{\n  let x = {\n    y\n  };\n  {\n    y\n  }\n}", pretty_print(nested_scope));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_header) {
-  const auto i = leaf_type<NamedType>({"i"});
-
-  BOOST_CHECK_EQUAL("x: i -> i", pretty_print(UnTypedHeader{Pattern{Ident{"x"}}, {i, i}}));
-  BOOST_CHECK_EQUAL("() -> i",
-                    pretty_print(UnTypedHeader{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}}));
-  BOOST_CHECK_EQUAL(
-    "(x: i) -> i",
-    pretty_print(UnTypedHeader{Pattern{std::vector<Pattern>{Pattern{Ident{"x"}}}}, {tuple_type<NamedType>({i}), i}}));
-}
-
 BOOST_AUTO_TEST_CASE(pretty_print_function) {
   const auto i = leaf_type<NamedType>({"i"});
-  const auto x_expr = UnTypedExpr{Ident{"x"}};
+  const auto x_expr = UnTypedExpr{Ident{"x"}, i};
 
-  BOOST_CHECK_EQUAL("() -> i {\n  x\n}",
-                    pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}},
-                                                 {UnTypedScopeExpr{{}, x_expr}}}));
+  BOOST_CHECK_EQUAL("x: i -> i = x", pretty_print(UnTypedFunction{UnTypedPattern{Ident{"x"}, i}, x_expr}));
   BOOST_CHECK_EQUAL(
     "() -> i = x",
-    pretty_print(UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), i}}, x_expr}));
+    pretty_print(UnTypedFunction{UnTypedPattern{std::vector<UnTypedPattern>{}, tuple_type<NamedType>({})}, x_expr}));
+  BOOST_CHECK_EQUAL(
+    "(x: i) -> i = x",
+    pretty_print(UnTypedFunction{
+      UnTypedPattern{std::vector<UnTypedPattern>{UnTypedPattern{Ident{"x"}}}, tuple_type<NamedType>({i})}, x_expr}));
+
+  BOOST_CHECK_EQUAL(
+    "() -> i {\n  x\n}",
+    pretty_print(UnTypedFunction{
+      UnTypedPattern{std::vector<UnTypedPattern>{}, tuple_type<NamedType>({})}, {UnTypedScopeExpr{{}, x_expr}, i}}));
 }
 
 BOOST_AUTO_TEST_CASE(pretty_print_ast) {
-  const auto f =
-    UnTypedFunction{{Pattern{std::vector<Pattern>{}}, {tuple_type<NamedType>({}), leaf_type<NamedType>({"i"})}},
-                    UnTypedExpr{Ident{"x"}}};
+  const auto f = UnTypedFunction{
+    {UnTypedPattern{
+      std::vector<UnTypedPattern>{},
+      tuple_type<NamedType>({}),
+    }},
+    UnTypedExpr{Ident{"x"}, leaf_type<NamedType>({"i"})}};
 
   BOOST_CHECK_EQUAL("fn f() -> i = x\n\nfn g() -> i = x", pretty_print(UnTypedAST{{"f", f}, {"g", f}}));
 }

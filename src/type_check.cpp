@@ -12,24 +12,13 @@ using namespace ast;
 
 namespace {
 
-using Variable = std::variant<const TypedExpr*, const Pattern*>;
+using Variable = std::variant<const TypedExpr*, const TypedPattern*>;
 
 struct MismatchedType {
   CompoundType<TypeID> conflicting_type;
 };
+
 struct UnableToDeduce {};
-
-struct MissingOverload {
-  std::vector<FunctionType<TypeID>> candidates;
-};
-
-struct AmbiguousOverload {
-  std::vector<FunctionType<TypeID>> candidates;
-};
-
-struct UndeclaredFunction {};
-struct UndeclaredBinding {};
-
 struct ReturnBorrow {};
 struct InvalidBorrow {
   std::string type;
@@ -42,15 +31,7 @@ struct OverusedBinding {
 
 // Ordered by priority
 using TypeCheckErrorVariant =
-  std::variant<UndeclaredBinding,
-               MissingOverload,
-               AmbiguousOverload,
-               MismatchedType,
-               UnableToDeduce,
-               InvalidBorrow,
-               ReturnBorrow,
-               UnusedBinding,
-               OverusedBinding>;
+  std::variant<MismatchedType, UnableToDeduce, InvalidBorrow, ReturnBorrow, UnusedBinding, OverusedBinding>;
 
 struct TypeCheckError {
   TypeCheckErrorVariant type;
@@ -79,7 +60,7 @@ struct VariablePropagation {
 
 std::string pretty_print(const Env& e, Variable v) {
   return std::visit(Overloaded{[&](const TypedExpr* expr) { return pretty_print(untype<UnTypedExpr>(e, *expr)); },
-                               [](const Pattern* p) { return ooze::pretty_print(*p); }},
+                               [](const TypedPattern* p) { return ooze::pretty_print(*p); }},
                     v);
 }
 
@@ -134,24 +115,24 @@ struct Unifier {
   }
 };
 
-std::optional<CompoundType<TypeID>> unify_types(const CompoundType<TypeID>& a, const CompoundType<TypeID>& b) {
-  return Unifier{}.unify(a, b);
-}
-
-std::optional<std::vector<std::pair<int, CompoundType<TypeID>>>>
+std::optional<CompoundType<TypeID>>
 overload_resolution(const Env& e, const std::string& name, const CompoundType<TypeID>& type) {
   if(const auto it = e.functions.find(name); it == e.functions.end()) {
     return std::nullopt;
   } else {
-    std::vector<std::pair<int, CompoundType<TypeID>>> results;
+    std::optional<CompoundType<TypeID>> result;
 
     for(size_t i = 0; i < it->second.size(); i++) {
-      if(auto opt = std::visit([&](const auto& t) { return Unifier{}.unify(it->second[i].type, t); }, type.v); opt) {
-        results.emplace_back(i, std::move(*opt));
+      if(auto opt = unify_types({it->second[i].type}, type); opt) {
+        if(result) {
+          return std::nullopt;
+        } else {
+          result = std::move(*opt);
+        }
       }
     }
 
-    return results;
+    return result;
   }
 }
 
@@ -220,19 +201,20 @@ void add_tuple(Map<Variable, std::vector<VariablePropagation>>& propagations,
 
 struct PropagationVisitor {
   std::vector<const TypedExpr*> undeclared_bindings;
-  std::vector<Map<std::string, const Pattern*>> binding_names = {{}};
+  std::vector<Map<std::string, const TypedPattern*>> binding_names = {{}};
   Map<Variable, std::vector<VariablePropagation>> propagations;
-  Map<const Pattern*, std::pair<int, int>> binding_usages;
+  Map<const TypedPattern*, std::pair<int, int>> binding_usages;
   bool borrowed = false;
 
-  void visit(const Pattern& pattern) {
-    knot::preorder(pattern, [&](const Pattern& pattern) {
-      knot::visit(pattern.v,
-                  Overloaded{[&](const Ident& ident) {
-                               binding_names.back()[ident.name] = &pattern;
-                               binding_usages.emplace(&pattern, std::pair(0, 0));
-                             },
-                             [&](const std::vector<Pattern>& tuple) { add_tuple(propagations, tuple, &pattern); }});
+  void visit(const TypedPattern& pattern) {
+    knot::preorder(pattern, [&](const TypedPattern& pattern) {
+      knot::visit(
+        pattern.v,
+        Overloaded{[&](const Ident& ident) {
+                     binding_names.back()[ident.name] = &pattern;
+                     binding_usages.emplace(&pattern, std::pair(0, 0));
+                   },
+                   [&](const std::vector<TypedPattern>& tuple) { add_tuple(propagations, tuple, &pattern); }});
     });
   }
 
@@ -251,7 +233,7 @@ struct PropagationVisitor {
                        return map.find(ident.name) != map.end();
                      });
                      if(sit != binding_names.rend()) {
-                       const Pattern* binding = sit->at(ident.name);
+                       const TypedPattern* binding = sit->at(ident.name);
                        add_pair(propagations, &expr, binding);
                        if(borrowed) {
                          binding_usages[binding].second++;
@@ -291,60 +273,24 @@ struct PropagationVisitor {
 auto calculate_propagations(const TypedFunction& f) {
   PropagationVisitor v;
 
-  v.visit(f.header.pattern);
+  v.visit(f.pattern);
   v.visit(f.expr);
 
   return std::tuple(std::move(v.propagations), std::move(v.binding_usages), std::move(v.undeclared_bindings));
-}
-
-template <typename T>
-CompoundType<TypeID> language_type(const T& t) {
-  const auto floating_tuple_type = [](size_t size) {
-    return tuple_type(std::vector<CompoundType<TypeID>>(size, floating_type<TypeID>()));
-  };
-
-  return std::visit(
-    Overloaded{[&](const std::vector<TypedExpr>& v) { return floating_tuple_type(v.size()); },
-               [&](const std::vector<Pattern>& v) { return floating_tuple_type(v.size()); },
-               [&](const TypedBorrowExpr&) { return borrow_type(floating_type<TypeID>()); },
-               [&](const Literal& l) {
-                 return leaf_type(
-                   std::visit([](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, l));
-               },
-               [&](const auto&) { return floating_type<TypeID>(); }},
-    t.v);
 }
 
 std::deque<std::pair<Variable, CompoundType<TypeID>>>
 create_initial_candidates(const Env& e, const TypedFunction& f, std::optional<FunctionType<TypeID>> type_hint) {
   std::deque<std::pair<Variable, CompoundType<TypeID>>> candidates;
 
-  // Push types according to language rules
-  knot::preorder(
-    f,
-    Overloaded{
-      [&](const TypedExpr& expr) {
-        candidates.emplace_back(&expr, language_type(expr));
-        knot::visit(
-          expr.v,
-          Overloaded{[&](const TypedCallExpr& call) {
-                       candidates.emplace_back(
-                         call.callee.get(), function_type<TypeID>(floating_type<TypeID>(), floating_type<TypeID>()));
-                     },
-                     [&](const TypedSelectExpr& select) {
-                       candidates.emplace_back(select.condition.get(), leaf_type(type_id<bool>()));
-                     }});
-      },
-      [&](const Pattern& pattern) { candidates.emplace_back(&pattern, language_type(pattern)); },
-    });
-
-  knot::preorder(f.expr, [&](const TypedAssignment& assign) { candidates.emplace_back(&assign.pattern, assign.type); });
-
-  candidates.emplace_back(&f.header.pattern, *f.header.type.input);
-  candidates.emplace_back(&f.expr, *f.header.type.output);
+  knot::preorder(f,
+                 Overloaded{
+                   [&](const TypedExpr& expr) { candidates.emplace_back(&expr, expr.type); },
+                   [&](const TypedPattern& pattern) { candidates.emplace_back(&pattern, pattern.type); },
+                 });
 
   if(type_hint) {
-    candidates.emplace_back(&f.header.pattern, std::move(*type_hint->input));
+    candidates.emplace_back(&f.pattern, std::move(*type_hint->input));
     candidates.emplace_back(&f.expr, std::move(*type_hint->output));
   }
 
@@ -411,43 +357,18 @@ ContextualError generate_error(const Env& e, const TypeCheckError& error, const 
         return ContextualError{
           var->ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(e, type))};
       },
-      [&](const MissingOverload& o, const TypedExpr* expr) {
-        return ContextualError{
-          expr->ref,
-          "no matching overload found",
-          transform_to_vec(
-            o.candidates,
-            [&](const FunctionType<TypeID>& t) { return fmt::format("  {}", pretty_print(e, t)); },
-            make_vector(fmt::format("deduced {} [{} candidate(s)]", pretty_print(e, type), o.candidates.size())))};
-      },
-      [&](const AmbiguousOverload& o, const TypedExpr* expr) {
-        return ContextualError{
-          expr->ref,
-          "function call is ambiguous",
-          transform_to_vec(
-            o.candidates,
-            [&](const FunctionType<TypeID>& t) { return fmt::format("  {}", pretty_print(e, t)); },
-            make_vector(fmt::format("deduced {} [{} candidate(s)]", pretty_print(e, type), o.candidates.size())))};
-      },
-      [](const UndeclaredFunction&, const TypedExpr* expr) {
-        const std::string& name = std::get<Ident>(std::get<TypedCallExpr>(expr->v).callee->v).name;
-        return ContextualError{expr->ref, fmt::format("use of undeclared function '{}'", name)};
-      },
-      [](const UndeclaredBinding&, const TypedExpr* expr) {
-        return ContextualError{expr->ref, fmt::format("use of undeclared binding '{}'", std::get<Ident>(expr->v).name)};
-      },
       [](const ReturnBorrow&, const TypedExpr* expr) {
         return ContextualError{expr->ref, "cannot return a borrowed value"};
       },
       [](const InvalidBorrow& b, const auto* var) {
         return ContextualError{var->ref, fmt::format("cannot borrow a {}", b.type)};
       },
-      [](const UnusedBinding&, const Pattern* p) {
+      [](const UnusedBinding&, const TypedPattern* p) {
         return ContextualError{p->ref,
                                fmt::format("unused binding '{}'", std::get<Ident>(p->v).name),
                                {"prefix with an _ to silence this error"}};
       },
-      [](const OverusedBinding& b, const Pattern* p) {
+      [](const OverusedBinding& b, const TypedPattern* p) {
         return ContextualError{p->ref, fmt::format("binding '{}' used {} times", std::get<Ident>(p->v).name, b.count)};
       },
       [](const auto&, const auto* var) {
@@ -459,9 +380,8 @@ ContextualError generate_error(const Env& e, const TypeCheckError& error, const 
 }
 
 std::vector<ContextualError> generate_errors(const Env& e,
-                                             std::vector<TypeCheckError> errors,
                                              const Map<Variable, std::vector<VariablePropagation>>& propagations,
-                                             const Map<Variable, CompoundType<TypeID>>& types) {
+                                             std::vector<TypeCheckError> errors) {
   const std::vector<std::vector<TypeCheckError>> error_clusters = cluster_adjacent(e, propagations, std::move(errors));
 
   // Find most *relevant* error per cluster
@@ -472,9 +392,9 @@ std::vector<ContextualError> generate_errors(const Env& e,
           return knot::preorder_accumulate(t, 0, [](int acc, const CompoundType<TypeID>&) { return acc + 1; });
         };
 
-        const Slice ref = std::visit([](const auto* p) { return p->ref; }, error.variable);
+        const auto [type, ref] = std::visit([](const auto* p) { return std::tie(p->type, p->ref); }, error.variable);
         const int complexity =
-          type_complexity(types.at(error.variable)) +
+          type_complexity(type) +
           std::visit(Overloaded{[&](const MismatchedType& m) { return type_complexity(m.conflicting_type); },
                                 [](const auto&) { return 0; }},
                      error.type);
@@ -486,7 +406,8 @@ std::vector<ContextualError> generate_errors(const Env& e,
           return projection(lhs) < projection(rhs);
         });
 
-      return generate_error(e, most_relevant_error, types.at(most_relevant_error.variable));
+      return generate_error(
+        e, most_relevant_error, std::visit([](const auto* p) { return p->type; }, most_relevant_error.variable));
     });
 
   return sorted(std::move(final_errors), [](const auto& e) { return std::tie(e.ref.end, e); });
@@ -546,8 +467,8 @@ std::pair<Map<Variable, CompoundType<TypeID>>, std::vector<TypeCheckError>> cons
     knot::visit(target, [&](const TypedExpr* t) {
       knot::visit(t->v, [&](const Ident& i) {
         if(std::find(undeclared_bindings.begin(), undeclared_bindings.end(), t) != undeclared_bindings.end()) {
-          if(auto overloads = overload_resolution(e, i.name, it->second); overloads && overloads->size() == 1) {
-            it->second = std::move(overloads->front().second);
+          if(auto overload_type = overload_resolution(e, i.name, it->second); overload_type) {
+            it->second = std::move(*overload_type);
           }
         }
       });
@@ -592,61 +513,14 @@ std::pair<Map<Variable, CompoundType<TypeID>>, std::vector<TypeCheckError>> cons
           })};
 }
 
-struct FunctionConverter {
-  const Map<const TypedExpr*, EnvFunctionRef>& overloads;
-
-  CheckedExpr operator()(const TypedExpr& expr) {
-    const auto it = overloads.find(&expr);
-    return CheckedExpr{
-      it != overloads.end() ? it->second : knot::map<ast::ExprVariant<TypeID, EnvFunctionRef>>(expr.v, std::ref(*this)),
-      expr.ref};
-  }
-};
-
-TypeCheckResult<CheckedFunction>
-find_overloads(const Env& e,
-               const Map<Variable, std::vector<VariablePropagation>>& propagations,
-               const std::vector<const TypedExpr*> undeclared_bindings,
-               const TypedFunction& f,
-               const Map<Variable, CompoundType<TypeID>>& types) {
-  Map<const TypedExpr*, EnvFunctionRef> all_overloads;
-  std::vector<TypeCheckError> errors;
-
-  for(const TypedExpr* expr : undeclared_bindings) {
-    const auto& name = std::get<Ident>(expr->v).name;
-    const auto overloads = overload_resolution(e, name, types.at(expr));
-
-    if(overloads && overloads->size() == 1) {
-      all_overloads.emplace(
-        expr, EnvFunctionRef{name, overloads->front().first, std::get<FunctionType<TypeID>>(types.at(expr).v)});
-    } else if(overloads) {
-      errors.push_back(
-        overloads->empty()
-          ? TypeCheckError{MissingOverload{
-                             transform_to_vec(e.functions.at(name), [](const EnvFunction& f) { return f.type; })},
-                           expr}
-          : TypeCheckError{AmbiguousOverload{transform_to_vec(
-                             *overloads, [](const auto& p) { return std::get<FunctionType<TypeID>>(p.second.v); })},
-                           expr});
-    } else {
-      errors.push_back(TypeCheckError{UndeclaredBinding{}, expr});
-    }
-  }
-
-  return errors.empty()
-           ? TypeCheckResult<CheckedFunction>{knot::map<CheckedFunction>(f, FunctionConverter{all_overloads})}
-           : Failure{std::move(errors)};
-}
-
-std::vector<TypeCheckError>
-find_returned_borrows(const TypedFunction& f, const Map<Variable, CompoundType<TypeID>>& types) {
+std::vector<TypeCheckError> find_returned_borrows(const TypedFunction& f) {
   std::vector<TypeCheckError> errors;
 
   knot::preorder(
     f.expr,
     Overloaded{[&](const TypedExpr& e) {
                  const bool has_borrow =
-                   knot::preorder_accumulate(types.at(&e), false, [](bool, const Borrow<TypeID>&) { return true; });
+                   knot::preorder_accumulate(e.type, false, [](bool, const Borrow<TypeID>&) { return true; });
 
                  if(has_borrow) {
                    errors.push_back({ReturnBorrow{}, &e});
@@ -661,8 +535,7 @@ find_returned_borrows(const TypedFunction& f, const Map<Variable, CompoundType<T
   return errors;
 }
 
-std::vector<TypeCheckError>
-find_invalid_borrows(const TypedFunction& f, const Map<Variable, CompoundType<TypeID>>& types) {
+std::vector<TypeCheckError> find_invalid_borrows(const TypedFunction& f) {
   std::vector<TypeCheckError> errors;
 
   const auto check_borrowed_type = [&](Variable var, const CompoundType<TypeID>& t) {
@@ -682,23 +555,20 @@ find_invalid_borrows(const TypedFunction& f, const Map<Variable, CompoundType<Ty
   };
 
   // TODO allow errors to be associated with types, not just patterns and exprs
-  co_visit(f.header.pattern,
-           *f.header.type.input,
-           [&](const Pattern& p, const CompoundType<TypeID>& t, const auto&, const auto&) {
-             knot::visit(t.v, [&](const Borrow<TypeID>& b) { check_borrowed_type(&p, *b.type); });
-           });
+  co_visit(
+    f.pattern, f.pattern.type, [&](const TypedPattern& p, const CompoundType<TypeID>& t, const auto&, const auto&) {
+      knot::visit(t.v, [&](const Borrow<TypeID>& b) { check_borrowed_type(&p, *b.type); });
+    });
 
   knot::preorder(f.expr, [&](const TypedExpr& e) {
-    knot::visit(e.v, [&](const TypedBorrowExpr& b) { check_borrowed_type(&e, types.at(b.expr.get())); });
+    knot::visit(e.v, [&](const TypedBorrowExpr& b) { check_borrowed_type(&e, b.expr->type); });
   });
 
   return errors;
 }
 
-std::vector<TypeCheckError> find_binding_usage_errors(const Env& env,
-                                                      const TypedFunction& f,
-                                                      const Map<Variable, CompoundType<TypeID>>& types,
-                                                      const Map<const Pattern*, std::pair<int, int>>& binding_usage) {
+std::vector<TypeCheckError> find_binding_usage_errors(
+  const Env& env, const TypedFunction& f, const Map<const TypedPattern*, std::pair<int, int>>& binding_usage) {
   std::vector<TypeCheckError> errors;
 
   for(const auto [pattern, usage] : binding_usage) {
@@ -707,7 +577,7 @@ std::vector<TypeCheckError> find_binding_usage_errors(const Env& env,
     } else if(usage.first > 1) {
       const std::optional<TypeID> type = std::visit(
         Overloaded{[](TypeID t) { return std::optional(t); }, [](const auto&) { return std::optional<TypeID>(); }},
-        types.at(pattern).v);
+        pattern->type.v);
 
       if(type && env.copy_types.find(*type) == env.copy_types.end()) {
         errors.push_back({OverusedBinding{usage.first}, pattern});
@@ -718,210 +588,130 @@ std::vector<TypeCheckError> find_binding_usage_errors(const Env& env,
   return errors;
 }
 
-std::vector<TypeCheckError> find_unresolved_errors(const Map<Variable, CompoundType<TypeID>>& types) {
-  return transform_filter_to_vec(types, [](const auto& p) {
-    return knot::preorder_accumulate(p.second, false, [](bool, Floating) { return true; })
-             ? std::optional(TypeCheckError{UnableToDeduce{}, p.first})
-             : std::nullopt;
-  });
-}
+template <typename T>
+ContextualResult<T> apply_language_rules(const Env& env, T t) {
+  const auto floating_tuple_type = [](size_t size) {
+    return tuple_type(std::vector<CompoundType<TypeID>>(size, floating_type<TypeID>()));
+  };
 
-struct TypeNameResolution {
-  const Env& e;
-  std::vector<ContextualError>* errors;
-
-  CompoundType<TypeID> operator()(const CompoundType<NamedType>& type) {
+  const auto language_type = [&](const auto& t) {
     return std::visit(
-      Overloaded{[&](const NamedType& named) {
-                   if(const auto it = e.type_ids.find(named.name); it != e.type_ids.end()) {
-                     return CompoundType<TypeID>{it->second, type.ref};
-                   } else {
-                     errors->push_back({type.ref, "undefined type"});
-                     return CompoundType<TypeID>{TypeID{}, type.ref};
-                   }
+      Overloaded{[&](const std::vector<TypedExpr>& v) { return floating_tuple_type(v.size()); },
+                 [&](const std::vector<TypedPattern>& v) { return floating_tuple_type(v.size()); },
+                 [&](const TypedBorrowExpr&) { return borrow_type(floating_type<TypeID>()); },
+                 [&](const Literal& l) {
+                   return leaf_type(
+                     std::visit([](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, l));
                  },
-                 [&](const std::vector<CompoundType<NamedType>>& v) {
-                   return CompoundType<TypeID>{knot::map<std::vector<CompoundType<TypeID>>>(v, *this), type.ref};
-                 },
-                 [&](const FunctionType<NamedType>& f) {
-                   return CompoundType<TypeID>{knot::map<FunctionType<TypeID>>(f, *this), type.ref};
-                 },
-                 [&](const Floating&) { return floating_type<TypeID>(type.ref); },
-                 [&](const Borrow<NamedType>& b) {
-                   return CompoundType<TypeID>{knot::map<Borrow<TypeID>>(b, *this), type.ref};
-                 }},
-      type.v);
-  }
-};
+                 [&](const auto&) { return floating_type<TypeID>(); }},
+      t.v);
+  };
 
-template <typename Typed, typename Untyped>
-ContextualResult<Typed> type_name_resolution(const Env& e, const Untyped& u) {
   std::vector<ContextualError> errors;
-  auto typed = knot::map<Typed>(u, TypeNameResolution{e, &errors});
-  return value_or_errors(std::move(typed), std::move(errors));
-}
+  const auto check = [&](auto& ele, const CompoundType<TypeID>& lang_type) {
+    if(auto unified = unify_types(lang_type, ele.type); unified) {
+      ele.type = std::move(*unified);
+    } else {
+      errors.push_back(
+        {ele.ref, fmt::format("expected {}, given {}", pretty_print(env, lang_type), pretty_print(env, ele.type))});
+    }
+  };
 
-struct InferHeaderCtx {
-  std::vector<Set<std::string>> active;
-  std::vector<std::pair<std::string, Slice>> args;
-};
+  knot::preorder(
+    t,
+    Overloaded{[&](TypedExpr& expr) {
+                 check(expr, language_type(expr));
+                 knot::visit(
+                   expr.v,
+                   Overloaded{[&](TypedCallExpr& call) {
+                                check(*call.callee,
+                                      function_type<TypeID>(floating_type<TypeID>(), floating_type<TypeID>()));
+                              },
+                              [&](TypedSelectExpr& select) { check(*select.condition, leaf_type(type_id<bool>())); }});
+               },
+               [&](TypedPattern& pattern) { check(pattern, language_type(pattern)); }
 
-InferHeaderCtx inferred_header(InferHeaderCtx ctx, const TypedExpr& expr) {
-  return std::visit(
-    Overloaded{
-      [&](const std::vector<TypedExpr>& tuple) { return knot::accumulate(tuple, std::move(ctx), inferred_header); },
-      [&](const TypedScopeExpr& scope) {
-        ctx.active.emplace_back();
+    });
 
-        for(const TypedAssignment& assign : scope.assignments) {
-          ctx = inferred_header(std::move(ctx), *assign.expr);
-          knot::preorder(assign.pattern, [&](const Ident& i) { ctx.active.back().insert(i.name); });
-        }
-
-        ctx = inferred_header(std::move(ctx), *scope.result);
-
-        ctx.active.pop_back();
-
-        return std::move(ctx);
-      },
-      [&](const TypedSelectExpr& select) {
-        return knot::accumulate(select, std::move(ctx), [](auto ctx, const auto& sub_expr) {
-          return inferred_header(std::move(ctx), *sub_expr);
-        });
-      },
-      [&](const TypedBorrowExpr& borrow) { return inferred_header(std::move(ctx), *borrow.expr); },
-      [&](const TypedCallExpr& call) {
-        return inferred_header(inferred_header(std::move(ctx), *call.callee), *call.arg);
-      },
-      [&](const Literal&) { return std::move(ctx); },
-      [&](const Ident& ident) {
-        if(std::all_of(ctx.active.begin(), ctx.active.end(), [&](const auto& s) {
-             return s.find(ident.name) == s.end();
-           })) {
-          if(std::find_if(ctx.args.begin(), ctx.args.end(), [&](const auto& p) { return p.first == ident.name; }) ==
-             ctx.args.end()) {
-            ctx.args.emplace_back(ident.name, expr.ref);
-          }
-        }
-
-        return std::move(ctx);
-      }},
-    expr.v);
-}
-
-// `f` taken by ptr since `types` requires ptr stability in `f`
-void annotate_types(TypedFunction* f, const Map<Variable, CompoundType<TypeID>>& types) {
-  *f->header.type.output = types.at(&f->expr);
-  *f->header.type.input = types.at(&f->header.pattern);
-  knot::preorder(f->expr, [&](TypedAssignment& assign) { assign.type = types.at(assign.expr.get()); });
+  return value_or_errors(std::move(t), std::move(errors));
 }
 
 } // namespace
 
-ContextualResult<TypedFunction> type_name_resolution(const Env& e, const UnTypedFunction& f) {
-  return type_name_resolution<TypedFunction>(e, std::tie(f.header, f.expr));
+std::vector<const TypedExpr*> undeclared_bindings(const TypedFunction& f) {
+  return std::get<2>(calculate_propagations(f));
 }
 
-ContextualResult<TypedHeader> type_name_resolution(const Env& e, const UnTypedHeader& h) {
-  return type_name_resolution<TypedHeader>(e, h);
+std::optional<CompoundType<TypeID>> unify_types(const CompoundType<TypeID>& a, const CompoundType<TypeID>& b) {
+  return Unifier{}.unify(a, b);
 }
 
-ContextualResult<TypedExpr> type_name_resolution(const Env& e, const UnTypedExpr& expr) {
-  return type_name_resolution<TypedExpr>(e, expr);
-}
+ContextualResult<TypedFunction>
+type_check(const Env& e, TypedFunction f, std::optional<FunctionType<TypeID>> type_hint, bool debug) {
+  return apply_language_rules(e, std::move(f)).and_then([&](TypedFunction f) {
+    const auto [propagations, binding_usage, undeclared_bindings] = calculate_propagations(f);
 
-ContextualResult<TypedAssignment> type_name_resolution(const Env& e, const UnTypedAssignment& a) {
-  return type_name_resolution<TypedAssignment>(e, a);
-}
+    auto [types, cp_errors] = constraint_propagation(
+      e, propagations, undeclared_bindings, create_initial_candidates(e, f, std::move(type_hint)), debug);
 
-ContextualResult<CompoundType<TypeID>> type_name_resolution(const Env& e, const CompoundType<NamedType>& t) {
-  return type_name_resolution<CompoundType<TypeID>>(e, t);
-}
+    // Annotate types
+    knot::preorder(f,
+                   Overloaded{
+                     [t = &types](TypedPattern& p) { p.type = t->at(&p); },
+                     [t = &types](TypedExpr& e) { e.type = t->at(&e); },
+                   });
 
-TypedHeader inferred_header(const TypedExpr& expr, Set<std::string> active) {
-  const std::vector<std::pair<std::string, Slice>> args = inferred_header({make_vector(std::move(active))}, expr).args;
-  return {{transform_to_vec(args,
-                            [](auto p) {
-                              return Pattern{Ident{std::move(p.first)}, p.second};
-                            })},
-          {{{transform_to_vec(args, [](const auto&) { return floating_type<TypeID>(); })}}, {{Floating{}}}}};
-}
+    std::vector<ContextualError> errors = generate_errors(
+      e,
+      propagations,
+      flatten(std::move(cp_errors),
+              find_returned_borrows(f),
+              find_invalid_borrows(f),
+              find_binding_usage_errors(e, f, binding_usage)));
 
-ContextualResult<std::variant<CheckedFunction, TypedFunction>>
-overload_resolution(const Env& e, TypedFunction f, std::optional<FunctionType<TypeID>> type_hint, bool debug) {
-  const auto [propagations, binding_usage, undeclared_bindings] = calculate_propagations(f);
-
-  auto cp_result = constraint_propagation(
-    e, propagations, undeclared_bindings, create_initial_candidates(e, f, std::move(type_hint)), debug);
-
-  const Map<Variable, CompoundType<TypeID>> types = std::move(cp_result.first);
-  const std::vector<TypeCheckError> cp_errors = std::move(cp_result.second);
-
-  std::vector<TypeCheckError> errors =
-    flatten(cp_errors,
-            find_returned_borrows(f, types),
-            find_invalid_borrows(f, types),
-            find_binding_usage_errors(e, f, types, binding_usage));
-
-  if(errors.empty()) {
-    annotate_types(&f, types);
-  }
-
-  TypeCheckResult<std::variant<CheckedFunction, TypedFunction>> result =
-    find_unresolved_errors(types).empty()
-      ? find_overloads(e, propagations, undeclared_bindings, f, types)
-          .map(Construct<std::variant<CheckedFunction, TypedFunction>>{})
-      : std::variant<CheckedFunction, TypedFunction>{f /* TODO move? (errors need to be owning) */};
-
-  return result_and_errors(std::move(result), std::move(errors))
-    .map_error([&, p = &propagations](std::vector<TypeCheckError> errors) {
-      return generate_errors(e, std::move(errors), *p, types);
-    });
-}
-
-ContextualResult<CheckedFunction>
-overload_resolution_concrete(const Env& e, TypedFunction f, std::optional<FunctionType<TypeID>> type_hint, bool debug) {
-  const auto [propagations, binding_usage, undeclared_bindings] = calculate_propagations(f);
-
-  auto cp_result = constraint_propagation(
-    e, propagations, undeclared_bindings, create_initial_candidates(e, f, std::move(type_hint)), debug);
-
-  const Map<Variable, CompoundType<TypeID>> types = std::move(cp_result.first);
-  const std::vector<TypeCheckError> cp_errors = std::move(cp_result.second);
-
-  std::vector<TypeCheckError> errors =
-    flatten(cp_errors,
-            find_returned_borrows(f, types),
-            find_invalid_borrows(f, types),
-            find_binding_usage_errors(e, f, types, binding_usage),
-            find_unresolved_errors(types));
-
-  if(errors.empty()) {
-    annotate_types(&f, types);
-  }
-
-  return result_and_errors(find_overloads(e, propagations, undeclared_bindings, f, types), std::move(errors))
-    .map_error([&, p = &propagations](std::vector<TypeCheckError> errors) {
-      return generate_errors(e, std::move(errors), *p, types);
-    });
-}
-
-ContextualResult<CompoundType<TypeID>>
-type_check(const Env& e, const ast::Pattern& pattern, CompoundType<TypeID> type) {
-  Map<Variable, std::vector<VariablePropagation>> propagations;
-  knot::preorder(pattern, [&](const Pattern& pattern) {
-    knot::visit(pattern.v, [&](const std::vector<Pattern>& tuple) { add_tuple(propagations, tuple, &pattern); });
+    return value_or_errors(std::move(f), std::move(errors));
   });
+}
 
-  std::deque<std::pair<Variable, CompoundType<TypeID>>> candidates;
+ContextualResult<TypedPattern> type_check(const Env& e, TypedPattern pattern, CompoundType<TypeID> type) {
+  return apply_language_rules(e, std::move(pattern)).and_then([&](TypedPattern pattern) {
+    Map<Variable, std::vector<VariablePropagation>> propagations;
+    knot::preorder(pattern, [&](const TypedPattern& pattern) {
+      knot::visit(pattern.v, [&](const std::vector<TypedPattern>& tuple) { add_tuple(propagations, tuple, &pattern); });
+    });
 
-  // Push types according to language rules
-  knot::preorder(pattern, [&](const Pattern& pattern) { candidates.emplace_back(&pattern, language_type(pattern)); });
+    std::deque<std::pair<Variable, CompoundType<TypeID>>> candidates;
+    knot::preorder(pattern, [&](const TypedPattern& pattern) { candidates.emplace_back(&pattern, pattern.type); });
 
-  candidates.emplace_back(&pattern, std::move(type));
+    candidates.emplace_back(&pattern, std::move(type));
 
-  auto [types, cp_errors] = constraint_propagation(e, propagations, {}, std::move(candidates));
-  return value_or_errors(types.at(&pattern), generate_errors(e, std::move(cp_errors), propagations, types));
+    auto [types, cp_errors] = constraint_propagation(e, propagations, {}, std::move(candidates));
+
+    knot::preorder(pattern, [t = &types](TypedPattern& p) { p.type = t->at(&p); });
+
+    std::vector<ContextualError> errors = generate_errors(e, propagations, std::move(cp_errors));
+
+    return value_or_errors(std::move(pattern), std::move(errors));
+  });
+}
+
+std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunction& f) {
+  std::vector<TypeCheckError> errors;
+
+  const auto check_unresolved = [&](const auto& v) {
+    if(knot::preorder_accumulate(v.type, false, [](bool, Floating) { return true; })) {
+      errors.push_back({UnableToDeduce{}, &v});
+    }
+  };
+
+  knot::preorder(f,
+                 Overloaded{
+                   [&](const TypedPattern& p) { check_unresolved(p); },
+                   [&](const TypedExpr& e) { check_unresolved(e); },
+                 });
+
+  const auto [propagations, binding_usage, undeclared_bindings] = calculate_propagations(f);
+  return generate_errors(e, propagations, std::move(errors));
 }
 
 } // namespace ooze

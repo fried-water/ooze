@@ -51,11 +51,10 @@ struct GraphResult {
   std::vector<TypeID> fn_output_types;
 };
 
-GraphContext append_bindings(
-  const ast::Pattern& pattern, const CompoundType<TypeID>& type, const std::vector<Oterm>& terms, GraphContext ctx) {
+GraphContext append_bindings(const TypedPattern& pattern, const std::vector<Oterm>& terms, GraphContext ctx) {
   int i = 0;
   co_visit(pattern,
-           type,
+           pattern.type,
            Overloaded{[&](const auto&, const auto& type, const ast::Ident& ident, const auto&) {
                         ctx.bindings.back()[ident.name] =
                           std::tuple(type, knot::preorder_accumulate(type, std::vector<Oterm>{}, [&](auto v, TypeID) {
@@ -83,7 +82,7 @@ add_expr(const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, Grap
   ctx = knot::accumulate(scope.assignments, std::move(ctx), [&](GraphContext ctx, const CheckedAssignment& assignment) {
     GraphResult res;
     std::tie(ctx, res) = add_expr(e, *assignment.expr, std::move(ctx));
-    return append_bindings(assignment.pattern, assignment.type, res.terms, std::move(ctx));
+    return append_bindings(assignment.pattern, res.terms, std::move(ctx));
   });
 
   GraphResult res;
@@ -203,9 +202,8 @@ std::pair<GraphContext, GraphResult> add_expr(const Env& e, const CheckedExpr& e
 } // namespace
 
 FunctionGraph create_graph(const Env& e, const CheckedFunction& f) {
-  auto [cg, terms] = make_graph(input_types(*f.header.type.input));
-  auto [ctx, result] = add_expr(
-    e, f.expr, append_bindings(f.header.pattern, *f.header.type.input, terms, GraphContext{std::move(cg), {{}}}));
+  auto [cg, terms] = make_graph(input_types(f.pattern.type));
+  auto [ctx, result] = add_expr(e, f.expr, append_bindings(f.pattern, terms, GraphContext{std::move(cg), {{}}}));
   return std::move(ctx.cg).finalize(result.terms);
 }
 
