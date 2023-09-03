@@ -25,7 +25,9 @@ auto test(P parser, std::string_view str, ParseResult<R> expected) {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(pc_constant) {
+BOOST_AUTO_TEST_SUITE(pc)
+
+BOOST_AUTO_TEST_CASE(test_constant) {
   test(ch('a'), "a", passing_result({0, 1}, std::tuple()));
   test(ch('a'), "ab", passing_result({0, 1}, std::tuple()));
   test(ch('a'), "abc", passing_result({0, 1}, std::tuple()));
@@ -34,7 +36,7 @@ BOOST_AUTO_TEST_CASE(pc_constant) {
   test(ch('a'), "", failing_result<std::tuple<>>({0, 0}, {{"a", {0, 1}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pc_any) {
+BOOST_AUTO_TEST_CASE(test_any) {
   test(any(), "a", passing_result({0, 1}, 'a'));
   test(any(), "b", passing_result({0, 1}, 'b'));
   test(any(), "ab", passing_result({0, 1}, 'a'));
@@ -42,7 +44,7 @@ BOOST_AUTO_TEST_CASE(pc_any) {
   test(any(), "", failing_result<char>({0, 0}, {{"anything", {0, 0}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pc_filter) {
+BOOST_AUTO_TEST_CASE(test_filter) {
   test(pass('a'), "a", passing_result({0, 1}, 'a'));
   test(pass('b'), "b", passing_result({0, 1}, 'b'));
   test(pass('a'), "ab", passing_result({0, 1}, 'a'));
@@ -51,7 +53,7 @@ BOOST_AUTO_TEST_CASE(pc_filter) {
   test(pass('a'), "b", failing_result<char>({0, 0}, {{"a", {0, 0}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pc_maybe) {
+BOOST_AUTO_TEST_CASE(test_maybe) {
   test(maybe(ch('a')), "a", passing_result({0, 1}, std::optional(std::tuple())));
   test(maybe(ch('a')), "ab", passing_result({0, 1}, std::optional(std::tuple())));
   test(maybe(ch('a')), "abc", passing_result({0, 1}, std::optional(std::tuple())));
@@ -60,7 +62,7 @@ BOOST_AUTO_TEST_CASE(pc_maybe) {
   test(maybe(ch('a')), "b", passing_result<std::optional<std::tuple<>>>({0, 0}, std::nullopt, {{"a", {0, 2}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pc_n) {
+BOOST_AUTO_TEST_CASE(test_n) {
   test(n(ch('a')), "", passing_result({0, 0}, std::vector<std::tuple<>>{}, {{"a", {0, 2}}}));
   test(n(ch('a')), "a", passing_result({0, 1}, std::vector<std::tuple<>>{{}}, {{"a", {1, 2}}}));
   test(n(ch('a')), "aa", passing_result({0, 2}, std::vector<std::tuple<>>{{}, {}}, {{"a", {2, 2}}}));
@@ -68,7 +70,7 @@ BOOST_AUTO_TEST_CASE(pc_n) {
   test(n(ch('a')), "b", passing_result({0, 0}, std::vector<std::tuple<>>{}, {{"a", {0, 2}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pc_seq) {
+BOOST_AUTO_TEST_CASE(test_seq) {
   test(seq(), "", passing_result({0, 0}, std::tuple()));
   test(seq(), "a", passing_result({0, 0}, std::tuple()));
 
@@ -126,7 +128,7 @@ struct CH1 {
   KNOT_COMPAREABLE(CH1);
 };
 
-BOOST_AUTO_TEST_CASE(pc_choose) {
+BOOST_AUTO_TEST_CASE(test_choose) {
   test(choose(pass('a')), "a", passing_result({0, 1}, 'a'));
   test(choose(pass('a'), pass('b')), "b", passing_result({0, 1}, 'b', {{"a", {0, 1}}}));
   test(choose(pass('a'), construct<CH1>(pass('b'))),
@@ -139,5 +141,7 @@ BOOST_AUTO_TEST_CASE(pc_choose) {
        "c",
        failing_result<std::variant<char, CH1>>({0, 0}, {{"a", {0, 1}}}));
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze::pc

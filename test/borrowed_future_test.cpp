@@ -10,30 +10,32 @@ namespace ooze {
 
 static Executor executor = make_seq_executor();
 
-BOOST_AUTO_TEST_CASE(borrowed_future_cleanup) {
+BOOST_AUTO_TEST_SUITE(borrowed_future)
+
+BOOST_AUTO_TEST_CASE(cleanup) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_cleanup_promise_first) {
+BOOST_AUTO_TEST_CASE(cleanup_promise_first) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
   p = {};
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_cleanup_future_first) {
+BOOST_AUTO_TEST_CASE(cleanup_future_first) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
   f = {};
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_copy_cleanup) {
+BOOST_AUTO_TEST_CASE(copy_cleanup) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
   auto b2 = b;
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_forward) {
+BOOST_AUTO_TEST_CASE(forward) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
 
@@ -42,7 +44,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_forward) {
   BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(f2).wait()));
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_send_wait) {
+BOOST_AUTO_TEST_CASE(send_wait) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
 
@@ -54,7 +56,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_send_wait) {
   BOOST_CHECK_EQUAL(1, any_cast<int>(b2.wait()));
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_send_then) {
+BOOST_AUTO_TEST_CASE(send_then) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
 
@@ -71,7 +73,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_send_then) {
     .then([](Any v) { BOOST_CHECK_EQUAL(2, any_cast<int>(v)); });
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_then_send) {
+BOOST_AUTO_TEST_CASE(then_send) {
   auto [p, f] = make_promise_future(executor);
   auto [b, f2] = borrow(std::move(f));
 
@@ -88,7 +90,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_then_send) {
   std::move(p).send(1);
 }
 
-BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
+BOOST_AUTO_TEST_CASE(stress) {
   constexpr int count = 500;
 
   std::random_device rd;
@@ -142,5 +144,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
 
   BOOST_CHECK_EQUAL(functions.size() - count, calls.load());
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

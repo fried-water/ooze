@@ -79,53 +79,55 @@ void test_tc_error(
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(tc_empty) { test_tc(create_primative_env(), "() -> () = ()", "() -> () = ()"); }
+BOOST_AUTO_TEST_SUITE(tc)
 
-BOOST_AUTO_TEST_CASE(tc_return_literal) { test_tc(create_primative_env(), "() -> _ = 5", "() -> i32 = 5"); }
+BOOST_AUTO_TEST_CASE(empty) { test_tc(create_primative_env(), "() -> () = ()", "() -> () = ()"); }
 
-BOOST_AUTO_TEST_CASE(tc_return_binding) { test_tc(create_primative_env(), "(x: i32) -> _ = x", "(x: i32) -> i32 = x"); }
+BOOST_AUTO_TEST_CASE(return_literal) { test_tc(create_primative_env(), "() -> _ = 5", "() -> i32 = 5"); }
 
-BOOST_AUTO_TEST_CASE(tc_return_tuple) {
+BOOST_AUTO_TEST_CASE(return_binding) { test_tc(create_primative_env(), "(x: i32) -> _ = x", "(x: i32) -> i32 = x"); }
+
+BOOST_AUTO_TEST_CASE(return_tuple) {
   test_tc(create_primative_env(), "(x: i32) -> _ = (x)", "(x: i32) -> (i32) = (x)");
   test_tc(create_primative_env(), "(x: i32) -> (_) = (x)", "(x: i32) -> (i32) = (x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_tuple_nested) {
+BOOST_AUTO_TEST_CASE(return_tuple_nested) {
   test_tc(create_primative_env(), "(x: i32) -> _ = (x, (x))", "(x: i32) -> (i32, (i32)) = (x, (x))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_param_up) {
+BOOST_AUTO_TEST_CASE(param_up) {
   test_tc(create_primative_env(), "(x) -> i32 = x", "(x: i32) -> i32 = x");
   test_tc(create_primative_env(), "(x, y) -> (i32, f32) = (x, y)", "(x: i32, y: f32) -> (i32, f32) = (x, y)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_param_down) {
+BOOST_AUTO_TEST_CASE(param_down) {
   test_tc(create_primative_env(), "(x: i32) -> _ = x", "(x: i32) -> i32 = x");
   test_tc(create_primative_env(), "(x: i32, y: f32) -> _ = (x, y)", "(x: i32, y: f32) -> (i32, f32) = (x, y)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_param_across) {
+BOOST_AUTO_TEST_CASE(param_across) {
   test_tc(create_primative_env(), "(x) -> (i32, _) { (x, x) }", "(x: i32) -> (i32, i32) { (x, x) }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_through_assignment) {
+BOOST_AUTO_TEST_CASE(through_assignment) {
   test_tc(create_primative_env(), "(x: i32) -> _ { let y = x; y }", "(x: i32) -> i32 { let y : i32 = x; y }");
   test_tc(create_primative_env(), "(x) -> i32 { let y = x; y }", "(x: i32) -> i32 { let y : i32 = x; y }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_assignment_hint) {
+BOOST_AUTO_TEST_CASE(assignment_hint) {
   test_tc(create_primative_env(), "(x) -> _ { let y : i32 = x; y }", "(x: i32) -> i32 { let y : i32 = x; y }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_assignment_tuple) {
+BOOST_AUTO_TEST_CASE(assignment_tuple) {
   test_tc(create_primative_env(), "() -> _ { let x = (1); x }", "() -> (i32) { let x : (i32) = (1); x }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_assignment_literal) {
+BOOST_AUTO_TEST_CASE(assignment_literal) {
   test_tc(create_primative_env(), "() -> _ { let y = 5; y }", "() -> i32 { let y : i32 = 5; y }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_parameter_tuple) {
+BOOST_AUTO_TEST_CASE(parameter_tuple) {
   test_tc(create_primative_env(), "((x): (_)) -> i32 = x", "((x): (i32)) -> i32 = x");
   test_tc(create_primative_env(), "((x)) -> i32 = x", "((x): (i32)) -> i32 = x");
 
@@ -133,74 +135,70 @@ BOOST_AUTO_TEST_CASE(tc_parameter_tuple) {
   test_tc(create_primative_env(), "(x, y) -> (i32, (i32)) = (x, (y))", "(x: i32, y: i32) -> (i32, (i32)) = (x, (y))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_unpack_tuple_up) {
+BOOST_AUTO_TEST_CASE(unpack_tuple_up) {
   test_tc(create_primative_env(),
           "(tuple) -> (i32, i32) { let (x, y) = tuple; (x, y) }",
           "(tuple: (i32, i32)) -> (i32, i32) { let (x, y) : (i32, i32) = tuple; (x, y) }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_unpack_tuple_down) {
+BOOST_AUTO_TEST_CASE(unpack_tuple_down) {
   test_tc(create_primative_env(),
           "(tuple: (i32, i32)) -> _ { let (x, y) = tuple; (x, y) }",
           "(tuple: (i32, i32)) -> (i32, i32) { let (x, y) : (i32, i32) = tuple; (x, y) }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_nexted_tuple) {
+BOOST_AUTO_TEST_CASE(nexted_tuple) {
   test_tc(create_primative_env(),
           "(x: i32) -> _ = (x, (x, (x), x))",
           "(x: i32) -> (i32, (i32, (i32), i32)) = (x, (x, (x), x))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_identity) {
+BOOST_AUTO_TEST_CASE(fn_identity) {
   test_tc(create_primative_env(), "(x: fn(i32) -> i32) -> _ = x", "(x: fn(i32) -> i32) -> fn(i32) -> i32 = x");
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_fn) {
+BOOST_AUTO_TEST_CASE(return_fn) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
   test_tc(e, "() -> _ = f", "() -> fn() -> i32 = f");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_arg) {
-  test_tc(create_primative_env(), "(f) -> i32 = f()", "(f : fn() -> i32) -> i32 = f()");
-}
+BOOST_AUTO_TEST_CASE(fn_arg) { test_tc(create_primative_env(), "(f) -> i32 = f()", "(f : fn() -> i32) -> i32 = f()"); }
 
-BOOST_AUTO_TEST_CASE(tc_fn_call) {
-  test_tc(create_primative_env(), "(f) -> i32 = f()", "(f: fn() -> i32) -> i32 = f()");
-}
+BOOST_AUTO_TEST_CASE(fn_call) { test_tc(create_primative_env(), "(f) -> i32 = f()", "(f: fn() -> i32) -> i32 = f()"); }
 
-BOOST_AUTO_TEST_CASE(tc_fn_select_from_return) {
+BOOST_AUTO_TEST_CASE(fn_select_from_return) {
   test_tc(create_primative_env(),
           "(a, b, c) -> i32 = select a { b } else { c }",
           "(a: bool, b: i32, c: i32) -> i32 = select a { b } else { c }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_select_from_arg) {
+BOOST_AUTO_TEST_CASE(fn_select_from_arg) {
   test_tc(create_primative_env(),
           "(a, b: i32, c) -> _ = select a { b } else { c }",
           "(a: bool, b: i32, c: i32) -> i32 = select a { b } else { c }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_select_from_constant) {
+BOOST_AUTO_TEST_CASE(fn_select_from_constant) {
   test_tc(create_primative_env(),
           "(a, b) -> _ = select a { b } else { 1 }",
           "(a: bool, b: i32) -> i32 = select a { b } else { 1 }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_select_from_cond) {
+BOOST_AUTO_TEST_CASE(fn_select_from_cond) {
   test_tc(create_primative_env(),
           "(a, b) -> _ = select a { a } else { b }",
           "(a: bool, b: bool) -> bool = select a { a } else { b }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_assign) {
+BOOST_AUTO_TEST_CASE(fn_assign) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
 
   test_tc(e, "() -> i32 = { let x = f; x() }", "() -> i32 = { let x : fn() -> i32 = f; x() }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_tuple) {
+BOOST_AUTO_TEST_CASE(fn_tuple) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
 
@@ -209,7 +207,7 @@ BOOST_AUTO_TEST_CASE(tc_fn_tuple) {
           "(f : (fn() -> i32)) -> i32 = { let (x) : (fn() -> i32) = f; x() }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_scope) {
+BOOST_AUTO_TEST_CASE(scope) {
   constexpr std::string_view input =
     "(a: i32) -> _ {"
     "  let b = {"
@@ -233,59 +231,59 @@ BOOST_AUTO_TEST_CASE(tc_scope) {
   test_tc(create_primative_env(), input, output);
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_identity) { test_tc(create_primative_env(), "(x) -> _ = x", "(x) -> _ = x"); }
+BOOST_AUTO_TEST_CASE(function_identity) { test_tc(create_primative_env(), "(x) -> _ = x", "(x) -> _ = x"); }
 
-BOOST_AUTO_TEST_CASE(tc_function_return) {
+BOOST_AUTO_TEST_CASE(function_return) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   test_tc(e, "(x: i32) -> i32 = f(x)", "(x: i32) -> i32 = f(x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_nested) {
+BOOST_AUTO_TEST_CASE(function_nested) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   test_tc(e, "(x: i32) -> i32 = f(f(x))", "(x: i32) -> i32 = f(f(x))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_scope_return) {
+BOOST_AUTO_TEST_CASE(function_scope_return) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   test_tc(e, "(x: i32) -> i32 = f(x)", "(x: i32) -> i32 = f(x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_assign) {
+BOOST_AUTO_TEST_CASE(function_assign) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   test_tc(e, "(x: i32) -> i32 { let x: i32 = f(x); x }", "(x: i32) -> i32 { let x: i32 = f(x); x }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_param) {
+BOOST_AUTO_TEST_CASE(function_param) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) {});
   test_tc(e, "(x: i32) -> () = f(x)", "(x: i32) -> () = f(x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_multi) {
+BOOST_AUTO_TEST_CASE(function_multi) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   e.add_function("f", [](f32 x) { return x; });
   test_tc(e, "(x: i32) -> i32 = f(x)", "(x: i32) -> i32 = f(x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_prop_single_function) {
+BOOST_AUTO_TEST_CASE(prop_single_function) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   test_tc(e, "(x) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_overload_borrow) {
+BOOST_AUTO_TEST_CASE(fn_overload_borrow) {
   Env e = create_primative_env();
   e.add_function("f", [](const i32&) {});
   e.add_function("f", [](i32) {});
   test_tc(e, "(x: &i32) -> () = f(x)", "(x: &i32) -> () = f(x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_overload_input) {
+BOOST_AUTO_TEST_CASE(fn_overload_input) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return i32(); });
@@ -294,7 +292,7 @@ BOOST_AUTO_TEST_CASE(tc_fn_overload_input) {
   test_tc(e, "(x: i32, y: f32) -> (i32, i32) = (f(x), f(y))", "(x: i32, y: f32) -> (i32, i32) = (f(x), f(y))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_overload_output) {
+BOOST_AUTO_TEST_CASE(fn_overload_output) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](i32) { return f32(); });
@@ -303,12 +301,12 @@ BOOST_AUTO_TEST_CASE(tc_fn_overload_output) {
   test_tc(e, "(x: i32, y: i32) -> (i32, f32) = (f(x), f(y))", "(x: i32, y: i32) -> (i32, f32) = (f(x), f(y))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_constant) {
+BOOST_AUTO_TEST_CASE(constant) {
   test_tc(create_primative_env(), "() -> _ = 1", "() -> i32 = 1");
   test_tc(create_primative_env(), "() -> _ = 'abc'", "() -> string = 'abc'");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_up) {
+BOOST_AUTO_TEST_CASE(fn_up) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return f32(); });
@@ -318,7 +316,7 @@ BOOST_AUTO_TEST_CASE(tc_fn_up) {
   test_tc(e, "(x, y) -> (i32, f32) { (f(x), f(y)) }", "(x: i32, y: f32) -> (i32, f32) { (f(x), f(y)) }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_fn_down) {
+BOOST_AUTO_TEST_CASE(fn_down) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return f32(); });
@@ -328,17 +326,17 @@ BOOST_AUTO_TEST_CASE(tc_fn_down) {
   test_tc(e, "(x: i32, y: f32) -> _ = (f(x), f(y))", "(x: i32, y: f32) -> (i32, f32) = (f(x), f(y))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_borrow) {
+BOOST_AUTO_TEST_CASE(borrow) {
   test_tc(create_primative_env(), "(x: i32) -> _ { let _ = &x; () }", "(x : i32) -> () { let _ : &i32 = &x; () }");
 }
 
-BOOST_AUTO_TEST_CASE(tc_param_borrow) {
+BOOST_AUTO_TEST_CASE(param_borrow) {
   Env e = create_primative_env();
   e.add_function("ref", [](const i32& x) {});
   test_tc(e, "(x) -> () = ref(&x)", "(x: i32) -> () = ref(&x)");
 }
 
-BOOST_AUTO_TEST_CASE(tc_nested_fn_overload) {
+BOOST_AUTO_TEST_CASE(nested_fn_overload) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return i32(); });
@@ -349,45 +347,45 @@ BOOST_AUTO_TEST_CASE(tc_nested_fn_overload) {
   test_tc(e, "() -> i32 = f(g(h()))", "() -> i32 = f(g(h()))");
 }
 
-BOOST_AUTO_TEST_CASE(tc_invalid_borrow_expr) {
+BOOST_AUTO_TEST_CASE(invalid_borrow_expr) {
   test_tc_error(create_primative_env(), "() -> _ { let _ = &(1, 1); 1 }", {{{18, 25}, "cannot borrow a tuple"}});
   test_tc_error(create_primative_env(), "() -> _ { let _ = &&1; 1 }", {{{18, 21}, "cannot borrow a borrow"}});
   test_tc_error(create_primative_env(), "(x : (i32)) -> _ { let _ = &x; 1 }", {{{27, 29}, "cannot borrow a tuple"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_invalid_borrow_pattern) {
+BOOST_AUTO_TEST_CASE(invalid_borrow_pattern) {
   // TODO update error to highlight type instead of pattern
   test_tc_error(create_primative_env(), "(_ : &&i32) -> _ = 1", {{{1, 2}, "cannot borrow a borrow"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_borrow) {
+BOOST_AUTO_TEST_CASE(return_borrow) {
   test_tc_error(create_primative_env(), "() -> _ = &1", {{{10, 12}, "cannot return a borrowed value"}});
   test_tc_error(create_primative_env(), "(x : &i32) -> _ = x", {{{18, 19}, "cannot return a borrowed value"}});
   test_tc_error(create_primative_env(), "() -> _ = (&1)", {{{11, 13}, "cannot return a borrowed value"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_floating_borrow) {
+BOOST_AUTO_TEST_CASE(return_floating_borrow) {
   test_tc_error(create_primative_env(), "(x) -> _ = &x", {{{11, 13}, "cannot return a borrowed value"}});
   test_tc_error(create_primative_env(), "(x : &_) -> _ = x", {{{16, 17}, "cannot return a borrowed value"}});
   test_tc_error(create_primative_env(), "(x) -> _ = (&x)", {{{12, 14}, "cannot return a borrowed value"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_pattern_mismatch) {
+BOOST_AUTO_TEST_CASE(pattern_mismatch) {
   test_tc_error(create_primative_env(), "() -> () { let () = (1); () }", {{{15, 17}, "expected (), given (i32)"}});
   test_tc_error({}, "() -> () { let (x) = (); () }", {{{15, 18}, "expected (_), given ()"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_type_mismatch) {
+BOOST_AUTO_TEST_CASE(return_type_mismatch) {
   test_tc_error(create_primative_env(), "() -> () = 1", {{{11, 12}, "expected i32, given ()"}});
   test_tc_error(create_primative_env(), "() -> () = (1)", {{{11, 14}, "expected (_), given ()"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_arity_mismatch) {
+BOOST_AUTO_TEST_CASE(return_arity_mismatch) {
   test_tc_error(
     create_primative_env(), "() -> (i32, i32) = (1, 1, 1)", {{{19, 28}, "expected (_, _, _), given (i32, i32)"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_unused_binding) {
+BOOST_AUTO_TEST_CASE(unused_binding) {
   test_tc_error(create_primative_env(),
                 "(x: i32) -> _ = 1",
                 {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
@@ -405,7 +403,7 @@ BOOST_AUTO_TEST_CASE(tc_unused_binding) {
                 {{{14, 15}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_unused_binding_tuple) {
+BOOST_AUTO_TEST_CASE(unused_binding_tuple) {
   test_tc_error(create_primative_env(),
                 "((x): (i32)) -> _ = 1",
                 {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
@@ -415,23 +413,23 @@ BOOST_AUTO_TEST_CASE(tc_unused_binding_tuple) {
                 {{{15, 16}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_unused_binding_self_assign) {
+BOOST_AUTO_TEST_CASE(unused_binding_self_assign) {
   test_tc_error(create_primative_env(),
                 "(x: i32) -> _ { let x = x; 1 }",
                 {{{20, 21}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_unused_binding_scope) {
+BOOST_AUTO_TEST_CASE(unused_binding_scope) {
   test_tc_error(create_primative_env(),
                 "() -> _ { { let x = 1; 1 } }",
                 {{{16, 17}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_unused_binding_ignore) {
+BOOST_AUTO_TEST_CASE(unused_binding_ignore) {
   test_tc(create_primative_env(), "(_x: i32) -> i32 = 1", "(_x: i32) -> i32 = 1");
 }
 
-BOOST_AUTO_TEST_CASE(tc_function_ident_reuse) {
+BOOST_AUTO_TEST_CASE(function_ident_reuse) {
   test_tc_error(create_primative_env(),
                 "(x: i32, x: i32) -> _ = x",
                 {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
@@ -443,35 +441,35 @@ BOOST_AUTO_TEST_CASE(tc_function_ident_reuse) {
                 {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_arg_count) {
+BOOST_AUTO_TEST_CASE(wrong_arg_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(env, "() -> i32 = identity()", {{{20, 22}, "expected (), given (i32)"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_arg) {
+BOOST_AUTO_TEST_CASE(wrong_arg) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(env, "(x: u32) -> i32 = identity(x)", {{{27, 28}, "expected u32, given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_bind_count) {
+BOOST_AUTO_TEST_CASE(wrong_bind_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(env, "(x: i32) -> i32 { let () = identity(x); x }", {{{27, 38}, "expected (), given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_return_count) {
+BOOST_AUTO_TEST_CASE(wrong_return_count) {
   Env env = create_primative_env();
   env.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(env, "(x: i32) -> () = identity(x)", {{{17, 28}, "expected (), given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_multi_overload_match) {
+BOOST_AUTO_TEST_CASE(multi_overload_match) {
   Env env = create_primative_env();
   env.add_function("f", []() { return i32(); });
   env.add_function("f", []() { return f32(); });
@@ -479,42 +477,42 @@ BOOST_AUTO_TEST_CASE(tc_multi_overload_match) {
   test_tc_error(env, "() -> (i32, f32) { let x = f(); (x, x) }", {{{23, 24}, "expected i32, given f32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_arg_type) {
+BOOST_AUTO_TEST_CASE(wrong_arg_type) {
   Env e = create_primative_env();
   e.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(e, "(x: u32) -> i32 = identity(x)", {{{27, 28}, "expected u32, given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_bind_type) {
+BOOST_AUTO_TEST_CASE(wrong_bind_type) {
   Env e = create_primative_env();
   e.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(e, "(x: i32) -> i32 { let x: u32 = identity(x); x }", {{{22, 23}, "expected u32, given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_return_type) {
+BOOST_AUTO_TEST_CASE(wrong_return_type) {
   Env e = create_primative_env();
   e.add_function("identity", [](i32 x) { return x; });
 
   test_tc_error(e, "(x: i32) -> u32 = identity(x)", {{{18, 29}, "expected u32, given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_value_type) {
+BOOST_AUTO_TEST_CASE(wrong_value_type) {
   Env e = create_primative_env();
   e.add_function("val", [](i32 x) {});
 
   test_tc_error(e, "(x: &i32) -> () = val(x)", {{{22, 23}, "expected &i32, given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_empty_tuple_as_arg) {
+BOOST_AUTO_TEST_CASE(empty_tuple_as_arg) {
   Env e = create_primative_env();
   e.add_function("take", [](i32) {});
 
   test_tc_error(e, "() -> () = take(())", {{{16, 18}, "expected (), given i32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_wrong_type) {
+BOOST_AUTO_TEST_CASE(wrong_type) {
   Env e = create_primative_env();
 
   test_tc_error(e, "(x: i32) -> f32 = x", {{{1, 2}, "expected i32, given f32"}});
@@ -527,11 +525,11 @@ BOOST_AUTO_TEST_CASE(tc_wrong_type) {
   test_tc_error(e, "() -> f32 { let x: f32 = 1; x }", {{{25, 26}, "expected i32, given f32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_wrong_type_tuple_arg) {
+BOOST_AUTO_TEST_CASE(return_wrong_type_tuple_arg) {
   test_tc_error(create_primative_env(), "((x): (i32)) -> f32 = x", {{{2, 3}, "expected i32, given f32"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_missized_pattern) {
+BOOST_AUTO_TEST_CASE(missized_pattern) {
   Env e = create_primative_env();
 
   test_tc_error(e, "(() : (_)) -> _ = 1", {{{1, 3}, "expected (), given (_)"}});
@@ -547,8 +545,10 @@ BOOST_AUTO_TEST_CASE(tc_missized_pattern) {
   test_tc_error(e, "(x) -> _ { let (x) : (_, _) = x; 1 }", {{{15, 18}, "expected (_), given (_, _)"}});
 }
 
-BOOST_AUTO_TEST_CASE(tc_return_copy_ref_arg) {
+BOOST_AUTO_TEST_CASE(return_copy_ref_arg) {
   test_tc_error(create_primative_env(), "(x: &i32) -> i32 = x", {{{1, 2}, "expected &i32, given i32"}});
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

@@ -6,7 +6,9 @@ namespace ooze {
 
 using namespace ast;
 
-BOOST_AUTO_TEST_CASE(pretty_print_pattern) {
+BOOST_AUTO_TEST_SUITE(pp)
+
+BOOST_AUTO_TEST_CASE(pattern) {
   BOOST_CHECK_EQUAL("abc", pretty_print(UnTypedPattern{Ident{"abc"}}));
   BOOST_CHECK_EQUAL("_", pretty_print(UnTypedPattern{WildCard{}}));
   BOOST_CHECK_EQUAL("()", pretty_print(UnTypedPattern{std::vector<UnTypedPattern>{}}));
@@ -14,7 +16,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_pattern) {
                     pretty_print(UnTypedPattern{std::vector<UnTypedPattern>{{Ident{"abc"}}, {WildCard{}}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_type) {
+BOOST_AUTO_TEST_CASE(compound_type) {
   const Env e = create_primative_env();
 
   const auto int_named = leaf_type<NamedType>({"i32"});
@@ -36,7 +38,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_type) {
   BOOST_CHECK_EQUAL("fn(i32) -> i32", pretty_print(function_type(tuple_type<NamedType>({int_named}), int_named)));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_expr) {
+BOOST_AUTO_TEST_CASE(expr) {
   const auto one = UnTypedExpr{Literal{1}};
   const auto ident = UnTypedExpr{Ident{"abc"}};
 
@@ -60,7 +62,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_expr) {
                                                              CheckedExpr{std::vector<CheckedExpr>{{Literal{1}}}}}}));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_assignment) {
+BOOST_AUTO_TEST_CASE(assignment) {
   const auto y_expr = UnTypedExpr{Ident{"y"}};
 
   BOOST_CHECK_EQUAL("let x = y", pretty_print(UnTypedAssignment{UnTypedPattern{Ident{"x"}}, y_expr}));
@@ -68,7 +70,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_assignment) {
                     pretty_print(UnTypedAssignment{UnTypedPattern{Ident{"x"}, leaf_type<NamedType>({"i32"})}, y_expr}));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_scope) {
+BOOST_AUTO_TEST_CASE(scope) {
   const auto y_expr = UnTypedExpr{Ident{"y"}};
   const auto assign = UnTypedAssignment{UnTypedPattern{Ident{"x"}}, y_expr};
 
@@ -86,7 +88,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_scope) {
   BOOST_CHECK_EQUAL("{\n  let x = {\n    y\n  };\n  {\n    y\n  }\n}", pretty_print(nested_scope));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_function) {
+BOOST_AUTO_TEST_CASE(function) {
   const auto i = leaf_type<NamedType>({"i"});
   const auto x_expr = UnTypedExpr{Ident{"x"}, i};
 
@@ -105,7 +107,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_function) {
       UnTypedPattern{std::vector<UnTypedPattern>{}, tuple_type<NamedType>({})}, {UnTypedScopeExpr{{}, x_expr}, i}}));
 }
 
-BOOST_AUTO_TEST_CASE(pretty_print_ast) {
+BOOST_AUTO_TEST_CASE(ast) {
   const auto f = UnTypedFunction{
     {UnTypedPattern{
       std::vector<UnTypedPattern>{},
@@ -115,5 +117,7 @@ BOOST_AUTO_TEST_CASE(pretty_print_ast) {
 
   BOOST_CHECK_EQUAL("fn f() -> i = x\n\nfn g() -> i = x", pretty_print(UnTypedAST{{"f", f}, {"g", f}}));
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

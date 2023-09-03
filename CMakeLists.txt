@@ -18,13 +18,13 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 add_library(ooze
+  src/async_functions.cpp
   src/env.cpp
   src/lexer.cpp
   src/io.cpp
   src/parser.cpp
   src/pretty_print.cpp
   src/graph.cpp
-  src/graph_execution.cpp
   src/graph_construction.cpp
   src/type_check.cpp
   src/sema.cpp

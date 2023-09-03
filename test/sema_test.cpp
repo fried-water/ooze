@@ -9,9 +9,6 @@ namespace ooze {
 
 namespace {
 
-const CompoundType<TypeID> I = leaf_type<TypeID>(type_id<i32>());
-const CompoundType<TypeID> F = leaf_type<TypeID>(type_id<f32>());
-
 void test_inferred_inputs(const Env& e,
                           std::string_view expr,
                           std::string_view exp_pattern,
@@ -105,14 +102,6 @@ void test_or_error(const Env& e, std::string_view f, const std::vector<Contextua
   BOOST_CHECK(expected_errors == result.error());
 }
 
-FunctionType<TypeID> sino(CompoundType<TypeID> input) { return {tuple_type<TypeID>({input}), tuple_type<TypeID>({})}; }
-
-FunctionType<TypeID> niso(CompoundType<TypeID> output) { return {tuple_type<TypeID>({}), std::move(output)}; }
-
-FunctionType<TypeID> siso(CompoundType<TypeID> input, CompoundType<TypeID> output) {
-  return {tuple_type<TypeID>({std::move(input)}), std::move(output)};
-}
-
 } // namespace
 
 BOOST_AUTO_TEST_CASE(infer_empty) { test_inferred_inputs(Env{}, "()", "()", {{}}); }
@@ -157,69 +146,69 @@ BOOST_AUTO_TEST_CASE(nr_undefined_multi) {
 BOOST_AUTO_TEST_CASE(or_function_return) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(or_function_nested) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
-  test_or(e, {{"f", 0, siso(I, I)}, {"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(f(x))");
+  test_or(e, {{"f", 0}, {"f", 0}}, "(x: i32) -> i32 = f(f(x))");
 }
 
 BOOST_AUTO_TEST_CASE(or_function_scope_return) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(or_function_assign) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 { let x: i32 = f(x); x }");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 { let x: i32 = f(x); x }");
 }
 
 BOOST_AUTO_TEST_CASE(or_function_param) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) {});
-  test_or(e, {{"f", 0, sino(I)}}, "(x: i32) -> () = f(x)");
+  test_or(e, {{"f", 0}}, "(x: i32) -> () = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(or_function_multi) {
   Env e = create_primative_env();
   e.add_function("f", [](i32 x) { return x; });
   e.add_function("f", [](f32 x) { return x; });
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(or_fn_overload_borrow) {
   Env e = create_primative_env();
   e.add_function("f", [](const i32&) {});
   e.add_function("f", [](i32) {});
-  test_or(e, {{"f", 0, sino(borrow_type(I))}}, "(x: &i32) -> () = f(x)");
+  test_or(e, {{"f", 0}}, "(x: &i32) -> () = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(or_fn_overload_input) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](f32) { return i32(); });
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
-  test_or(e, {{"f", 1, siso(F, I)}}, "(x: f32) -> i32 = f(x)");
-  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(F, I)}}, "(x: i32, y: f32) -> (i32, i32) = (f(x), f(y))");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 1}}, "(x: f32) -> i32 = f(x)");
+  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: f32) -> (i32, i32) = (f(x), f(y))");
 }
 
 BOOST_AUTO_TEST_CASE(or_fn_overload_output) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) { return i32(); });
   e.add_function("f", [](i32) { return f32(); });
-  test_or(e, {{"f", 0, siso(I, I)}}, "(x: i32) -> i32 = f(x)");
-  test_or(e, {{"f", 1, siso(I, F)}}, "(x: i32) -> f32 = f(x)");
-  test_or(e, {{"f", 0, siso(I, I)}, {"f", 1, siso(I, F)}}, "(x: i32, y: i32) -> (i32, f32) = (f(x), f(y))");
+  test_or(e, {{"f", 0}}, "(x: i32) -> i32 = f(x)");
+  test_or(e, {{"f", 1}}, "(x: i32) -> f32 = f(x)");
+  test_or(e, {{"f", 0}, {"f", 1}}, "(x: i32, y: i32) -> (i32, f32) = (f(x), f(y))");
 }
 
 BOOST_AUTO_TEST_CASE(or_param_borrow) {
   Env e = create_primative_env();
   e.add_function("ref", [](const i32& x) {});
-  test_or(e, {{"ref", 0, sino(borrow_type(I))}}, "(x: i32) -> () = ref(&x)");
+  test_or(e, {{"ref"}}, "(x: i32) -> () = ref(&x)");
 }
 
 BOOST_AUTO_TEST_CASE(or_nested_fn_overload) {
@@ -232,19 +221,19 @@ BOOST_AUTO_TEST_CASE(or_nested_fn_overload) {
   e.add_function("h", []() { return i32(); });
   e.add_function("h", []() { return f32(); });
 
-  test_or(e, {{"f", 0, siso(I, I)}, {"g", 0, siso(I, I)}, {"h", 0, niso(I)}}, "() -> i32 = f(g(h()))");
+  test_or(e, {{"f", 0}, {"g", 0}, {"h", 0}}, "() -> i32 = f(g(h()))");
 }
 
 BOOST_AUTO_TEST_CASE(or_return_fn) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
-  test_or(e, {{"f", 0, niso(I)}}, "() -> fn() -> i32 = f");
+  test_or(e, {{"f", 0}}, "() -> fn() -> i32 = f");
 }
 
 BOOST_AUTO_TEST_CASE(or_fn_assign) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
-  test_or(e, {{"f", 0, niso(I)}}, "() -> i32 = { let x : fn() -> i32 = f; x() }");
+  test_or(e, {{"f", 0}}, "() -> i32 = { let x : fn() -> i32 = f; x() }");
 }
 
 BOOST_AUTO_TEST_CASE(or_partial) {

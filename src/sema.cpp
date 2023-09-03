@@ -166,8 +166,7 @@ ContextualResult<CheckedFunction> overload_resolution(const Env& env, const Type
       }
 
       if(overloads.size() == 1) {
-        all_overloads.emplace(
-          expr, EnvFunctionRef{name, overloads.front(), std::get<FunctionType<TypeID>>(expr->type.v)});
+        all_overloads.emplace(expr, EnvFunctionRef{name, overloads.front()});
       } else if(overloads.empty()) {
         overload_errors.push_back(
           {expr->ref,

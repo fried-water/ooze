@@ -105,7 +105,6 @@ struct NamedType {
 struct EnvFunctionRef {
   std::string name;
   int overload_idx = 0;
-  FunctionType<TypeID> type;
 
   KNOT_ORDERED(EnvFunctionRef);
 };

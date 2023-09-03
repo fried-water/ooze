@@ -40,7 +40,9 @@ void many_args(std::tuple<>, const std::string, const char&) {}
 
 }; // namespace
 
-BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
+BOOST_AUTO_TEST_SUITE(any_function)
+
+BOOST_AUTO_TEST_CASE(return_types) {
   const auto void_func = AnyFunction(void_fp);
   const auto single_func = AnyFunction(simple_fp);
   const auto tuple_func = AnyFunction(tuple_fp);
@@ -57,7 +59,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
   BOOST_CHECK(std::tuple(1) == (invoke_with_values<int>(rvalue_func, 1)));
 }
 
-BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
+BOOST_AUTO_TEST_CASE(input_types) {
   const auto no_args_func = AnyFunction(no_args);
   const auto one_arg_func = AnyFunction(one_arg);
   const auto many_args_func = AnyFunction(many_args);
@@ -73,7 +75,7 @@ bool valid_exception(const BadCast&) { return true; }
 bool valid_exception(const BadInvocation&) { return true; }
 bool valid_exception(const BadBind&) { return true; }
 
-BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
+BOOST_AUTO_TEST_CASE(incorrect_args) {
   const auto func = AnyFunction([](int) {});
 
   BOOST_CHECK_EXCEPTION(invoke_with_values(func, 'a'), BadInvocation, valid_exception);
@@ -83,14 +85,14 @@ BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
   invoke_with_values(func, 1);
 }
 
-BOOST_AUTO_TEST_CASE(test_any_function_no_copies) {
+BOOST_AUTO_TEST_CASE(no_copies) {
   const auto func = AnyFunction([s = Sentinal{}]() { return s.copies; });
 
   BOOST_CHECK_EQUAL(0, std::get<0>(invoke_with_values<int>(func)));
   BOOST_CHECK_EQUAL(0, std::get<0>(invoke_with_values<int>(func)));
 }
 
-BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
+BOOST_AUTO_TEST_CASE(invalid) {
   // auto no_pointers = AnyFunction([](int*){});
   // auto no_const_pointers = AnyFunction([](int const*){});
   // auto no_non_const_refs = AnyFunction([](int&){});
@@ -101,7 +103,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
   // auto must_be_const = AnyFunction([]() mutable {});
 }
 
-BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
+BOOST_AUTO_TEST_CASE(num_moves_copies) {
   const auto sentinal_func = AnyFunction([](Sentinal x, const Sentinal& y) {
     BOOST_CHECK_EQUAL(0, x.copies);
     BOOST_CHECK_EQUAL(2, x.moves); // 1 move into any, 1 into function
@@ -124,7 +126,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
   BOOST_CHECK_EQUAL(1, result_sentinal->moves); // 1 move out of function
 }
 
-BOOST_AUTO_TEST_CASE(test_any_function_fwd) {
+BOOST_AUTO_TEST_CASE(fwd) {
   const auto sentinal_func = AnyFunction([](Sentinal&& x) -> Sentinal&& { return std::move(x); });
 
   auto input_vals = make_vector<Any>(Sentinal{});
@@ -137,5 +139,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_fwd) {
   BOOST_CHECK_EQUAL(0, result_sentinal->copies);
   BOOST_CHECK_EQUAL(2, result_sentinal->moves); // 1 move into any, 1 move into result
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

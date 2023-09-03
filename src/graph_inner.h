@@ -1,5 +1,6 @@
 #pragma once
 
+#include "async_functions.h"
 #include "ooze/any_function.h"
 #include "ooze/graph.h"
 
@@ -7,100 +8,69 @@
 
 namespace ooze {
 
-struct GraphError final : public std::exception {
-  const char* what() const noexcept override { return "graph_error"; }
+enum class PassBy { Copy, Move, Borrow };
+
+struct Term {
+  int node_id = 0;
+  int port = 0;
+  KNOT_ORDERED(Term);
 };
 
 struct Oterm {
-  int node_id = 0;
-  int port = 0;
-  bool value = false;
-
+  Term term;
+  bool borrow = false;
   KNOT_ORDERED(Oterm);
 };
 
 struct Iterm {
-  int node_id = 0;
-  int port = 0;
-  bool value = false;
+  Term term;
+  PassBy pb = PassBy::Copy;
 
   KNOT_ORDERED(Iterm);
 };
 
 struct ValueForward {
-  std::vector<Iterm> terms;
+  std::vector<Term> terms;
   int copy_end = 0;
   int move_end = 0;
 
   KNOT_ORDERED(ValueForward);
 };
 
-struct SExpr {
-  std::vector<TypeID> types;
-};
-
-struct IfExpr {
-  FunctionGraph if_branch;
-  FunctionGraph else_branch;
-};
-
-struct SelectExpr {
-  std::vector<TypeProperties> types;
-};
-
-struct ConvergeExpr {
-  std::vector<TypeID> types;
-};
-
-using Expr = std::variant<std::shared_ptr<const AnyFunction>, SExpr, IfExpr, SelectExpr, ConvergeExpr>;
-
 struct FunctionGraph::State {
-  std::vector<TypeProperties> input_types;
-  std::vector<TypeID> output_types;
+  std::vector<bool> input_borrows;
+  int output_count = 0;
 
   std::vector<std::vector<ValueForward>> owned_fwds;
   std::vector<ValueForward> input_borrowed_fwds;
 
   std::vector<std::pair<int, int>> input_counts;
-  std::vector<Expr> exprs;
+  std::vector<AsyncFn> fns;
 };
 
 class ConstructingGraph {
-  FunctionGraph::State _state;
+  std::vector<bool> input_borrows;
 
-  explicit ConstructingGraph(std::vector<TypeProperties>);
+  std::vector<std::vector<std::vector<Iterm>>> owned_fwds;
+  std::vector<std::vector<Iterm>> input_borrowed_fwds;
+
+  std::vector<std::pair<int, int>> input_counts;
+  std::vector<AsyncFn> fns;
+
+  std::vector<Iterm>& fwd_of(Oterm);
+  void add_edges(Span<Oterm>, Span<PassBy>);
 
 public:
   ConstructingGraph() = default;
 
-  TypeProperties type(Oterm);
+  explicit ConstructingGraph(std::vector<bool>);
 
-  std::vector<Oterm> add(AnyFunction, Span<Oterm>);
+  std::vector<Oterm> add(AsyncFn, Span<Oterm>, Span<PassBy>, int output_count);
   std::vector<Oterm> add(const FunctionGraph&, Span<Oterm>);
 
-  std::vector<Oterm> add_functional(Span<TypeProperties>, std::vector<TypeID>, Oterm fn, Span<Oterm>);
-
-  std::vector<Oterm> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
-  std::vector<Oterm> add_select(Oterm cond, Span<Oterm> if_, Span<Oterm> else_);
-  std::vector<Oterm> add_converge(Oterm fn, Oterm converged, Span<Oterm>);
-
-  FunctionGraph finalize(Span<Oterm>) &&;
-
-  friend std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties>);
+  FunctionGraph finalize(Span<Oterm>, Span<PassBy>) &&;
 };
 
-std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties> input_types);
-
-FunctionGraph make_graph(AnyFunction);
-
-inline int num_outputs(const Expr& e) {
-  return int(std::visit(
-    Overloaded{[](const std::shared_ptr<const AnyFunction>& f) { return f->output_types().size(); },
-               [](const SExpr& e) { return e.types.size(); },
-               [](const IfExpr& e) { return e.if_branch.state->output_types.size(); },
-               [](const SelectExpr& e) { return e.types.size(); },
-               [](const ConvergeExpr& e) { return e.types.size(); }},
-    e));
-}
+std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<bool> input_borrows);
 
 } // namespace ooze

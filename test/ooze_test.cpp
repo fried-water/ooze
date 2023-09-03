@@ -67,7 +67,9 @@ assign(Env env, std::string_view script, std::string_view expr) {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(ooze_basic) {
+BOOST_AUTO_TEST_SUITE(ooze)
+
+BOOST_AUTO_TEST_CASE(basic) {
   constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 = sum(sum(x, y), y)";
   Env env = create_primative_env();
   env.add_function("sum", [](int x, int y) { return x + y; });
@@ -75,34 +77,34 @@ BOOST_AUTO_TEST_CASE(ooze_basic) {
   check_any_tree(17, check_result(run(std::move(env), script, "f(5, 6)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_fn_no_args) {
+BOOST_AUTO_TEST_CASE(no_args) {
   constexpr std::string_view script = "fn f() -> i32 = 17";
   check_any_tree(17, check_result(run(create_primative_env(), script, "f()")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_identity) {
+BOOST_AUTO_TEST_CASE(identity) {
   constexpr std::string_view script = "fn f(x: i32) -> i32 = x";
   check_any_tree(5, check_result(run(create_primative_env(), script, "f(5)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_borrow_param) {
+BOOST_AUTO_TEST_CASE(borrow_param) {
   constexpr std::string_view script = "fn f(x: &i32) -> string = to_string(x)";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(&1)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_borrow_assign) {
+BOOST_AUTO_TEST_CASE(borrow_assign) {
   constexpr std::string_view script = "fn f(x: i32) -> string { let x = &x; to_string(x) }";
   check_any_tree(std::string("1"), check_result(run(create_primative_env(), script, "f(1)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_tuple) {
+BOOST_AUTO_TEST_CASE(tuple) {
   const Tree<Any> tree = check_result(run(create_primative_env(), "", "((1), 2)"));
   const auto& v = check_vec(2, tree);
   check_any_tree(1, check_vec(1, v[0])[0]);
   check_any_tree(2, v[1]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_tuple_function) {
+BOOST_AUTO_TEST_CASE(tuple_fn) {
   constexpr std::string_view script = "fn f((w, x) : (i32, i32), (y, z): (i32, i32)) -> _ = ((z, x), (y, w))";
   const Tree<Any> tree = check_result(run(create_primative_env(), script, "f((1, 2), (3, 4))"));
   const auto& v = check_vec(2, tree);
@@ -114,7 +116,7 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_function) {
   check_any_tree(1, vb[1]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_tuple_parameter) {
+BOOST_AUTO_TEST_CASE(tuple_parameter) {
   constexpr std::string_view script = "fn f(x : (i32, i32)) -> _ { let (y, z) = x; (z, y) }";
 
   const Tree<Any> tree = check_result(run(create_primative_env(), script, "f((1, 2))"));
@@ -123,7 +125,7 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_parameter) {
   check_any_tree(1, v[1]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_tuple_assignment) {
+BOOST_AUTO_TEST_CASE(tuple_assignment) {
   constexpr std::string_view script = "fn f() -> _ { let x = (1, 2); let (y, z) = x; (z, y) }";
 
   const Tree<Any> tree = check_result(run(create_primative_env(), script, "f()"));
@@ -132,19 +134,19 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_assignment) {
   check_any_tree(1, v[1]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_fn_parameter) {
+BOOST_AUTO_TEST_CASE(fn_parameter) {
   constexpr std::string_view script =
     "fn one() -> i32 = 1\n"
     "fn f(g: fn() -> i32) -> i32 = g()\n";
   check_any_tree(1, check_result(run(create_primative_env(), script, "f(one)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_wildcard_parameter) {
+BOOST_AUTO_TEST_CASE(wildcard_parameter) {
   constexpr std::string_view script = "fn f(_ : i32, x : i32) -> _ = x";
   check_any_tree(2, check_result(run(create_primative_env(), script, "f(1, 2)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_wildcard_assignment) {
+BOOST_AUTO_TEST_CASE(wildcard_assignment) {
   constexpr std::string_view script = "fn f() -> _ { let (_, x) = (1, 2); x }";
   check_any_tree(2, check_result(run(create_primative_env(), script, "f()")));
 }
@@ -156,7 +158,7 @@ struct Point {
   KNOT_COMPAREABLE(Point);
 };
 
-BOOST_AUTO_TEST_CASE(ooze_custom_type) {
+BOOST_AUTO_TEST_CASE(custom_type) {
   constexpr std::string_view script = "fn f(x: Point, y: Point) -> Point = sum(sum(x, y), y)";
 
   Env env = create_primative_env();
@@ -167,7 +169,7 @@ BOOST_AUTO_TEST_CASE(ooze_custom_type) {
                  check_result(run(std::move(env), script, "f(create_point(&1, &2), create_point(&9, &7))")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_already_move) {
+BOOST_AUTO_TEST_CASE(already_move) {
   constexpr std::string_view script = "fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)";
 
   Env env = create_primative_env();
@@ -180,7 +182,7 @@ BOOST_AUTO_TEST_CASE(ooze_already_move) {
   check_range(expected, check_error(run(std::move(env), script, "f(make_unique_int(0))")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_clone) {
+BOOST_AUTO_TEST_CASE(clone) {
   Env env;
   env.add_type<std::string>("string");
   env.add_type<std::unique_ptr<int>>("unique_int");
@@ -189,7 +191,7 @@ BOOST_AUTO_TEST_CASE(ooze_clone) {
   check_any_tree(std::string("abc"), check_result(run(std::move(env), "", "clone(&'abc')")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_rebind) {
+BOOST_AUTO_TEST_CASE(expr_rebind) {
   constexpr std::string_view script = "fn f(x: i32) -> i32 { let x = double(x); let x = double(x); x }";
 
   Env env = create_primative_env();
@@ -198,7 +200,7 @@ BOOST_AUTO_TEST_CASE(ooze_expr_rebind) {
   check_any_tree(4, check_result(run(std::move(env), script, "f(1)")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_scope) {
+BOOST_AUTO_TEST_CASE(scope) {
   constexpr std::string_view script =
     "fn f(a: i32, b: i32) -> (i32, (string, i32, i32)) {"
     "  let b = {"
@@ -219,7 +221,7 @@ BOOST_AUTO_TEST_CASE(ooze_scope) {
   check_any_tree(1, v2[2]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_select) {
+BOOST_AUTO_TEST_CASE(select) {
   constexpr std::string_view script = "fn f(b: bool) -> i32  = select b { 1 } else { 2 }";
   check_any_tree(1, check_result(run(create_primative_env(), script, "f(true)")));
   check_any_tree(2, check_result(run(create_primative_env(), script, "f(false)")));
@@ -235,7 +237,7 @@ BOOST_AUTO_TEST_CASE(ooze_out_of_order, *boost::unit_test::disabled()) {
   check_void_result(parse_script(e, script));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_generic) {
+BOOST_AUTO_TEST_CASE(generic) {
   constexpr std::string_view script =
     "fn f(x : &_) -> string = to_string(x)\n"
     "fn g(x: i32) -> string = f(&x)\n";
@@ -247,13 +249,13 @@ BOOST_AUTO_TEST_CASE(ooze_generic) {
   check_any_tree(std::string("0.5"), v[1]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign) {
+BOOST_AUTO_TEST_CASE(basic_assign) {
   const auto m = check_result(assign(create_primative_env(), "", "let x = 1"));
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_any_tree(1, check_element("x", m));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign_tuple_destructure) {
+BOOST_AUTO_TEST_CASE(assign_tuple_destructure) {
   const auto m = check_result(assign(create_primative_env(), "", "let (x, y) = (1, 2)"));
 
   BOOST_REQUIRE_EQUAL(2, m.size());
@@ -261,13 +263,13 @@ BOOST_AUTO_TEST_CASE(ooze_assign_tuple_destructure) {
   check_any_tree(2, check_element("y", m));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign_tuple_wildcard) {
+BOOST_AUTO_TEST_CASE(assign_tuple_wildcard) {
   const auto m = check_result(assign(create_primative_env(), "", "let (_, x) = (1, 2)"));
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_any_tree(2, check_element("x", m));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign_tuple) {
+BOOST_AUTO_TEST_CASE(assign_tuple) {
   const auto m = check_result(assign(create_primative_env(), "", "let x = (1, 2)"));
 
   BOOST_REQUIRE_EQUAL(1, m.size());
@@ -277,7 +279,7 @@ BOOST_AUTO_TEST_CASE(ooze_assign_tuple) {
   check_any_tree(2, v[1]);
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_unnamed_type) {
+BOOST_AUTO_TEST_CASE(unnamed_type) {
   struct A {
     bool operator==(const A&) const { return true; }
   };
@@ -289,7 +291,7 @@ BOOST_AUTO_TEST_CASE(ooze_expr_unnamed_type) {
   check_any_tree(A{}, check_result(run(std::move(e), "", "identity(create())")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign_deduce_overloads) {
+BOOST_AUTO_TEST_CASE(assign_deduce_overloads) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 5; });
   e.add_function("f", []() { return 3.0f; });
@@ -300,28 +302,28 @@ BOOST_AUTO_TEST_CASE(ooze_assign_deduce_overloads) {
   check_any_tree(3.0f, check_element("y", m));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign_wrong_type) {
+BOOST_AUTO_TEST_CASE(assign_wrong_type) {
   const std::vector<std::string> expected{
     "1:13 error: expected i32, given f32", " | let x: f32 = 1", " |              ^"};
   check_range(expected, check_error(run(create_primative_env(), "", "let x: f32 = 1")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_undeclared_function) {
+BOOST_AUTO_TEST_CASE(undeclared_function) {
   const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'f'", " | f()", " | ^"};
   check_range(expected, check_error(run(create_primative_env(), "", "f()")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_undeclared_binding) {
+BOOST_AUTO_TEST_CASE(undeclared_binding) {
   const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
   check_range(expected, check_error(run(create_primative_env(), "", "x")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_assign_bad_pattern) {
+BOOST_AUTO_TEST_CASE(bad_pattern) {
   const std::vector<std::string> expected{"1:4 error: expected (_), given ()", " | let (x) = ()", " |     ^~~"};
   check_range(expected, check_error(run(create_primative_env(), "", "let (x) = ()")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
+BOOST_AUTO_TEST_CASE(expr_or_error) {
   Env e = create_primative_env();
   e.add_function("f", [](i32) {});
 
@@ -329,19 +331,19 @@ BOOST_AUTO_TEST_CASE(ooze_expr_or_error) {
   check_range(expected, check_error(run(std::move(e), "", "f('abc')")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_to_string) {
+BOOST_AUTO_TEST_CASE(to_string) {
   auto executor = make_task_executor();
   BOOST_CHECK_EQUAL("1", check_result(run_to_string(executor, create_primative_env(), {}, "1")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_to_string_fn) {
+BOOST_AUTO_TEST_CASE(to_string_fn) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
   BOOST_CHECK_EQUAL("abc", check_result(run_to_string(executor, std::move(e), {}, "f()")));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_reuse_ref_binding) {
+BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {
   auto executor = make_task_executor();
 
   Env e = create_primative_env();
@@ -367,7 +369,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_ref_binding) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
+BOOST_AUTO_TEST_CASE(reuse_to_string_binding) {
   auto executor = make_task_executor();
 
   const auto result =
@@ -390,7 +392,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_binding) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
+BOOST_AUTO_TEST_CASE(reuse_to_string_indirect) {
   auto executor = make_task_executor();
 
   Env e = create_primative_env();
@@ -416,7 +418,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_to_string_indirect) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
+BOOST_AUTO_TEST_CASE(reuse_assign_binding_indirect) {
   auto executor = make_task_executor();
 
   Env e = create_primative_env();
@@ -437,7 +439,7 @@ BOOST_AUTO_TEST_CASE(ooze_reuse_assign_binding_indirect) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
+BOOST_AUTO_TEST_CASE(tuple_untuple) {
   auto executor = make_task_executor();
 
   const auto result =
@@ -469,7 +471,7 @@ BOOST_AUTO_TEST_CASE(ooze_tuple_untuple) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(ooze_print_fn) {
+BOOST_AUTO_TEST_CASE(print_fn) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
@@ -477,5 +479,7 @@ BOOST_AUTO_TEST_CASE(ooze_print_fn) {
   // TODO improve this error
   BOOST_CHECK(!run_to_string(executor, std::move(e), {}, "f"));
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

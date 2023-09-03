@@ -21,14 +21,16 @@ namespace {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(repl_empty) {
+BOOST_AUTO_TEST_SUITE(repl)
+
+BOOST_AUTO_TEST_CASE(empty) {
   auto executor = make_task_executor();
   const auto [ouptut, env, bindings] = step_repl(executor, {}, {}, "");
   BOOST_CHECK(ouptut.empty());
   BOOST_CHECK(bindings.empty());
 }
 
-BOOST_AUTO_TEST_CASE(repl_run_expr) {
+BOOST_AUTO_TEST_CASE(run_expr) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("pow", [](int x) { return x * x; });
@@ -39,7 +41,7 @@ BOOST_AUTO_TEST_CASE(repl_run_expr) {
   std::tie(e, b) = step_and_compare({"9"}, "pow(3)", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
+BOOST_AUTO_TEST_CASE(pass_binding_by_value) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_type<std::unique_ptr<int>>("unique_int");
@@ -52,7 +54,7 @@ BOOST_AUTO_TEST_CASE(repl_pass_binding_by_value) {
   std::tie(e, b) = step_and_compare({"5"}, "take_ptr(x)", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(repl_store_function) {
+BOOST_AUTO_TEST_CASE(store_function) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
 
@@ -68,7 +70,7 @@ BOOST_AUTO_TEST_CASE(repl_store_function) {
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(repl_bindings) {
+BOOST_AUTO_TEST_CASE(bindings) {
   auto executor = make_task_executor();
   Env e;
   Bindings b;
@@ -103,7 +105,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings) {
   BOOST_CHECK_EQUAL("abc", any_cast<std::string>(std::move(y.future).wait()));
 }
 
-BOOST_AUTO_TEST_CASE(repl_binding_overload_fn) {
+BOOST_AUTO_TEST_CASE(binding_overload_fn) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
 
@@ -114,7 +116,7 @@ BOOST_AUTO_TEST_CASE(repl_binding_overload_fn) {
   std::tie(e, b) = step_and_compare({"5"}, "f", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {
+BOOST_AUTO_TEST_CASE(bindings_post_dump) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
   Bindings b;
@@ -126,7 +128,7 @@ BOOST_AUTO_TEST_CASE(repl_bindings_post_dump) {
   step_and_compare(expected, ":b", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(repl_types) {
+BOOST_AUTO_TEST_CASE(types) {
   struct A {};
   struct B {};
 
@@ -146,7 +148,7 @@ BOOST_AUTO_TEST_CASE(repl_types) {
   step_and_compare(expected, ":t", std::move(e), Bindings{});
 }
 
-BOOST_AUTO_TEST_CASE(repl_functions) {
+BOOST_AUTO_TEST_CASE(functions) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
 
@@ -178,5 +180,7 @@ BOOST_AUTO_TEST_CASE(repl_functions) {
 
   step_and_compare(expected, ":f", std::move(e), Bindings{});
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

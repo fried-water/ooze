@@ -1,8 +1,8 @@
 #include "pch.h"
 
+#include "async_functions.h"
 #include "bindings.h"
 #include "graph_construction.h"
-#include "graph_execution.h"
 #include "io.h"
 #include "ooze/core.h"
 #include "ooze/executor/task_executor.h"
@@ -120,39 +120,46 @@ ContextualResult<TypedFunction> infer_header_from_env(const Env& env, const Bind
   return value_or_errors(TypedFunction{std::move(pattern), std::move(expr)}, std::move(errors));
 }
 
-bool is_instantiated(const Env& e, const EnvFunctionRef& call) {
+bool is_instantiated(const Env& e, const EnvFunctionRef& call, const FunctionType<TypeID>& type) {
   const EnvFunction& ef = e.functions.at(call.name)[call.overload_idx];
-  return call.type == ef.type || any_of(ef.instatiations, [&](const auto& p) { return call.type == p.first; });
+  return type == ef.type || any_of(ef.instatiations, [&](const auto& p) { return type == p.first; });
 }
 
-std::vector<EnvFunctionRef> uninstantiated_functions(const Env& e, const CheckedFunction& f) {
-  return knot::preorder_accumulate(f, std::vector<EnvFunctionRef>{}, [&](auto acc, const EnvFunctionRef& call) {
-    if(!is_instantiated(e, call)) {
-      acc.push_back(call);
-    }
-    return acc;
-  });
+std::vector<std::pair<EnvFunctionRef, FunctionType<TypeID>>>
+uninstantiated_functions(const Env& e, const CheckedFunction& f) {
+  return knot::preorder_accumulate(
+    f, std::vector<std::pair<EnvFunctionRef, FunctionType<TypeID>>>{}, [&](auto acc, const CheckedExpr& expr) {
+      knot::visit(expr.v, [&](const EnvFunctionRef& call) {
+        const auto& ftype = std::get<FunctionType<TypeID>>(expr.type.v);
+        if(!is_instantiated(e, call, ftype)) {
+          acc.emplace_back(call, ftype);
+        }
+      });
+
+      return acc;
+    });
 }
 
 ContextualResult<FunctionGraph, Env> create_graph_and_instantiations(Env e, const CheckedFunction& f) {
   std::vector<ContextualError> errors;
 
-  std::vector<EnvFunctionRef> typed_functions = uninstantiated_functions(e, f);
-  std::vector<std::pair<EnvFunctionRef, CheckedFunction>> checked_functions;
+  std::vector<std::pair<EnvFunctionRef, FunctionType<TypeID>>> typed_functions = uninstantiated_functions(e, f);
+  std::vector<std::tuple<EnvFunctionRef, FunctionType<TypeID>, CheckedFunction>> checked_functions;
 
   Set<EnvFunctionRef> visited;
 
   for(size_t i = 0; i < typed_functions.size(); i++) {
-    const auto& call = typed_functions[i];
+    const auto& [call, type] = typed_functions[i];
     if(visited.insert(call).second) {
       const EnvFunction& ef = e.functions.at(call.name)[call.overload_idx];
-      auto result = type_check(e, std::get<TypedFunction>(ef.f), call.type).and_then([&](const TypedFunction& f) {
+      auto result = type_check(e, std::get<TypedFunction>(ef.f), type).and_then([&](const TypedFunction& f) {
         return overload_resolution(e, f);
       });
 
       if(result) {
         typed_functions = to_vec(uninstantiated_functions(e, *result), std::move(typed_functions));
-        checked_functions.emplace_back(std::move(typed_functions[i]), std::move(*result));
+        checked_functions.emplace_back(
+          std::move(typed_functions[i].first), std::move(typed_functions[i].second), std::move(*result));
       } else {
         errors = to_vec(std::move(result.error()), std::move(errors));
       }
@@ -161,8 +168,8 @@ ContextualResult<FunctionGraph, Env> create_graph_and_instantiations(Env e, cons
 
   if(errors.empty()) {
     for(int i = checked_functions.size() - 1; i >= 0; i--) {
-      const auto& [call, f] = checked_functions[i];
-      e.functions.at(call.name)[call.overload_idx].instatiations.emplace_back(call.type, create_graph(e, f));
+      const auto& [call, type, f] = checked_functions[i];
+      e.functions.at(call.name)[call.overload_idx].instatiations.emplace_back(type, create_graph(e, f));
     }
 
     return ContextualResult<FunctionGraph>{create_graph(e, f)}.append_state(std::move(e));
@@ -200,7 +207,8 @@ run_function(ExecutorRef executor, Env e, Bindings bindings, const CheckedFuncti
                             borrowed_inputs = to_vec(*borrow(bindings, i.name), std::move(borrowed_inputs));
                           }});
 
-      std::vector<Future> futures = execute_graph(g, executor, std::move(value_inputs), std::move(borrowed_inputs));
+      std::vector<Future> futures =
+        create_async_graph(g)(executor, std::move(value_inputs), std::move(borrowed_inputs));
 
       int idx = 0;
       const auto converter = Overloaded{

@@ -9,8 +9,8 @@ add_executable(ooze_test
   test_main.cpp
   any_function_test.cpp
   any_test.cpp
+  async_test.cpp
   borrowed_future_test.cpp
-  executor_test.cpp
   future_test.cpp
   graph_test.cpp
   lexer_test.cpp

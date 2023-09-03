@@ -15,7 +15,9 @@ struct MoveOnlyType {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(any_basic) {
+BOOST_AUTO_TEST_SUITE(any)
+
+BOOST_AUTO_TEST_CASE(basic) {
   Any any;
 
   BOOST_CHECK(!any.has_value());
@@ -49,7 +51,7 @@ BOOST_AUTO_TEST_CASE(any_basic) {
   BOOST_CHECK("abc" == any_cast<std::string>(any));
 }
 
-BOOST_AUTO_TEST_CASE(any_move_only) {
+BOOST_AUTO_TEST_CASE(move_only) {
   Any any = MoveOnlyType();
 
   BOOST_CHECK(any.has_value());
@@ -67,5 +69,7 @@ BOOST_AUTO_TEST_CASE(any_move_only) {
 
   MoveOnlyType m = any_cast<MoveOnlyType>(std::move(any2));
 }
+
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

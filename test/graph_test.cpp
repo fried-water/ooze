@@ -8,16 +8,12 @@ namespace ooze {
 
 namespace {
 
-struct MoveOnly {
-  MoveOnly(const MoveOnly&) = delete;
-  MoveOnly(MoveOnly&&) = default;
-};
-
-const AnyFunction identity = AnyFunction{[](int x) { return x; }};
+const auto identity = create_async(std::make_shared<AnyFunction>([](int x) { return x; }));
+const auto identity_ref = create_async(std::make_shared<AnyFunction>([](const int& x) { return x; }));
 
 bool eq_without_function(const FunctionGraph::State& exp, const FunctionGraph& act) {
   const auto tie = [](const FunctionGraph::State& g) {
-    return std::tie(g.input_types, g.output_types, g.owned_fwds, g.input_borrowed_fwds, g.input_counts);
+    return std::tie(g.input_borrows, g.output_count, g.owned_fwds, g.input_borrowed_fwds, g.input_counts);
   };
 
   return tie(exp) == tie(*act.state);
@@ -25,99 +21,86 @@ bool eq_without_function(const FunctionGraph::State& exp, const FunctionGraph& a
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(empty_graph) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<>{}));
-  BOOST_CHECK(eq_without_function(FunctionGraph::State{{}, {}, {{}}}, std::move(cg).finalize({})));
+BOOST_AUTO_TEST_SUITE(graph)
+
+BOOST_AUTO_TEST_CASE(empty) {
+  auto [cg, inputs] = make_graph({});
+  BOOST_CHECK(eq_without_function(FunctionGraph::State{{}, 0, {{}}}, std::move(cg).finalize({}, {})));
 }
 
-BOOST_AUTO_TEST_CASE(empty_graph_value) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize({inputs[0]});
+BOOST_AUTO_TEST_CASE(empty_copy) {
+  auto [cg, inputs] = make_graph({false});
+  const FunctionGraph g = std::move(cg).finalize(inputs, {PassBy::Copy});
 
-  const FunctionGraph::State exp{{{type_id<int>(), true}}, {type_id<int>()}, {{{{{{0, 0, true}}, 0, 1}}}}};
+  const FunctionGraph::State exp{{false}, 1, {{{{{{0, 0}}, 1, 1}}}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
-BOOST_AUTO_TEST_CASE(empty_graph_value_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize({inputs[0]});
+BOOST_AUTO_TEST_CASE(empty_move) {
+  auto [cg, inputs] = make_graph({false});
+  const FunctionGraph g = std::move(cg).finalize(inputs, {PassBy::Move});
 
-  const FunctionGraph::State exp{{{type_id<int>(), true}}, {type_id<int>()}, {{{{{{0, 0, true}}, 0, 1}}}}};
-
-  BOOST_CHECK(eq_without_function(exp, g));
-}
-
-BOOST_AUTO_TEST_CASE(empty_graph_value_multi_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize({inputs[0], inputs[0]});
-
-  const FunctionGraph::State exp{
-    {{type_id<int>(), true}}, {type_id<int>(), type_id<int>()}, {{{{{{0, 0, true}, {0, 1, true}}, 1, 2}}}}};
+  const FunctionGraph::State exp{{false}, 1, {{{{{{0, 0}}, 0, 1}}}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
-BOOST_AUTO_TEST_CASE(empty_graph_multi_value) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, int>{}));
-  const FunctionGraph g = std::move(cg).finalize({inputs[0], inputs[1]});
+BOOST_AUTO_TEST_CASE(empty_copy_ref) {
+  auto [cg, inputs] = make_graph({true});
+  const FunctionGraph g = std::move(cg).finalize(inputs, {PassBy::Copy});
 
-  const FunctionGraph::State exp{{{type_id<int>(), true}, {type_id<int>(), true}},
-                                 {type_id<int>(), type_id<int>()},
-                                 {{{{{{0, 0, true}}, 0, 1}, {{{0, 1, true}}, 0, 1}}}}};
+  const FunctionGraph::State exp{{true}, 1, {{}}, {{{{{0, 0}}, 1, 1}}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
-BOOST_AUTO_TEST_CASE(empty_graph_value_ref) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, const int&>{}));
-  const FunctionGraph g = std::move(cg).finalize({inputs[0], inputs[1]});
+BOOST_AUTO_TEST_CASE(empty_copy_multi_fwd) {
+  auto [cg, inputs] = make_graph({false});
+  const FunctionGraph g = std::move(cg).finalize({inputs[0], inputs[0]}, {PassBy::Copy, PassBy::Copy});
 
-  const FunctionGraph::State exp{
-    {{type_id<int>(), true}, {type_id<int>(), false}},
-    {type_id<int>(), type_id<int>()},
-    {{{{{{0, 0, true}}, 0, 1}}}},
-    {{{{{0, 1, true}}, 1, 1}}}};
+  const FunctionGraph::State exp{{false}, 2, {{{{{{0, 0}, {0, 1}}, 2, 2}}}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
-BOOST_AUTO_TEST_CASE(empty_graph_drop_value) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize({});
+BOOST_AUTO_TEST_CASE(empty_multi_copy) {
+  auto [cg, inputs] = make_graph({false, false});
+  const FunctionGraph g = std::move(cg).finalize(inputs, {PassBy::Copy, PassBy::Copy});
 
-  const FunctionGraph::State exp{{{type_id<int>(), true}}, {}, {{{}}}};
-
-  BOOST_CHECK(eq_without_function(exp, g));
-}
-
-BOOST_AUTO_TEST_CASE(empty_graph_drop_ref) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<const int&>{}));
-  const FunctionGraph g = std::move(cg).finalize({});
-
-  const FunctionGraph::State exp{{{type_id<int>(), false}}, {}, {{}}, {{}}};
+  const FunctionGraph::State exp{{false, false}, 2, {{{{{{0, 0}}, 1, 1}, {{{0, 1}}, 1, 1}}}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
-BOOST_AUTO_TEST_CASE(empty_graph_move_only_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<MoveOnly>{}));
-  const FunctionGraph g = std::move(cg).finalize({inputs[0]});
+BOOST_AUTO_TEST_CASE(empty_mult_copy_ref) {
+  auto [cg, inputs] = make_graph({false, true});
+  const FunctionGraph g = std::move(cg).finalize(inputs, {PassBy::Copy, PassBy::Copy});
 
-  const FunctionGraph::State exp{{{type_id<MoveOnly>(), true}}, {type_id<MoveOnly>()}, {{{{{{0, 0, true}}, 0, 1}}}}};
+  const FunctionGraph::State exp{{false, true}, 2, {{{{{{0, 0}}, 1, 1}}}}, {{{{{0, 1}}, 1, 1}}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
+}
+
+BOOST_AUTO_TEST_CASE(empty_drop_value) {
+  auto [cg, inputs] = make_graph({false});
+  BOOST_CHECK(eq_without_function(FunctionGraph::State{{false}, 0, {{{}}}}, std::move(cg).finalize({}, {})));
+}
+
+BOOST_AUTO_TEST_CASE(empty_drop_ref) {
+  auto [cg, inputs] = make_graph({true});
+  BOOST_CHECK(eq_without_function(FunctionGraph::State{{true}, 0, {{}}, {{}}}, std::move(cg).finalize({}, {})));
 }
 
 BOOST_AUTO_TEST_CASE(single_value_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto id_outputs = cg.add(identity, std::array{inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
+  auto [cg, inputs] = make_graph({false});
+  const auto id_outputs = cg.add(identity, inputs, {PassBy::Copy}, 1);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
 
   const FunctionGraph::State exp{
-    {{type_id<int>(), true}},
-    {type_id<int>()},
-    {{{{{{0, 0, true}}, 0, 1}}}, {{{{{1, 0, true}}, 0, 1}}}},
+    {false},
+    1,
+    {{{{{0, 0}}, 1, 1}}, {{{{1, 0}}, 1, 1}}},
     {},
     {{1, 0}},
   };
@@ -126,204 +109,144 @@ BOOST_AUTO_TEST_CASE(single_value_fwd) {
 }
 
 BOOST_AUTO_TEST_CASE(single_ref_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<const int&>{}));
-  const auto id_outputs = cg.add(AnyFunction([](const int& x) { return x; }), std::array{inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
+  auto [cg, inputs] = make_graph({true});
+  const auto id_outputs = cg.add(identity_ref, inputs, {PassBy::Borrow}, 1);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
 
-  const FunctionGraph::State exp{
-    {{type_id<int>(), false}},
-    {type_id<int>()},
-    {{}, {{{{{1, 0, true}}, 0, 1}}}},
-    {{{{{0, 0, false}}, 0, 0}}},
-    {{0, 1}}};
+  const FunctionGraph::State exp{{true}, 1, {{}, {{{{{1, 0}}, 1, 1}}}}, {{{{{0, 0}}, 0, 0}}}, {{0, 1}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
 BOOST_AUTO_TEST_CASE(single_value_alternate_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto id_outputs = cg.add(AnyFunction([](int, const int&, int, const int&) { return 0; }),
-                                 std::array{inputs[0], inputs[0], inputs[0], inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
+  auto [cg, inputs] = make_graph({false});
+  const auto fn = create_async(std::make_shared<AnyFunction>([](int, const int&, int, const int&) { return 0; }));
+  const auto id_outputs =
+    cg.add(fn,
+           std::array{inputs[0], inputs[0], inputs[0], inputs[0]},
+           {PassBy::Copy, PassBy::Borrow, PassBy::Copy, PassBy::Borrow},
+           1);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
 
   const FunctionGraph::State exp{
-    {{type_id<int>(), true}},
-    {type_id<int>()},
-    {{{{{{0, 0, true}, {0, 1, true}, {0, 0, false}, {0, 1, false}}, 2, 2}}}, {{{{{1, 0, true}}, 0, 1}}}},
-    {},
-    {{2, 2}}};
+    {false}, 1, {{{{{{0, 0}, {0, 1}, {0, 0}, {0, 1}}, 2, 2}}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{2, 2}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
 BOOST_AUTO_TEST_CASE(single_ref_alternate_fwd) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<const int&>{}));
-
-  const auto id_outputs = cg.add(AnyFunction([](int, const int&, int, const int&) { return 0; }),
-                                 std::array{inputs[0], inputs[0], inputs[0], inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
+  auto [cg, inputs] = make_graph({true});
+  const auto fn = create_async(std::make_shared<AnyFunction>([](int, const int&, int, const int&) { return 0; }));
+  const auto id_outputs =
+    cg.add(fn,
+           std::array{inputs[0], inputs[0], inputs[0], inputs[0]},
+           {PassBy::Copy, PassBy::Borrow, PassBy::Copy, PassBy::Borrow},
+           1);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
 
   const FunctionGraph::State exp{
-    {{type_id<int>(), false}},
-    {type_id<int>()},
-    {{}, {{{{{1, 0, true}}, 0, 1}}}},
-    {{{{{0, 0, true}, {0, 1, true}, {0, 0, false}, {0, 1, false}}, 2, 2}}},
-    {{2, 2}}};
+    {true}, 1, {{}, {{{{{1, 0}}, 1, 1}}}}, {{{{{0, 0}, {0, 1}, {0, 0}, {0, 1}}, 2, 2}}}, {{2, 2}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
 BOOST_AUTO_TEST_CASE(single_ref_as_value) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
+  auto [cg, inputs] = make_graph({false});
+  const auto id_outputs = cg.add(identity_ref, inputs, {PassBy::Borrow}, 1);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
 
-  const auto id_outputs = cg.add(AnyFunction([](const int&) { return 0; }), std::array{inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
-
-  const FunctionGraph::State exp{
-    {{type_id<int>(), true}}, {type_id<int>()}, {{{{{0, 0, false}}, 0, 0}}, {{{{{1, 0, true}}, 0, 1}}}}, {}, {{0, 1}}};
+  const FunctionGraph::State exp{{false}, 1, {{{{{0, 0}}, 0, 0}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{0, 1}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
+BOOST_AUTO_TEST_CASE(single_graph) {
+  auto [inner_cg, inner_inputs] = make_graph({false});
+  const auto id_inner_outputs = inner_cg.add(identity, inner_inputs, {PassBy::Copy}, 1);
+  const FunctionGraph inner_g = std::move(inner_cg).finalize(id_inner_outputs, {PassBy::Copy});
+
+  auto [cg, inputs] = make_graph({false});
+  const auto id_outputs = cg.add(inner_g, inputs);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
+
+  BOOST_CHECK(eq_without_function(*inner_g.state, g));
+}
+
 BOOST_AUTO_TEST_CASE(single_ref_as_value_graph) {
-  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<const int&>{}));
+  auto [inner_cg, inner_inputs] = make_graph({true});
+  const auto id_inner_outputs = inner_cg.add(identity_ref, inner_inputs, {PassBy::Borrow}, 1);
+  const FunctionGraph inner_g = std::move(inner_cg).finalize(id_inner_outputs, {PassBy::Copy});
 
-  const auto id_inner_outputs = inner_cg.add(AnyFunction([](const int&) { return 0; }), std::array{inner_inputs[0]});
-  const FunctionGraph inner_g = std::move(inner_cg).finalize({id_inner_outputs[0]});
+  auto [cg, inputs] = make_graph({false});
+  const auto id_outputs = cg.add(inner_g, inputs);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Copy});
 
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-
-  const auto id_outputs = cg.add(inner_g, std::array{inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
-
-  const FunctionGraph::State exp{
-    {{type_id<int>(), true}}, {type_id<int>()}, {{{{{0, 0, false}}, 0, 0}}, {{{{{1, 0, true}}, 0, 1}}}}, {}, {{0, 1}}};
+  const FunctionGraph::State exp{{false}, 1, {{{{{0, 0}}, 0, 0}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{0, 1}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
 // TODO detect circular ref/moves
 BOOST_AUTO_TEST_CASE(single_move_only_fwd_ref) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<MoveOnly>{}));
-  const auto id_outputs =
-    cg.add(AnyFunction([](MoveOnly x, const MoveOnly&) { return x; }), std::array{inputs[0], inputs[0]});
-  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]});
+  auto [cg, inputs] = make_graph({false});
+  const auto fn = create_async(std::make_shared<AnyFunction>([](int, const int&) { return 0; }));
+  const auto id_outputs = cg.add(fn, std::array{inputs[0], inputs[0]}, {PassBy::Move, PassBy::Borrow}, 1);
+  const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Move});
 
-  const FunctionGraph::State exp{
-    {{type_id<MoveOnly>(), true}},
-    {type_id<MoveOnly>()},
-    {{{{{{0, 0, true}, {0, 0, false}}, 0, 1}}}, {{{{{1, 0, true}}, 0, 1}}}},
-    {},
-    {{1, 1}}};
+  const FunctionGraph::State exp{{false}, 1, {{{{{{0, 0}, {0, 0}}, 0, 1}}}, {{{{{1, 0}}, 0, 1}}}}, {}, {{1, 1}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
 BOOST_AUTO_TEST_CASE(single_void) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<>{}));
-  const auto id_outputs = cg.add(AnyFunction([]() {}), {});
-  const FunctionGraph g = std::move(cg).finalize({});
-
+  auto [cg, inputs] = make_graph({});
+  const auto fn = create_async(std::make_shared<AnyFunction>([]() {}));
+  const auto id_outputs = cg.add(fn, {}, {}, 0);
+  const FunctionGraph g = std::move(cg).finalize({}, {});
   const FunctionGraph::State exp{{}, {}, {{}, {}}, {}, {{0, 0}}};
 
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
-BOOST_AUTO_TEST_CASE(oterm_type) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, const int&, char, const char&>{}));
-  const auto outputs = cg.add(AnyFunction([](int x) { return std::tuple(x, 1.0f); }), std::array{inputs[0]});
-
-  BOOST_CHECK(cg.type(inputs[0]) == (TypeProperties{type_id<int>(), true}));
-  BOOST_CHECK(cg.type(inputs[1]) == (TypeProperties{type_id<int>(), false}));
-  BOOST_CHECK(cg.type(inputs[2]) == (TypeProperties{type_id<char>(), true}));
-  BOOST_CHECK(cg.type(inputs[3]) == (TypeProperties{type_id<char>(), false}));
-
-  BOOST_CHECK(cg.type(outputs[0]) == (TypeProperties{type_id<int>(), true}));
-  BOOST_CHECK(cg.type(outputs[1]) == (TypeProperties{type_id<float>(), true}));
-}
-
-BOOST_AUTO_TEST_CASE(graph_types) {
-  const AnyFunction f([](int x, const float& y) { return std::tuple(x, y); });
-  const auto g = make_graph(f);
-
-  BOOST_CHECK(f.input_types() == g.input_types());
-  BOOST_CHECK(f.output_types() == g.output_types());
-}
-
 BOOST_AUTO_TEST_CASE(add_empty_graph) {
-  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_inputs);
+  auto [inner_cg, inner_inputs] = make_graph({false});
+  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_inputs, {PassBy::Copy});
 
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, inputs));
-
-  BOOST_CHECK(eq_without_function(*inner_g.state, g));
-}
-
-BOOST_AUTO_TEST_CASE(add_single_graph) {
-  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_cg.add(identity, inner_inputs));
-
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, inputs));
+  auto [cg, inputs] = make_graph({false});
+  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, inputs), {PassBy::Copy});
 
   BOOST_CHECK(eq_without_function(*inner_g.state, g));
 }
 
 BOOST_AUTO_TEST_CASE(add_duo_graph) {
-  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph inner_g =
-    std::move(inner_cg).finalize(inner_cg.add(identity, inner_cg.add(identity, inner_inputs)));
+  auto [inner_cg, inner_inputs] = make_graph({false});
+  const auto inner_outputs0 = inner_cg.add(identity, inner_inputs, {PassBy::Copy}, 1);
+  const auto inner_outputs1 = inner_cg.add(identity, inner_outputs0, {PassBy::Copy}, 1);
+  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_outputs1, {PassBy::Copy});
 
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, inputs));
+  auto [cg, inputs] = make_graph({false});
+  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, inputs), {PassBy::Copy});
 
   BOOST_CHECK(eq_without_function(*inner_g.state, g));
 }
 
 BOOST_AUTO_TEST_CASE(add_single_graph_to_single_after) {
-  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_cg.add(identity, inner_inputs));
+  auto [inner_cg, inner_inputs] = make_graph({false});
+  const auto inner_outputs = inner_cg.add(identity, inner_inputs, {PassBy::Copy}, 1);
+  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_outputs, {PassBy::Copy});
 
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, cg.add(identity, inputs)));
+  auto [cg, inputs] = make_graph({false});
+  const auto outputs = cg.add(identity, inputs, {PassBy::Copy}, 1);
+  const FunctionGraph g = std::move(cg).finalize(cg.add(inner_g, outputs), {PassBy::Copy});
 
-  auto [exp_cg, exp_inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const FunctionGraph exp = std::move(exp_cg).finalize(exp_cg.add(identity, exp_cg.add(identity, exp_inputs)));
+  auto [exp_cg, exp_inputs] = make_graph({false});
+  const auto exp_outputs0 = exp_cg.add(identity, exp_inputs, {PassBy::Copy}, 1);
+  const auto exp_outputs1 = exp_cg.add(identity, exp_outputs0, {PassBy::Copy}, 1);
+  const FunctionGraph exp = std::move(exp_cg).finalize(exp_outputs1, {PassBy::Copy});
 
   BOOST_CHECK(eq_without_function(*exp.state, g));
 }
 
-BOOST_AUTO_TEST_CASE(bad_arity) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<>{}));
-  BOOST_CHECK_THROW(cg.add(identity, {}), GraphError);
-}
-
-BOOST_AUTO_TEST_CASE(bad_type) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<char>{}));
-  BOOST_CHECK_THROW(cg.add(identity, {inputs[0]}), GraphError);
-}
-
-BOOST_AUTO_TEST_CASE(cannot_copy) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<const MoveOnly&>{}));
-  BOOST_CHECK_THROW(cg.add(AnyFunction([](MoveOnly) {}), {inputs[0]}), GraphError);
-}
-
-BOOST_AUTO_TEST_CASE(err_offset) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<char>{}));
-  BOOST_CHECK_THROW(cg.add(AnyFunction([](char, int) {}), {inputs[0], inputs[0]}), GraphError);
-}
-
-BOOST_AUTO_TEST_CASE(err_ref_offset) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<char>{}));
-  BOOST_CHECK_THROW(cg.add(AnyFunction([](const char&, int) {}), {inputs[0], inputs[0]}), GraphError);
-}
-
-BOOST_AUTO_TEST_CASE(mismatched_branch_types) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
-  const auto if_graph = make_graph(AnyFunction{[](int x) { return x; }});
-  const auto else_graph = make_graph(AnyFunction{[]() { return 0; }});
-  BOOST_CHECK_THROW(cg.add_if(if_graph, else_graph, inputs), GraphError);
-}
+BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze
