@@ -17,15 +17,6 @@ namespace {
 
 } // namespace
 
-FunctionType<TypeID> type_of(const AnyFunction& anyf) {
-  return {
-    tuple_type(transform_to_vec(
-      anyf.input_types(), [](TypeProperties p) { return p.value ? leaf_type(p.id) : borrow_type(leaf_type(p.id)); })),
-    anyf.output_types().size() == 1
-      ? leaf_type(anyf.output_types()[0])
-      : tuple_type(transform_to_vec(anyf.output_types(), [](TypeID t) { return leaf_type(t); }))};
-}
-
 Env create_primative_env() {
   Env env;
 

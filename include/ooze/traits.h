@@ -13,6 +13,11 @@ using knot::TypeCategory;
 using knot::TypeList;
 
 template <typename... Ts, typename F>
+constexpr void visit(TypeList<Ts...>, F f) {
+  (f(Type<Ts>{}), ...);
+}
+
+template <typename... Ts, typename F>
 constexpr bool all(TypeList<Ts...>, F f) {
   return (f(Type<Ts>{}) && ...);
 }

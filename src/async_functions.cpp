@@ -48,7 +48,7 @@ auto make_multi_promise_future(ExecutorRef ex, int count) {
 }
 
 struct InvocationBlock {
-  std::shared_ptr<const AnyFunction> f;
+  AnyFunction f;
 
   std::atomic<int> ref_count;
 
@@ -58,13 +58,12 @@ struct InvocationBlock {
 
   std::vector<Promise> promises;
 
-  InvocationBlock(std::shared_ptr<const AnyFunction> f_,
-                  std::vector<BorrowedFuture> borrowed_inputs,
-                  std::vector<Promise> promises)
+  InvocationBlock(
+    AnyFunction f_, std::vector<BorrowedFuture> borrowed_inputs, std::vector<Promise> promises, size_t input_count)
       : f(std::move(f_))
-      , ref_count(f->input_types().size())
-      , input_vals(f->input_types().size())
-      , input_ptrs(f->input_types().size())
+      , ref_count(input_count)
+      , input_vals(input_count)
+      , input_ptrs(input_count)
       , borrowed_inputs(std::move(borrowed_inputs))
       , promises(std::move(promises)) {}
 };
@@ -215,14 +214,15 @@ AsyncFn create_async_value(Any any) {
   return [any = std::move(any)](ExecutorRef ex, auto, auto) { return make_vector(Future(ex, any)); };
 }
 
-AsyncFn create_async(std::shared_ptr<const AnyFunction> fn) {
-  return [fn = std::move(fn)](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    auto [promises, futures] = make_multi_promise_future(ex, int(fn->output_types().size()));
+AsyncFn create_async(AnyFunction fn, std::vector<bool> input_borrows, int output_count) {
+  return [fn = std::move(fn), input_borrows = std::move(input_borrows), output_count](
+           ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
+    auto [promises, futures] = make_multi_promise_future(ex, output_count);
 
-    InvocationBlock* b = new InvocationBlock(fn, std::move(borrowed_inputs), std::move(promises));
+    InvocationBlock* b = new InvocationBlock(fn, std::move(borrowed_inputs), std::move(promises), input_borrows.size());
 
     const auto invoke = [](InvocationBlock* b) {
-      auto results = (*b->f)(b->input_ptrs);
+      auto results = (b->f)(b->input_ptrs);
 
       // Drop reference to all borrowed inputs so they can be forwarded asap
       b->borrowed_inputs.clear();
@@ -235,14 +235,14 @@ AsyncFn create_async(std::shared_ptr<const AnyFunction> fn) {
       delete b;
     };
 
-    if(fn->input_types().empty()) {
+    if(input_borrows.size() == 0) {
       ex.run([b, invoke]() { invoke(b); });
     }
 
     int owned_offset = 0;
     int borrowed_offset = 0;
-    for(size_t i = 0; i < fn->input_types().size(); i++) {
-      if(fn->input_types()[i].value) {
+    for(size_t i = 0; i < input_borrows.size(); i++) {
+      if(!input_borrows[i]) {
         std::move(inputs[owned_offset++]).then([i, b, invoke](Any value) mutable {
           b->input_vals[i] = std::move(value);
           b->input_ptrs[i] = &b->input_vals[i];

@@ -7,7 +7,6 @@ find_package(tbb REQUIRED)
 
 add_executable(ooze_test
   test_main.cpp
-  any_function_test.cpp
   any_test.cpp
   async_test.cpp
   borrowed_future_test.cpp

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "ooze/any.h"
+#include "ooze/async_fn.h"
 #include "ooze/span.h"
 #include "ooze/traits.h"
 #include "ooze/type.h"
-#include "ooze/util.h"
 
 #include <exception>
 #include <functional>
@@ -15,36 +15,20 @@ struct BadInvocation final : std::exception {
   const char* what() const noexcept override { return "bad invocation"; }
 };
 
-struct BadBind final : std::exception {
-  const char* what() const noexcept override { return "bad bind"; }
-};
+using AnyFunction = std::function<std::vector<Any>(Span<Any*>)>;
 
-class AnyFunction {
-public:
-  AnyFunction(std::vector<TypeProperties> input_types,
-              std::vector<TypeID> output_types,
-              std::function<std::vector<Any>(Span<Any*>)> f)
-      : _input_types(std::move(input_types)), _output_types(std::move(output_types)), _func(std::move(f)) {}
-
-  template <typename F, typename = std::enable_if_t<!std::is_convertible_v<F, AnyFunction>>>
-  explicit AnyFunction(F f);
-
-  explicit AnyFunction(Any any)
-      : AnyFunction({}, {any.type()}, [a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; }) {}
-
-  std::vector<Any> operator()(Span<Any*> inputs) const { return _func(inputs); }
-
-  const std::vector<TypeProperties>& input_types() const { return _input_types; }
-  const std::vector<TypeID>& output_types() const { return _output_types; }
-
-private:
-  std::vector<TypeProperties> _input_types;
-  std::vector<TypeID> _output_types;
-
-  std::function<std::vector<Any>(Span<Any*>)> _func;
-};
+template <typename F>
+AsyncFn create_async_any_function(F&&);
 
 namespace details {
+
+template <typename T, typename... Elements>
+std::vector<T> make_vector(Elements&&... elements) {
+  std::vector<T> vec;
+  vec.reserve(sizeof...(Elements));
+  (vec.emplace_back(std::forward<Elements>(elements)), ...);
+  return vec;
+}
 
 template <typename... Ts, typename F, std::size_t... Is>
 std::vector<Any> call_with_anys(TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
@@ -68,18 +52,11 @@ std::vector<Any> call_with_anys(TypeList<Ts...>, F& f, Span<Any*> inputs, std::i
 
 } // namespace details
 
-template <typename Range>
-inline std::vector<Any*> any_ptrs(Range&& anys) {
-  std::vector<Any*> ptrs;
-  ptrs.reserve(anys.size());
-  std::transform(anys.begin(), anys.end(), std::back_inserter(ptrs), [](Any& a) { return &a; });
-  return ptrs;
-}
+AsyncFn create_async(AnyFunction, std::vector<bool> input_borrows, int output_count);
 
-template <typename F, typename>
-AnyFunction::AnyFunction(F f)
-    : _input_types(make_type_properties(args(Type<F>{}))), _output_types(make_type_ids(return_types(Type<F>{}))) {
-  constexpr Type<F> f_type = {};
+template <typename F>
+AsyncFn create_async_function(F&& f) {
+  constexpr auto f_type = decay(Type<F>{});
   constexpr auto fn_ret = return_types(f_type);
   constexpr auto fn_args = args(f_type);
 
@@ -89,17 +66,25 @@ AnyFunction::AnyFunction(F f)
                               all(fn_args, [](auto t) { return knot::is_decayed(t) || is_const_ref(t) || is_rref(t); });
 
   if constexpr(legal_return && legal_args && is_const_function(f_type)) {
-    _func = [f = std::move(f), fn_args](Span<Any*> inputs) {
-      return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
-    };
+    std::vector<bool> input_borrows;
+    input_borrows.reserve(size(fn_args));
+    visit(fn_args, [&](auto type) { input_borrows.push_back(is_const_ref(type)); });
+
+    return create_async(
+      [f = std::move(f), fn_args](Span<Any*> inputs) {
+        return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
+      },
+      std::move(input_borrows),
+      int(size(fn_ret)));
   } else {
     static_assert(is_const_function(f_type), "No mutable lambdas and non-const operator().");
     static_assert(legal_return,
                   "Function return type must be void, a value or tuple of "
                   "values (no refs or pointers).");
     static_assert(legal_args,
-                  "Function arguments must either be values on "
+                  "Function arguments must either be values or "
                   "const refs (no non-const refs or pointers).");
+    return [](auto, auto, auto) { return std::vector<Future>{}; };
   }
 }
 

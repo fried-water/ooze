@@ -2,6 +2,7 @@
 
 #include "ooze/any_function.h"
 #include "ooze/ast.h"
+#include "ooze/async_fn.h"
 #include "ooze/graph.h"
 #include "ooze/traits.h"
 #include "ooze/type.h"
@@ -18,11 +19,22 @@ namespace ooze {
 
 struct EnvFunction {
   FunctionType<TypeID> type;
-  std::variant<AnyFunction, FunctionGraph, TypedFunction> f;
+  std::variant<AsyncFn, FunctionGraph, TypedFunction> f;
   std::vector<std::pair<FunctionType<TypeID>, FunctionGraph>> instatiations;
 };
 
-FunctionType<TypeID> type_of(const AnyFunction&);
+template <typename F>
+FunctionType<TypeID> function_type_of(Type<F> f) {
+  constexpr auto fn_ret = return_types(f);
+
+  CompoundType<TypeID> input_types = type_of(args(f));
+
+  if constexpr(size(fn_ret) == 1) {
+    return {std::move(input_types), type_of(head(fn_ret))};
+  } else {
+    return {std::move(input_types), type_of(fn_ret)};
+  }
+}
 
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
@@ -32,8 +44,8 @@ struct Env {
 
   template <typename F>
   void add_function(const std::string& name, F&& f) {
-    AnyFunction anyf{std::forward<F>(f)};
-    functions[name].push_back({type_of(anyf), std::move(anyf)});
+    FunctionType<TypeID> type = function_type_of(decay(Type<F>{}));
+    functions[name].push_back({std::move(type), create_async_function(std::forward<F>(f))});
   }
 
   void add_graph(const std::string& name, FunctionType<TypeID> t, FunctionGraph f) {

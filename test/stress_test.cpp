@@ -15,8 +15,8 @@ namespace {
 FunctionGraph create_graph(int depth) {
   std::unordered_map<std::pair<int, int>, Oterm, knot::Hash> edges;
 
-  const auto identity = create_async(std::make_shared<AnyFunction>([](int x) { return x; }));
-  const auto sum = create_async(std::make_shared<AnyFunction>([](const int& x, int y) { return x + y; }));
+  const auto identity = create_async_function([](int x) { return x; });
+  const auto sum = create_async_function([](const int& x, int y) { return x + y; });
 
   auto [cg, input] = make_graph({false});
   int num_inputs = 1 << depth;
@@ -57,7 +57,7 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
   t0 = std::chrono::steady_clock::now();
   int result = -1;
   for(int i = 0; i < num_executions; i++) {
-    result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(ex, Any(1))), {})[0]).wait());
+    result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(ex, 1)), {})[0]).wait());
   }
 
   fmt::print("Result is {}, {} executions took {}ms\n",

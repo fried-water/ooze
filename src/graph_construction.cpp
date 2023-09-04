@@ -31,7 +31,7 @@ std::vector<PassBy> pass_bys_of(const Env& e, const CompoundType<TypeID>& type, 
   return pass_bys;
 }
 
-std::vector<bool> borrows_of(const Env& e, const CompoundType<TypeID>& type) {
+std::vector<bool> borrows_of(const CompoundType<TypeID>& type) {
   std::vector<bool> borrows;
 
   knot::preorder(
@@ -160,10 +160,7 @@ std::pair<GraphContext, std::vector<Oterm>> add_expr(
 
     std::vector<Oterm> terms = std::visit(
       Overloaded{
-        [&](const AnyFunction& f) {
-          return ctx.cg.add(
-            create_async(std::make_shared<AnyFunction>(f)), arg_terms, pass_bys_of(e, call.arg->type), output_count);
-        },
+        [&](const AsyncFn& f) { return ctx.cg.add(f, arg_terms, pass_bys_of(e, call.arg->type), output_count); },
         [&](const FunctionGraph& f) { return ctx.cg.add(f, arg_terms); },
         [&](const TypedFunction&) {
           const auto it = find_if(ef.instatiations, [&](const auto& p) {
@@ -227,7 +224,7 @@ add_expr(const Env& e, const EnvFunctionRef& fn_ref, const CompoundType<TypeID>&
   const EnvFunction& ef = e.functions.at(fn_ref.name)[fn_ref.overload_idx];
 
   AsyncFn f = std::visit(
-    Overloaded{[](const AnyFunction& f) { return create_async(std::make_shared<AnyFunction>(f)); },
+    Overloaded{[&](const AsyncFn& f) { return f; },
                [](const FunctionGraph& f) { return create_async_graph(f); },
                [&](const TypedFunction&) {
                  const auto it = find_if(ef.instatiations, [&](const auto& p) {
@@ -250,7 +247,7 @@ std::pair<GraphContext, std::vector<Oterm>> add_expr(const Env& e, const Checked
 } // namespace
 
 FunctionGraph create_graph(const Env& e, const CheckedFunction& f) {
-  auto [cg, terms] = make_graph(borrows_of(e, f.pattern.type));
+  auto [cg, terms] = make_graph(borrows_of(f.pattern.type));
   auto [ctx, output_terms] = add_expr(e, f.expr, append_bindings(f.pattern, terms, GraphContext{std::move(cg), {{}}}));
   return std::move(ctx.cg).finalize(output_terms, pass_bys_of(e, f.expr.type));
 }

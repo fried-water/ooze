@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ooze/type.h"
-#include "ooze/util.h"
 
 #include <exception>
 

@@ -8,8 +8,8 @@ namespace ooze {
 
 namespace {
 
-const auto identity = create_async(std::make_shared<AnyFunction>([](int x) { return x; }));
-const auto identity_ref = create_async(std::make_shared<AnyFunction>([](const int& x) { return x; }));
+const auto identity = create_async_function([](int x) { return x; });
+const auto identity_ref = create_async_function([](const int& x) { return x; });
 
 bool eq_without_function(const FunctionGraph::State& exp, const FunctionGraph& act) {
   const auto tie = [](const FunctionGraph::State& g) {
@@ -120,7 +120,7 @@ BOOST_AUTO_TEST_CASE(single_ref_fwd) {
 
 BOOST_AUTO_TEST_CASE(single_value_alternate_fwd) {
   auto [cg, inputs] = make_graph({false});
-  const auto fn = create_async(std::make_shared<AnyFunction>([](int, const int&, int, const int&) { return 0; }));
+  const auto fn = create_async_function([](int, const int&, int, const int&) { return 0; });
   const auto id_outputs =
     cg.add(fn,
            std::array{inputs[0], inputs[0], inputs[0], inputs[0]},
@@ -136,7 +136,7 @@ BOOST_AUTO_TEST_CASE(single_value_alternate_fwd) {
 
 BOOST_AUTO_TEST_CASE(single_ref_alternate_fwd) {
   auto [cg, inputs] = make_graph({true});
-  const auto fn = create_async(std::make_shared<AnyFunction>([](int, const int&, int, const int&) { return 0; }));
+  const auto fn = create_async_function([](int, const int&, int, const int&) { return 0; });
   const auto id_outputs =
     cg.add(fn,
            std::array{inputs[0], inputs[0], inputs[0], inputs[0]},
@@ -189,7 +189,7 @@ BOOST_AUTO_TEST_CASE(single_ref_as_value_graph) {
 // TODO detect circular ref/moves
 BOOST_AUTO_TEST_CASE(single_move_only_fwd_ref) {
   auto [cg, inputs] = make_graph({false});
-  const auto fn = create_async(std::make_shared<AnyFunction>([](int, const int&) { return 0; }));
+  const auto fn = create_async_function([](int, const int&) { return 0; });
   const auto id_outputs = cg.add(fn, std::array{inputs[0], inputs[0]}, {PassBy::Move, PassBy::Borrow}, 1);
   const FunctionGraph g = std::move(cg).finalize(id_outputs, {PassBy::Move});
 
@@ -200,7 +200,7 @@ BOOST_AUTO_TEST_CASE(single_move_only_fwd_ref) {
 
 BOOST_AUTO_TEST_CASE(single_void) {
   auto [cg, inputs] = make_graph({});
-  const auto fn = create_async(std::make_shared<AnyFunction>([]() {}));
+  const auto fn = create_async_function([]() {});
   const auto id_outputs = cg.add(fn, {}, {}, 0);
   const FunctionGraph g = std::move(cg).finalize({}, {});
   const FunctionGraph::State exp{{}, {}, {{}, {}}, {}, {{0, 0}}};
