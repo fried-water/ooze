@@ -24,7 +24,7 @@ struct EnvFunction {
 };
 
 template <typename F>
-FunctionType<TypeID> function_type_of(Type<F> f) {
+FunctionType<TypeID> function_type_of(knot::Type<F> f) {
   constexpr auto fn_ret = return_types(f);
 
   CompoundType<TypeID> input_types = type_of(args(f));
@@ -44,7 +44,7 @@ struct Env {
 
   template <typename F>
   void add_function(const std::string& name, F&& f) {
-    FunctionType<TypeID> type = function_type_of(decay(Type<F>{}));
+    FunctionType<TypeID> type = function_type_of(decay(knot::Type<F>{}));
     functions[name].push_back({std::move(type), create_async_function(std::forward<F>(f))});
   }
 
@@ -54,7 +54,7 @@ struct Env {
 
   template <typename T>
   void add_type(const std::string& name, std::optional<bool> copy_override = {}) {
-    const TypeID type = type_id<T>();
+    const TypeID type = type_id(knot::Type<T>{});
 
     type_ids.emplace(name, type);
     type_names.emplace(type, name);
@@ -88,7 +88,7 @@ auto generate_constructor(knot::TypeList<Ts...>) {
 
 template <typename T>
 void add_tieable_type(Env& e, const std::string& name) {
-  const TypeID type = type_id<T>();
+  const TypeID type = type_id(knot::Type<T>{});
 
   e.add_type<T>(name);
 

@@ -4,22 +4,18 @@
 
 namespace ooze {
 
-namespace my_namespace {
-struct MyType {};
-} // namespace my_namespace
-
 namespace {
 
 struct MyType {};
 
 struct ImplicitCopyOnlyType {
-  ImplicitCopyOnlyType(ImplicitCopyOnlyType const&) {}
+  ImplicitCopyOnlyType(const ImplicitCopyOnlyType&) {}
   // Implicitly deleted
   // ImplicitCopyOnlyType(ImplicitCopyOnlyType&&) = delete;
 };
 
 struct MoveOnlyType {
-  MoveOnlyType(MoveOnlyType const&) = delete;
+  MoveOnlyType(const MoveOnlyType&) = delete;
   MoveOnlyType(MoveOnlyType&&) = default;
 };
 
@@ -28,9 +24,9 @@ struct MoveOnlyType {
 BOOST_AUTO_TEST_SUITE(type)
 
 BOOST_AUTO_TEST_CASE(is_copy_constructible) {
-  BOOST_CHECK_EQUAL(true, is_copyable(type_id(Type<MyType>())));
-  BOOST_CHECK_EQUAL(true, is_copyable(type_id(Type<ImplicitCopyOnlyType>())));
-  BOOST_CHECK_EQUAL(false, is_copyable(type_id(Type<MoveOnlyType>())));
+  BOOST_CHECK_EQUAL(true, is_copyable(type_id(knot::Type<MyType>())));
+  BOOST_CHECK_EQUAL(true, is_copyable(type_id(knot::Type<ImplicitCopyOnlyType>())));
+  BOOST_CHECK_EQUAL(false, is_copyable(type_id(knot::Type<MoveOnlyType>())));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

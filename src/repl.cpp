@@ -155,7 +155,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
     TypedFunction to_string_wrap{
       TypedPattern{ast::Ident{"x"}, borrow_type(leaf_type(id))},
       {TypedCallExpr{{{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}},
-       leaf_type(type_id<std::string>())}};
+       leaf_type(type_id(knot::Type<std::string>{}))}};
 
     types[pretty_print(env, id)] =
       type_check(env, std::move(to_string_wrap))

@@ -619,17 +619,18 @@ ContextualResult<T> apply_language_rules(const Env& env, T t) {
 
   knot::preorder(
     t,
-    Overloaded{[&](TypedExpr& expr) {
-                 check(expr, language_type(expr));
-                 knot::visit(
-                   expr.v,
-                   Overloaded{[&](TypedCallExpr& call) {
-                                check(*call.callee,
-                                      function_type<TypeID>(floating_type<TypeID>(), floating_type<TypeID>()));
-                              },
-                              [&](TypedSelectExpr& select) { check(*select.condition, leaf_type(type_id<bool>())); }});
-               },
-               [&](TypedPattern& pattern) { check(pattern, language_type(pattern)); }
+    Overloaded{
+      [&](TypedExpr& expr) {
+        check(expr, language_type(expr));
+        knot::visit(
+          expr.v,
+          Overloaded{
+            [&](TypedCallExpr& call) {
+              check(*call.callee, function_type<TypeID>(floating_type<TypeID>(), floating_type<TypeID>()));
+            },
+            [&](TypedSelectExpr& select) { check(*select.condition, leaf_type(type_id(knot::Type<bool>{}))); }});
+      },
+      [&](TypedPattern& pattern) { check(pattern, language_type(pattern)); }
 
     });
 

@@ -280,7 +280,7 @@ run_expr_to_string(ExecutorRef executor, Env env, Bindings bindings, TypedExpr e
           {{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{TypedBorrowExpr{TypedExpr{ast::Ident{"x"}}}}}}}}};
       }
 
-      f.expr.type = leaf_type(type_id<std::string>());
+      f.expr.type = leaf_type(type_id(knot::Type<std::string>{}));
       f.expr.v = std::move(scope);
 
       return f;

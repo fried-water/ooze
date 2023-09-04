@@ -46,7 +46,8 @@ public:
 
   template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>
   Any(T&& t)
-      : _concept(std::make_unique<Concrete<std::decay_t<T>>>(std::forward<T>(t))), _type(type_id(decay(Type<T>{}))) {}
+      : _concept(std::make_unique<Concrete<std::decay_t<T>>>(std::forward<T>(t)))
+      , _type(type_id(decay(knot::Type<T>{}))) {}
 
   Any(Any&&) = default;
   Any& operator=(Any&&) = default;
@@ -80,7 +81,7 @@ public:
 
 template <typename T>
 T& any_cast(Any& any) {
-  if(type_id(Type<T>{}) == any.type()) {
+  if(type_id(knot::Type<T>{}) == any.type()) {
     return static_cast<Any::Concrete<T>&>(*any._concept).val;
   } else {
     throw BadCast();
@@ -89,7 +90,7 @@ T& any_cast(Any& any) {
 
 template <typename T>
 const T& any_cast(const Any& any) {
-  if(type_id(Type<T>{}) == any.type()) {
+  if(type_id(knot::Type<T>{}) == any.type()) {
     return static_cast<const Any::Concrete<T>&>(*any._concept).val;
   } else {
     throw BadCast();
@@ -98,7 +99,7 @@ const T& any_cast(const Any& any) {
 
 template <typename T>
 T&& any_cast(Any&& any) {
-  if(type_id(Type<T>{}) == any.type()) {
+  if(type_id(knot::Type<T>{}) == any.type()) {
     return std::move(static_cast<Any::Concrete<T>&>(*any._concept).val);
   } else {
     throw BadCast();
@@ -107,7 +108,7 @@ T&& any_cast(Any&& any) {
 
 template <typename T>
 T* any_cast(Any* any) {
-  if(type_id(Type<T>{}) == any->type()) {
+  if(type_id(knot::Type<T>{}) == any->type()) {
     return &static_cast<Any::Concrete<T>&>(*any->_concept).val;
   } else {
     return nullptr;
@@ -116,7 +117,7 @@ T* any_cast(Any* any) {
 
 template <typename T>
 const T* any_cast(const Any* any) {
-  if(type_id(Type<T>{}) == any->type()) {
+  if(type_id(knot::Type<T>{}) == any->type()) {
     return &static_cast<const Any::Concrete<T>&>(*any->_concept).val;
   } else {
     return nullptr;
@@ -125,7 +126,7 @@ const T* any_cast(const Any* any) {
 
 template <typename T>
 bool holds_alternative(const Any& any) {
-  return type_id(Type<T>{}) == any.type();
+  return type_id(knot::Type<T>{}) == any.type();
 }
 
 } // namespace ooze

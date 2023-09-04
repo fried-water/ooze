@@ -65,7 +65,7 @@ BOOST_AUTO_TEST_CASE(store_function) {
 
   BOOST_REQUIRE_EQUAL(1, b.size());
   Binding& x = std::get<Binding>(b.at("x").v);
-  BOOST_CHECK(function_type(tuple_type<TypeID>({}), leaf_type(type_id<int>())) == x.type);
+  BOOST_CHECK(function_type(tuple_type<TypeID>({}), leaf_type(type_id(knot::Type<int>{}))) == x.type);
 
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE(bindings) {
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
 
   const std::vector<std::string> one_unknown_binding{
-    "1 binding(s)", fmt::format("  x: type 0x{:x}", type_id<int>().id)};
+    "1 binding(s)", fmt::format("  x: type 0x{:x}", type_id(knot::Type<int>{}).id)};
 
   std::tie(e, b) = step_and_compare(one_unknown_binding, ":b", std::move(e), std::move(b));
 
@@ -90,7 +90,7 @@ BOOST_AUTO_TEST_CASE(bindings) {
   e.add_type<int>("i32");
 
   const std::vector<std::string> two_bindings{
-    "2 binding(s)", "  x: i32", fmt::format("  y: {}", pretty_print(e, type_id<std::string>()))};
+    "2 binding(s)", "  x: i32", fmt::format("  y: {}", pretty_print(e, type_id(knot::Type<std::string>{})))};
 
   std::tie(e, b) = step_and_compare(two_bindings, ":b", std::move(e), std::move(b));
   BOOST_REQUIRE(b.size() == 2);
@@ -98,8 +98,8 @@ BOOST_AUTO_TEST_CASE(bindings) {
   Binding& x = std::get<Binding>(b.at("x").v);
   Binding& y = std::get<Binding>(b.at("y").v);
 
-  BOOST_CHECK(leaf_type(type_id<int>()) == x.type);
-  BOOST_CHECK(leaf_type(type_id<std::string>()) == y.type);
+  BOOST_CHECK(leaf_type(type_id(knot::Type<int>{})) == x.type);
+  BOOST_CHECK(leaf_type(type_id(knot::Type<std::string>{})) == y.type);
 
   BOOST_CHECK_EQUAL(5, any_cast<int>(std::move(x.future).wait()));
   BOOST_CHECK_EQUAL("abc", any_cast<std::string>(std::move(y.future).wait()));
@@ -154,7 +154,7 @@ BOOST_AUTO_TEST_CASE(functions) {
 
   struct A {};
 
-  const auto a_type = type_id<A>();
+  const auto a_type = type_id(knot::Type<A>{});
 
   e.add_function("create_a", []() { return A{}; });
   e.add_function("read_a", [](const A&) {});

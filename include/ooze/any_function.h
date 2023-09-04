@@ -31,18 +31,18 @@ std::vector<T> make_vector(Elements&&... elements) {
 }
 
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<Any> call_with_anys(TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
-  if(inputs.size() != sizeof...(Ts) || ((type_id(decay(Type<Ts>{})) != inputs[Is]->type()) || ...)) {
+std::vector<Any> call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
+  if(inputs.size() != sizeof...(Ts) || ((type_id(decay(knot::Type<Ts>{})) != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
 
-  if constexpr(Type<void>{} == return_type(decay(Type<F>({})))) {
+  if constexpr(knot::Type<void>{} == return_type(decay(knot::Type<F>({})))) {
     std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
     return {};
   } else {
     auto&& result = std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
-    if constexpr(is_tuple(decay(Type<decltype(result)>{}))) {
+    if constexpr(is_tuple(decay(knot::Type<decltype(result)>{}))) {
       return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
     } else {
       return make_vector<Any>(std::move(result));
@@ -56,7 +56,7 @@ AsyncFn create_async(AnyFunction, std::vector<bool> input_borrows, int output_co
 
 template <typename F>
 AsyncFn create_async_function(F&& f) {
-  constexpr auto f_type = decay(Type<F>{});
+  constexpr auto f_type = decay(knot::Type<F>{});
   constexpr auto fn_ret = return_types(f_type);
   constexpr auto fn_args = args(f_type);
 
