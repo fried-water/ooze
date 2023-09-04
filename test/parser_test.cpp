@@ -67,25 +67,22 @@ UnTypedPattern tuple_pattern(Slice ref, Children... children) {
   return {std::vector<UnTypedPattern>{std::move(children)...}, floating_type<NamedType>(), ref};
 }
 
-CompoundType<NamedType> type(std::string_view name, int offset) {
+Type<NamedType> type(std::string_view name, int offset) {
   return {NamedType{std::string(name)}, {offset, offset + (int)name.size()}};
 }
 
 template <typename T>
-T typed(T t, CompoundType<NamedType> type) {
+T typed(T t, Type<NamedType> type) {
   t.type = std::move(type);
   return t;
 }
 
-UnTypedAssignment
-assignment(UnTypedPattern pattern, UnTypedExpr expr, CompoundType<NamedType> t = floating_type<NamedType>()) {
+UnTypedAssignment assignment(UnTypedPattern pattern, UnTypedExpr expr, Type<NamedType> t = floating_type<NamedType>()) {
   return {typed(std::move(pattern), t), typed(std::move(expr), t)};
 }
 
-UnTypedFunction function(UnTypedPattern pattern,
-                         std::vector<CompoundType<NamedType>> inputs,
-                         CompoundType<NamedType> output,
-                         UnTypedExpr expr) {
+UnTypedFunction
+function(UnTypedPattern pattern, std::vector<Type<NamedType>> inputs, Type<NamedType> output, UnTypedExpr expr) {
   auto* patterns = std::get_if<std::vector<UnTypedPattern>>(&pattern.v);
   BOOST_REQUIRE(patterns && patterns->size() == inputs.size());
   for(int i = 0; i < inputs.size(); i++) {
@@ -198,18 +195,18 @@ BOOST_AUTO_TEST_CASE(floating_borrowed) {
 BOOST_AUTO_TEST_CASE(type_empty_tuple) { check_pass(tuple_type<NamedType>({}, {0, 2}), parse_type("()")); }
 
 BOOST_AUTO_TEST_CASE(type_tuple1) {
-  const CompoundType<NamedType> expected = tuple_type<NamedType>({type("a", 1)}, {0, 3});
+  const Type<NamedType> expected = tuple_type<NamedType>({type("a", 1)}, {0, 3});
   check_pass(expected, parse_type("(a)"));
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple2) {
-  const CompoundType<NamedType> expected =
+  const Type<NamedType> expected =
     tuple_type<NamedType>({borrow_type(type("a", 2), {1, 3}), floating_type<NamedType>({5, 6})}, {0, 7});
   check_pass(expected, parse_type("(&a, _)"));
 }
 
 BOOST_AUTO_TEST_CASE(type_nested_tuple) {
-  const CompoundType<NamedType> expected = tuple_type<NamedType>(
+  const Type<NamedType> expected = tuple_type<NamedType>(
     {tuple_type<NamedType>({type("a", 2)}, {1, 4}), borrow_type(floating_type<NamedType>({7, 8}), {6, 8})}, {0, 9});
   check_pass(expected, parse_type("((a), &_)"));
 }
@@ -260,7 +257,7 @@ BOOST_AUTO_TEST_CASE(header_two_args) {
   check_pass(expected, parse_function("(a: X, b: Y) -> T = 1"));
 }
 
-// function(UnTypedPattern pattern, std::vector<CompoundType<NamedType>> inputs, CompoundType<NamedType> output,
+// function(UnTypedPattern pattern, std::vector<Type<NamedType>> inputs, Type<NamedType> output,
 // UnTypedExpr expr)
 
 BOOST_AUTO_TEST_CASE(header_borrow_arg) {

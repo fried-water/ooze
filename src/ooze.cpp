@@ -77,17 +77,16 @@ TypedFunction lift_only_borrowed_idents(TypedFunction f) {
     });
   };
 
-  co_visit(
-    f.pattern, f.pattern.type, [&](const TypedPattern&, CompoundType<TypeID>& t, const ast::Ident& i, const auto&) {
-      const int uses = count_usages(i.name);
-      auto borrows = get_borrowed_usages(i.name);
-      if(uses == borrows.size()) {
-        t = borrow_type(std::move(t));
-        for(TypedExpr* e : borrows) {
-          *e = TypedExpr{ast::Ident{i.name}};
-        }
+  co_visit(f.pattern, f.pattern.type, [&](const TypedPattern&, Type<TypeID>& t, const ast::Ident& i, const auto&) {
+    const int uses = count_usages(i.name);
+    auto borrows = get_borrowed_usages(i.name);
+    if(uses == borrows.size()) {
+      t = borrow_type(std::move(t));
+      for(TypedExpr* e : borrows) {
+        *e = TypedExpr{ast::Ident{i.name}};
       }
-    });
+    }
+  });
 
   return f;
 }
@@ -104,18 +103,17 @@ ContextualResult<TypedFunction> infer_header_from_env(const Env& env, const Bind
 
   std::vector<ContextualError> errors;
 
-  co_visit(pattern,
-           pattern.type,
-           Overloaded{[](TypedPattern&, CompoundType<TypeID>&, const ast::WildCard& pattern, const auto& type) {
-                        assert(false);
-                      },
-                      [&](TypedPattern& p, CompoundType<TypeID>& t, const ast::Ident& ident, const auto&) {
-                        if(const auto it = bindings.find(ident.name); it != bindings.end()) {
-                          t = type(it->second);
-                        } else {
-                          errors.push_back({p.ref, fmt::format("use of undeclared binding '{}'", ident.name)});
-                        }
-                      }});
+  co_visit(
+    pattern,
+    pattern.type,
+    Overloaded{[](TypedPattern&, Type<TypeID>&, const ast::WildCard& pattern, const auto& type) { assert(false); },
+               [&](TypedPattern& p, Type<TypeID>& t, const ast::Ident& ident, const auto&) {
+                 if(const auto it = bindings.find(ident.name); it != bindings.end()) {
+                   t = type(it->second);
+                 } else {
+                   errors.push_back({p.ref, fmt::format("use of undeclared binding '{}'", ident.name)});
+                 }
+               }});
 
   return value_or_errors(TypedFunction{std::move(pattern), std::move(expr)}, std::move(errors));
 }
@@ -258,12 +256,12 @@ run_expr_to_string(ExecutorRef executor, Env env, Bindings bindings, TypedExpr e
     .map([&](TypedFunction f) {
       TypedScopeExpr scope;
 
-      const int args = std::visit(Overloaded{[](const std::vector<CompoundType<TypeID>>& v) { return int(v.size()); },
-                                             [](const auto&) { return 0; }},
-                                  f.pattern.type.v);
+      const int args = std::visit(
+        Overloaded{[](const std::vector<Type<TypeID>>& v) { return int(v.size()); }, [](const auto&) { return 0; }},
+        f.pattern.type.v);
 
       if(std::holds_alternative<ast::Ident>(f.expr.v) && args == 1) {
-        CompoundType<TypeID> ident_type = f.expr.type;
+        Type<TypeID> ident_type = f.expr.type;
 
         knot::preorder(f,
                        Overloaded{
@@ -319,9 +317,9 @@ ContextualResult<void, Env, Bindings> run_assign(ExecutorRef executor, Env env, 
 }
 
 struct TypeOfBindingConverter {
-  CompoundType<TypeID> operator()(const Tree<Binding>& tree) const {
+  Type<TypeID> operator()(const Tree<Binding>& tree) const {
     return std::visit(Overloaded{[&](const std::vector<Tree<Binding>>& v) {
-                                   return CompoundType<TypeID>{knot::map<std::vector<CompoundType<TypeID>>>(v, *this)};
+                                   return Type<TypeID>{knot::map<std::vector<Type<TypeID>>>(v, *this)};
                                  },
                                  [&](const Binding& b) { return b.type; }},
                       tree.v);
@@ -334,7 +332,7 @@ Tree<Any> await(Tree<Binding> tree) {
   return knot::map<Tree<Any>>(std::move(tree), [](Binding b) -> Any { return take(std::move(b)).wait(); });
 }
 
-CompoundType<TypeID> type(const Tree<Binding>& tree) { return TypeOfBindingConverter{}(tree); }
+Type<TypeID> type(const Tree<Binding>& tree) { return TypeOfBindingConverter{}(tree); }
 
 StringResult<void, Env> parse_script(Env env, std::string_view script) {
   return parse(script)

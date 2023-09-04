@@ -10,7 +10,7 @@ namespace ooze {
 
 namespace {
 
-std::vector<PassBy> pass_bys_of(const Env& e, const CompoundType<TypeID>& type, std::vector<PassBy> pass_bys = {}) {
+std::vector<PassBy> pass_bys_of(const Env& e, const Type<TypeID>& type, std::vector<PassBy> pass_bys = {}) {
   knot::preorder(
     type,
     Overloaded{
@@ -31,7 +31,7 @@ std::vector<PassBy> pass_bys_of(const Env& e, const CompoundType<TypeID>& type, 
   return pass_bys;
 }
 
-std::vector<bool> borrows_of(const CompoundType<TypeID>& type) {
+std::vector<bool> borrows_of(const Type<TypeID>& type) {
   std::vector<bool> borrows;
 
   knot::preorder(
@@ -54,7 +54,7 @@ std::vector<bool> borrows_of(const CompoundType<TypeID>& type) {
   return borrows;
 }
 
-int output_count_of(const CompoundType<TypeID>& type) {
+int output_count_of(const Type<TypeID>& type) {
   int count = 0;
   knot::preorder(type,
                  Overloaded{
@@ -91,7 +91,7 @@ GraphContext append_bindings(const TypedPattern& pattern, const std::vector<Oter
 std::pair<GraphContext, std::vector<Oterm>> add_expr(const Env&, const CheckedExpr&, GraphContext);
 
 std::pair<GraphContext, std::vector<Oterm>>
-add_expr(const Env& e, const std::vector<CheckedExpr>& exprs, const CompoundType<TypeID>&, GraphContext ctx) {
+add_expr(const Env& e, const std::vector<CheckedExpr>& exprs, const Type<TypeID>&, GraphContext ctx) {
   return knot::accumulate(
     exprs, std::pair(std::move(ctx), std::vector<Oterm>{}), [&](auto pair, const CheckedExpr& expr) {
       auto [ctx, terms] = add_expr(e, expr, std::move(pair.first));
@@ -99,8 +99,8 @@ add_expr(const Env& e, const std::vector<CheckedExpr>& exprs, const CompoundType
     });
 }
 
-std::pair<GraphContext, std::vector<Oterm>> add_expr(
-  const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, const CompoundType<TypeID>&, GraphContext ctx) {
+std::pair<GraphContext, std::vector<Oterm>>
+add_expr(const Env& e, const ast::ScopeExpr<TypeID, EnvFunctionRef>& scope, const Type<TypeID>&, GraphContext ctx) {
   ctx.bindings.emplace_back();
 
   ctx = knot::accumulate(scope.assignments, std::move(ctx), [&](GraphContext ctx, const CheckedAssignment& assignment) {
@@ -116,11 +116,8 @@ std::pair<GraphContext, std::vector<Oterm>> add_expr(
   return {std::move(ctx), std::move(terms)};
 }
 
-std::pair<GraphContext, std::vector<Oterm>>
-add_expr(const Env& e,
-         const ast::SelectExpr<TypeID, EnvFunctionRef>& select,
-         const CompoundType<TypeID>& type,
-         GraphContext ctx) {
+std::pair<GraphContext, std::vector<Oterm>> add_expr(
+  const Env& e, const ast::SelectExpr<TypeID, EnvFunctionRef>& select, const Type<TypeID>& type, GraphContext ctx) {
   std::vector<Oterm> cond_terms;
   std::vector<Oterm> if_terms;
   std::vector<Oterm> else_terms;
@@ -146,8 +143,8 @@ add_expr(const Env& e,
   return {std::move(ctx), std::move(terms)};
 }
 
-std::pair<GraphContext, std::vector<Oterm>> add_expr(
-  const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, const CompoundType<TypeID>& type, GraphContext ctx) {
+std::pair<GraphContext, std::vector<Oterm>>
+add_expr(const Env& e, const ast::CallExpr<TypeID, EnvFunctionRef>& call, const Type<TypeID>& type, GraphContext ctx) {
   std::vector<Oterm> arg_terms;
   std::tie(ctx, arg_terms) = add_expr(e, *call.arg, std::move(ctx));
 
@@ -189,13 +186,13 @@ std::pair<GraphContext, std::vector<Oterm>> add_expr(
   }
 }
 
-std::pair<GraphContext, std::vector<Oterm>> add_expr(
-  const Env& e, const ast::BorrowExpr<TypeID, EnvFunctionRef>& borrow, const CompoundType<TypeID>&, GraphContext ctx) {
+std::pair<GraphContext, std::vector<Oterm>>
+add_expr(const Env& e, const ast::BorrowExpr<TypeID, EnvFunctionRef>& borrow, const Type<TypeID>&, GraphContext ctx) {
   return add_expr(e, *borrow.expr, std::move(ctx));
 }
 
 std::pair<GraphContext, std::vector<Oterm>>
-add_expr(const Env& e, const ast::Ident& ident, const CompoundType<TypeID>& type, GraphContext ctx) {
+add_expr(const Env& e, const ast::Ident& ident, const Type<TypeID>& type, GraphContext ctx) {
   std::optional<std::vector<Oterm>> terms = std::accumulate(
     ctx.bindings.rbegin(),
     ctx.bindings.rend(),
@@ -213,14 +210,14 @@ add_expr(const Env& e, const ast::Ident& ident, const CompoundType<TypeID>& type
 }
 
 std::pair<GraphContext, std::vector<Oterm>>
-add_expr(const Env&, const Literal& literal, const CompoundType<TypeID>&, GraphContext ctx) {
+add_expr(const Env&, const Literal& literal, const Type<TypeID>&, GraphContext ctx) {
   std::vector<Oterm> terms =
     std::visit([&](const auto& value) { return ctx.cg.add(create_async_value(Any(value)), {}, {}, 1); }, literal);
   return {std::move(ctx), std::move(terms)};
 }
 
 std::pair<GraphContext, std::vector<Oterm>>
-add_expr(const Env& e, const EnvFunctionRef& fn_ref, const CompoundType<TypeID>& type, GraphContext ctx) {
+add_expr(const Env& e, const EnvFunctionRef& fn_ref, const Type<TypeID>& type, GraphContext ctx) {
   const EnvFunction& ef = e.functions.at(fn_ref.name)[fn_ref.overload_idx];
 
   AsyncFn f = std::visit(

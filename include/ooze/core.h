@@ -19,7 +19,7 @@ template <typename T, typename... Ts>
 using StringResult = Result<T, std::vector<std::string>, Ts...>;
 
 struct Binding {
-  CompoundType<TypeID> type;
+  Type<TypeID> type;
   Future future;
   BorrowedFuture borrowed_future;
 };
@@ -28,7 +28,7 @@ using Bindings = std::unordered_map<std::string, Tree<Binding>>;
 
 Tree<Any> await(Tree<Binding>);
 
-CompoundType<TypeID> type(const Tree<Binding>&);
+Type<TypeID> type(const Tree<Binding>&);
 
 StringResult<void, Env> parse_script(Env, std::string_view script);
 

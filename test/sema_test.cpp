@@ -23,15 +23,14 @@ void test_inferred_inputs(const Env& e,
       .map([&](TypedPattern p) {
         knot::preorder(p, [](Slice& ref) { ref = {}; });
         knot::preorder(p, [&](TypedPattern& p) {
-          knot::visit(
-            p.v,
-            Overloaded{[&](const ast::Ident&) {
-                         BOOST_REQUIRE(next_ref < exp_refs.size());
-                         p.ref = exp_refs[next_ref++];
-                       },
-                       [&](const std::vector<TypedPattern>& v) {
-                         p.type = tuple_type(std::vector<CompoundType<TypeID>>(v.size(), floating_type<TypeID>()));
-                       }});
+          knot::visit(p.v,
+                      Overloaded{[&](const ast::Ident&) {
+                                   BOOST_REQUIRE(next_ref < exp_refs.size());
+                                   p.ref = exp_refs[next_ref++];
+                                 },
+                                 [&](const std::vector<TypedPattern>& v) {
+                                   p.type = tuple_type(std::vector<Type<TypeID>>(v.size(), floating_type<TypeID>()));
+                                 }});
         });
 
         return p;

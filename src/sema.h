@@ -10,7 +10,7 @@ ContextualResult<TypedFunction> type_name_resolution(const Env&, const UnTypedFu
 ContextualResult<TypedExpr> type_name_resolution(const Env&, const UnTypedExpr&);
 ContextualResult<TypedPattern> type_name_resolution(const Env&, const UnTypedPattern&);
 ContextualResult<TypedAssignment> type_name_resolution(const Env&, const UnTypedAssignment&);
-ContextualResult<CompoundType<TypeID>> type_name_resolution(const Env&, const CompoundType<NamedType>&);
+ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<NamedType>&);
 
 TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 

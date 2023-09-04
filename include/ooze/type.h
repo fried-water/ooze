@@ -30,61 +30,61 @@ struct Floating {
 };
 
 template <typename T>
-struct CompoundType;
+struct Type;
 
 template <typename T>
 struct Borrow {
-  Indirect<CompoundType<T>> type;
+  Indirect<Type<T>> type;
   KNOT_ORDERED(Borrow);
 };
 
 template <typename T>
 struct FunctionType {
-  Indirect<CompoundType<T>> input;
-  Indirect<CompoundType<T>> output;
+  Indirect<Type<T>> input;
+  Indirect<Type<T>> output;
   KNOT_ORDERED(FunctionType);
 };
 
 template <typename T>
-struct CompoundType {
-  std::variant<std::vector<CompoundType<T>>, FunctionType<T>, Floating, Borrow<T>, T> v;
+struct Type {
+  std::variant<std::vector<Type<T>>, FunctionType<T>, Floating, Borrow<T>, T> v;
   Slice ref;
-  KNOT_ORDERED(CompoundType);
+  KNOT_ORDERED(Type);
 };
 
 template <typename T>
-CompoundType<T> leaf_type(T t, Slice ref = {}) {
+Type<T> leaf_type(T t, Slice ref = {}) {
   return {std::move(t), ref};
 }
 
 template <typename T>
-CompoundType<T> floating_type(Slice ref = {}) {
+Type<T> floating_type(Slice ref = {}) {
   return {Floating{}, ref};
 }
 
 template <typename T>
-CompoundType<T> borrow_type(CompoundType<T> t, Slice ref = {}) {
+Type<T> borrow_type(Type<T> t, Slice ref = {}) {
   return {Borrow<T>{std::move(t)}, ref};
 }
 
 template <typename T>
-CompoundType<T> function_type(CompoundType<T> input, CompoundType<T> output, Slice ref = {}) {
+Type<T> function_type(Type<T> input, Type<T> output, Slice ref = {}) {
   return {FunctionType<T>{std::move(input), std::move(output)}, ref};
 }
 
 template <typename T>
-CompoundType<T> tuple_type(std::vector<CompoundType<T>> v, Slice ref = {}) {
+Type<T> tuple_type(std::vector<Type<T>> v, Slice ref = {}) {
   return {std::move(v), ref};
 }
 
 template <typename T>
-CompoundType<TypeID> type_of(knot::Type<T> t) {
+Type<TypeID> type_of(knot::Type<T> t) {
   return is_const_ref(t) ? borrow_type(leaf_type(type_id(decay(t)))) : leaf_type(type_id(decay(t)));
 }
 
 template <typename... Ts>
-CompoundType<TypeID> type_of(knot::TypeList<Ts...> tl) {
-  std::vector<CompoundType<TypeID>> types;
+Type<TypeID> type_of(knot::TypeList<Ts...> tl) {
+  std::vector<Type<TypeID>> types;
   types.reserve(size(tl));
   visit(tl, [&](auto t) { types.push_back(type_of(t)); });
   return tuple_type(std::move(types));

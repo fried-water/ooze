@@ -27,7 +27,7 @@ template <typename F>
 FunctionType<TypeID> function_type_of(knot::Type<F> f) {
   constexpr auto fn_ret = return_types(f);
 
-  CompoundType<TypeID> input_types = type_of(args(f));
+  Type<TypeID> input_types = type_of(args(f));
 
   if constexpr(size(fn_ret) == 1) {
     return {std::move(input_types), type_of(head(fn_ret))};

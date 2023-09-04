@@ -129,15 +129,15 @@ ParseResult<UnTypedPattern> pattern(const ParseState<std::string_view, Token>& s
 }
 
 using TypeVar =
-  std::variant<std::vector<CompoundType<NamedType>>, FunctionType<NamedType>, Floating, Borrow<NamedType>, NamedType>;
+  std::variant<std::vector<Type<NamedType>>, FunctionType<NamedType>, Floating, Borrow<NamedType>, NamedType>;
 
-ParseResult<CompoundType<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc);
+ParseResult<Type<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc);
 
 auto borrow_type() { return construct<Borrow<NamedType>>(seq(symbol("&"), type)); }
 
 auto fn_type() {
   return construct<FunctionType<NamedType>>(
-    seq(keyword("fn"), construct_with_ref<CompoundType<NamedType>>(tuple(type)), symbol("->"), type));
+    seq(keyword("fn"), construct_with_ref<Type<NamedType>>(tuple(type)), symbol("->"), type));
 }
 
 auto leaf_type() {
@@ -145,8 +145,8 @@ auto leaf_type() {
                    [](auto v) { return v.index() == 0 ? TypeVar{Floating{}} : TypeVar{std::get<1>(std::move(v))}; });
 }
 
-ParseResult<CompoundType<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
-  return construct_with_ref<CompoundType<NamedType>>(choose(
+ParseResult<Type<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+  return construct_with_ref<Type<NamedType>>(choose(
     construct<TypeVar>(tuple(type)), construct<TypeVar>(borrow_type()), construct<TypeVar>(fn_type()), leaf_type()))(
     s, loc);
 }
@@ -231,7 +231,7 @@ auto function() {
                        symbol("->"),
                        type,
                        choose(construct_with_type_ref<UnTypedExpr>(scope()), seq(symbol("="), expr))),
-                   [](UnTypedPattern pattern, CompoundType<NamedType> output_type, UnTypedExpr expr) {
+                   [](UnTypedPattern pattern, Type<NamedType> output_type, UnTypedExpr expr) {
                      expr.type = std::move(output_type);
                      return UnTypedFunction{std::move(pattern), std::move(expr)};
                    });
@@ -271,6 +271,6 @@ ContextualResult<UnTypedAST> parse(std::string_view src) {
 
 ContextualResult<UnTypedAssignment> parse_assignment(std::string_view src) { return parse_string(assignment(), src); }
 ContextualResult<UnTypedPattern> parse_pattern(std::string_view src) { return parse_string(pattern, src); }
-ContextualResult<CompoundType<NamedType>> parse_type(std::string_view src) { return parse_string(type, src); }
+ContextualResult<Type<NamedType>> parse_type(std::string_view src) { return parse_string(type, src); }
 
 } // namespace ooze

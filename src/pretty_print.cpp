@@ -116,7 +116,7 @@ struct Printer {
   }
 
   template <typename T>
-  void pretty_print(std::ostream& os, const CompoundType<T>& t) {
+  void pretty_print(std::ostream& os, const Type<T>& t) {
     pretty_print(os, t.v);
   }
 
@@ -139,12 +139,12 @@ struct Printer {
   template <typename T, typename... Extras>
   void pretty_print(std::ostream& os, const Function<T, Extras...>& f) {
     const auto* pattern_vec = std::get_if<std::vector<Pattern<T>>>(&f.pattern.v);
-    const auto* in_vec = std::get_if<std::vector<CompoundType<T>>>(&f.pattern.type.v);
+    const auto* in_vec = std::get_if<std::vector<Type<T>>>(&f.pattern.type.v);
 
     if(in_vec && pattern_vec && in_vec->size() == pattern_vec->size()) {
       os << '(';
       if(!in_vec->empty()) {
-        const auto print_element = [&](const Pattern<T>& p, const CompoundType<T>& t) {
+        const auto print_element = [&](const Pattern<T>& p, const Type<T>& t) {
           pretty_print(os, p);
           pretty_print(os << ": ", std::holds_alternative<Floating>(t.v) ? p.type : t);
         };
@@ -208,8 +208,8 @@ std::string pretty_print(const Env& e, TypeID t) { return Printer{&e}(t); }
 std::string pretty_print(const UnTypedPattern& p) { return Printer{}(p); }
 std::string pretty_print(const TypedPattern& p) { return Printer{}(p); }
 
-std::string pretty_print(const CompoundType<NamedType>& t) { return Printer{}(t); }
-std::string pretty_print(const Env& e, const CompoundType<TypeID>& t) { return Printer{&e}(t); }
+std::string pretty_print(const Type<NamedType>& t) { return Printer{}(t); }
+std::string pretty_print(const Env& e, const Type<TypeID>& t) { return Printer{&e}(t); }
 std::string pretty_print(const Env& e, const FunctionType<TypeID>& t) { return Printer{&e}(t); }
 
 std::string pretty_print(const UnTypedFunction& f) { return Printer{}(f); }

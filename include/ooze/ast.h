@@ -21,7 +21,7 @@ struct Ident {
 template <typename T>
 struct Pattern {
   std::variant<std::vector<Pattern<T>>, WildCard, Ident> v;
-  CompoundType<T> type = floating_type<T>();
+  Type<T> type = floating_type<T>();
   Slice ref;
   KNOT_ORDERED(Pattern);
 };
@@ -82,7 +82,7 @@ using ExprVariant =
 template <typename T, typename... Extras>
 struct Expr {
   ExprVariant<T, Extras...> v;
-  CompoundType<T> type = floating_type<T>();
+  Type<T> type = floating_type<T>();
   Slice ref;
   KNOT_ORDERED(Expr);
 };

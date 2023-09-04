@@ -10,8 +10,8 @@ std::string pretty_print(const Env&, TypeID);
 std::string pretty_print(const UnTypedPattern&);
 std::string pretty_print(const TypedPattern&);
 
-std::string pretty_print(const CompoundType<NamedType>&);
-std::string pretty_print(const Env&, const CompoundType<TypeID>&);
+std::string pretty_print(const Type<NamedType>&);
+std::string pretty_print(const Env&, const Type<TypeID>&);
 
 std::string pretty_print(const Env&, const FunctionType<TypeID>&);
 

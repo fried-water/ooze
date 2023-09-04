@@ -8,9 +8,9 @@ namespace ooze {
 
 std::vector<const TypedExpr*> undeclared_bindings(const TypedFunction&);
 
-std::optional<CompoundType<TypeID>> unify_types(const CompoundType<TypeID>&, const CompoundType<TypeID>&);
+std::optional<Type<TypeID>> unify_types(const Type<TypeID>&, const Type<TypeID>&);
 
-ContextualResult<TypedPattern> type_check(const Env&, TypedPattern, CompoundType<TypeID>);
+ContextualResult<TypedPattern> type_check(const Env&, TypedPattern, Type<TypeID>);
 ContextualResult<TypedFunction>
 type_check(const Env&, TypedFunction, std::optional<FunctionType<TypeID>> = {}, bool debug = false);
 

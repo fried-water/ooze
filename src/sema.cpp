@@ -13,25 +13,25 @@ struct TypeNameResolution {
   const Env& e;
   std::vector<Slice>* errors;
 
-  CompoundType<TypeID> operator()(const CompoundType<NamedType>& type) {
+  Type<TypeID> operator()(const Type<NamedType>& type) {
     return std::visit(
       Overloaded{[&](const NamedType& named) {
                    if(const auto it = e.type_ids.find(named.name); it != e.type_ids.end()) {
-                     return CompoundType<TypeID>{it->second, type.ref};
+                     return Type<TypeID>{it->second, type.ref};
                    } else {
                      errors->push_back(type.ref);
-                     return CompoundType<TypeID>{TypeID{}, type.ref};
+                     return Type<TypeID>{TypeID{}, type.ref};
                    }
                  },
-                 [&](const std::vector<CompoundType<NamedType>>& v) {
-                   return CompoundType<TypeID>{knot::map<std::vector<CompoundType<TypeID>>>(v, *this), type.ref};
+                 [&](const std::vector<Type<NamedType>>& v) {
+                   return Type<TypeID>{knot::map<std::vector<Type<TypeID>>>(v, *this), type.ref};
                  },
                  [&](const FunctionType<NamedType>& f) {
-                   return CompoundType<TypeID>{knot::map<FunctionType<TypeID>>(f, *this), type.ref};
+                   return Type<TypeID>{knot::map<FunctionType<TypeID>>(f, *this), type.ref};
                  },
                  [&](const Floating&) { return floating_type<TypeID>(type.ref); },
                  [&](const Borrow<NamedType>& b) {
-                   return CompoundType<TypeID>{knot::map<Borrow<TypeID>>(b, *this), type.ref};
+                   return Type<TypeID>{knot::map<Borrow<TypeID>>(b, *this), type.ref};
                  }},
       type.v);
   }
@@ -133,8 +133,8 @@ ContextualResult<TypedAssignment> type_name_resolution(const Env& e, const UnTyp
   return type_name_resolution<TypedAssignment>(e, a);
 }
 
-ContextualResult<CompoundType<TypeID>> type_name_resolution(const Env& e, const CompoundType<NamedType>& t) {
-  return type_name_resolution<CompoundType<TypeID>>(e, t);
+ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<NamedType>& t) {
+  return type_name_resolution<Type<TypeID>>(e, t);
 }
 
 TypedPattern inferred_inputs(const TypedExpr& expr, Set<std::string> active) {
