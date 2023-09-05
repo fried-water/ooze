@@ -2,7 +2,7 @@
 
 #include "algorithm.h"
 #include "ooze/functional.h"
-#include "ooze/primatives.h"
+#include "ooze/primitives.h"
 #include "ooze/result.h"
 #include "ooze/slice.h"
 #include "ooze/span.h"

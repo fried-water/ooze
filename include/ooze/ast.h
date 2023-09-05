@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/primatives.h"
+#include "ooze/primitives.h"
 #include "ooze/type.h"
 
 namespace ooze {
