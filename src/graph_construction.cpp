@@ -18,7 +18,7 @@ std::vector<PassBy> pass_bys_of(const Env& e, const Type<TypeID>& type, std::vec
         pass_bys.push_back(e.copy_types.find(t) != e.copy_types.end() ? PassBy::Copy : PassBy::Move);
         return false;
       },
-      [&](const Borrow<TypeID>& t) {
+      [&](const BorrowType<TypeID>& t) {
         pass_bys.push_back(PassBy::Borrow);
         return false;
       },
@@ -41,7 +41,7 @@ std::vector<bool> borrows_of(const Type<TypeID>& type) {
         borrows.push_back(false);
         return false;
       },
-      [&](const Borrow<TypeID>& t) {
+      [&](const BorrowType<TypeID>& t) {
         borrows.push_back(true);
         return false;
       },

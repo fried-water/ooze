@@ -33,7 +33,7 @@ struct Printer {
   }
 
   void pretty_print(std::ostream& os, WildCard) { os << '_'; }
-  void pretty_print(std::ostream& os, Floating) { os << '_'; }
+  void pretty_print(std::ostream& os, FloatingType) { os << '_'; }
 
   void pretty_print(std::ostream& os, const Literal& l) {
     os << std::visit(
@@ -64,7 +64,7 @@ struct Printer {
   }
 
   template <typename T>
-  void pretty_print(std::ostream& os, const Borrow<T>& r) {
+  void pretty_print(std::ostream& os, const BorrowType<T>& r) {
     pretty_print(os << '&', r.type);
   }
 
@@ -77,7 +77,7 @@ struct Printer {
   template <typename T, typename... Extras>
   void pretty_print(std::ostream& os, const Assignment<T, Extras...>& a) {
     pretty_print(os << "let ", a.pattern);
-    if(!std::holds_alternative<Floating>(a.pattern.type.v)) {
+    if(!std::holds_alternative<FloatingType>(a.pattern.type.v)) {
       pretty_print(os << ": ", a.pattern.type);
     }
     pretty_print(os << " = ", a.expr);
@@ -146,7 +146,7 @@ struct Printer {
       if(!in_vec->empty()) {
         const auto print_element = [&](const Pattern<T>& p, const Type<T>& t) {
           pretty_print(os, p);
-          pretty_print(os << ": ", std::holds_alternative<Floating>(t.v) ? p.type : t);
+          pretty_print(os << ": ", std::holds_alternative<FloatingType>(t.v) ? p.type : t);
         };
 
         print_element(pattern_vec->front(), in_vec->front());
@@ -158,7 +158,7 @@ struct Printer {
       os << ")";
     } else {
       pretty_print(os, f.pattern);
-      if(!std::holds_alternative<Floating>(f.pattern.type.v)) {
+      if(!std::holds_alternative<FloatingType>(f.pattern.type.v)) {
         pretty_print(os << ": ", f.pattern.type);
       }
     }

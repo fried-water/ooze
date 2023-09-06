@@ -201,7 +201,7 @@ run_function(ExecutorRef executor, Env e, Bindings bindings, const CheckedFuncti
                Overloaded{[&](auto&, auto&, const ast::Ident& i, const auto&) {
                             value_inputs = to_vec(*take(bindings, i.name), std::move(value_inputs));
                           },
-                          [&](auto&, auto&, const ast::Ident& i, const Borrow<TypeID>&) {
+                          [&](auto&, auto&, const ast::Ident& i, const BorrowType<TypeID>&) {
                             borrowed_inputs = to_vec(*borrow(bindings, i.name), std::move(borrowed_inputs));
                           }});
 
@@ -219,11 +219,11 @@ run_function(ExecutorRef executor, Env e, Bindings bindings, const CheckedFuncti
         },
 
         // These can't be part of the output type of executed functions
-        [](const Floating&) -> Binding {
+        [](const FloatingType&) -> Binding {
           assert(false);
           exit(1);
         },
-        [](const Borrow<TypeID>&) -> Binding {
+        [](const BorrowType<TypeID>&) -> Binding {
           assert(false);
           exit(1);
         }};

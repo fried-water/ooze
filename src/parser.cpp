@@ -129,11 +129,11 @@ ParseResult<UnTypedPattern> pattern(const ParseState<std::string_view, Token>& s
 }
 
 using TypeVar =
-  std::variant<std::vector<Type<NamedType>>, FunctionType<NamedType>, Floating, Borrow<NamedType>, NamedType>;
+  std::variant<std::vector<Type<NamedType>>, FunctionType<NamedType>, FloatingType, BorrowType<NamedType>, NamedType>;
 
 ParseResult<Type<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc);
 
-auto borrow_type() { return construct<Borrow<NamedType>>(seq(symbol("&"), type)); }
+auto borrow_type() { return construct<BorrowType<NamedType>>(seq(symbol("&"), type)); }
 
 auto fn_type() {
   return construct<FunctionType<NamedType>>(
@@ -141,8 +141,9 @@ auto fn_type() {
 }
 
 auto leaf_type() {
-  return transform(choose(underscore(), type_ident()),
-                   [](auto v) { return v.index() == 0 ? TypeVar{Floating{}} : TypeVar{std::get<1>(std::move(v))}; });
+  return transform(choose(underscore(), type_ident()), [](auto v) {
+    return v.index() == 0 ? TypeVar{FloatingType{}} : TypeVar{std::get<1>(std::move(v))};
+  });
 }
 
 ParseResult<Type<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc) {

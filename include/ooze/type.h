@@ -25,17 +25,17 @@ constexpr TypeID type_id(knot::Type<T> t) {
 
 constexpr bool is_copyable(TypeID t) { return t.id & 1; }
 
-struct Floating {
-  KNOT_ORDERED(Floating);
+struct FloatingType {
+  KNOT_ORDERED(FloatingType);
 };
 
 template <typename T>
 struct Type;
 
 template <typename T>
-struct Borrow {
+struct BorrowType {
   Indirect<Type<T>> type;
-  KNOT_ORDERED(Borrow);
+  KNOT_ORDERED(BorrowType);
 };
 
 template <typename T>
@@ -47,7 +47,7 @@ struct FunctionType {
 
 template <typename T>
 struct Type {
-  std::variant<std::vector<Type<T>>, FunctionType<T>, Floating, Borrow<T>, T> v;
+  std::variant<std::vector<Type<T>>, FunctionType<T>, FloatingType, BorrowType<T>, T> v;
   Slice ref;
   KNOT_ORDERED(Type);
 };
@@ -59,12 +59,12 @@ Type<T> leaf_type(T t, Slice ref = {}) {
 
 template <typename T>
 Type<T> floating_type(Slice ref = {}) {
-  return {Floating{}, ref};
+  return {FloatingType{}, ref};
 }
 
 template <typename T>
 Type<T> borrow_type(Type<T> t, Slice ref = {}) {
-  return {Borrow<T>{std::move(t)}, ref};
+  return {BorrowType<T>{std::move(t)}, ref};
 }
 
 template <typename T>

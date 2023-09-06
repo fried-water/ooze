@@ -29,9 +29,9 @@ struct TypeNameResolution {
                  [&](const FunctionType<NamedType>& f) {
                    return Type<TypeID>{knot::map<FunctionType<TypeID>>(f, *this), type.ref};
                  },
-                 [&](const Floating&) { return floating_type<TypeID>(type.ref); },
-                 [&](const Borrow<NamedType>& b) {
-                   return Type<TypeID>{knot::map<Borrow<TypeID>>(b, *this), type.ref};
+                 [&](const FloatingType&) { return floating_type<TypeID>(type.ref); },
+                 [&](const BorrowType<NamedType>& b) {
+                   return Type<TypeID>{knot::map<BorrowType<TypeID>>(b, *this), type.ref};
                  }},
       type.v);
   }

@@ -65,15 +65,15 @@ std::string pretty_print(const Env& e, Variable v) {
 }
 
 struct Unifier {
-  auto unify(const Floating&, const Floating&) { return std::optional(floating_type<TypeID>()); }
+  auto unify(const FloatingType&, const FloatingType&) { return std::optional(floating_type<TypeID>()); }
 
   template <typename T>
-  std::optional<Type<TypeID>> unify(const Floating&, const T& other) {
+  std::optional<Type<TypeID>> unify(const FloatingType&, const T& other) {
     return std::optional(Type<TypeID>{other});
   }
 
   template <typename T>
-  std::optional<Type<TypeID>> unify(const T& other, const Floating&) {
+  std::optional<Type<TypeID>> unify(const T& other, const FloatingType&) {
     return std::optional(Type<TypeID>{other});
   }
   auto unify(const std::vector<Type<TypeID>>& a, const std::vector<Type<TypeID>>& b) {
@@ -91,7 +91,7 @@ struct Unifier {
 
     return std::optional(tuple_type(std::move(result)));
   }
-  auto unify(const Borrow<TypeID>& a, const Borrow<TypeID>& b) {
+  auto unify(const BorrowType<TypeID>& a, const BorrowType<TypeID>& b) {
     auto unified = unify(*a.type, *b.type);
     return unified ? std::optional(borrow_type(std::move(*unified))) : std::nullopt;
   }
@@ -154,7 +154,7 @@ Type<TypeID> propagated_type(Propagation p, bool wrap, Type<TypeID> t) {
                  if(wrap) {
                    return borrow_type(std::move(t));
                  } else {
-                   auto* b = std::get_if<Borrow<TypeID>>(&t.v);
+                   auto* b = std::get_if<BorrowType<TypeID>>(&t.v);
                    assert(b);
                    return std::move(*b->type);
                  }
@@ -519,7 +519,7 @@ std::vector<TypeCheckError> find_returned_borrows(const TypedFunction& f) {
     f.expr,
     Overloaded{[&](const TypedExpr& e) {
                  const bool has_borrow =
-                   knot::preorder_accumulate(e.type, false, [](bool, const Borrow<TypeID>&) { return true; });
+                   knot::preorder_accumulate(e.type, false, [](bool, const BorrowType<TypeID>&) { return true; });
 
                  if(has_borrow) {
                    errors.push_back({ReturnBorrow{}, &e});
@@ -547,7 +547,7 @@ std::vector<TypeCheckError> find_invalid_borrows(const TypedFunction& f) {
         [&](const FunctionType<TypeID>&) {
           errors.push_back({InvalidBorrow{"function"}, var});
         },
-        [&](const Borrow<TypeID>&) {
+        [&](const BorrowType<TypeID>&) {
           errors.push_back({InvalidBorrow{"borrow"}, var});
         },
       });
@@ -555,7 +555,7 @@ std::vector<TypeCheckError> find_invalid_borrows(const TypedFunction& f) {
 
   // TODO allow errors to be associated with types, not just patterns and exprs
   co_visit(f.pattern, f.pattern.type, [&](const TypedPattern& p, const Type<TypeID>& t, const auto&, const auto&) {
-    knot::visit(t.v, [&](const Borrow<TypeID>& b) { check_borrowed_type(&p, *b.type); });
+    knot::visit(t.v, [&](const BorrowType<TypeID>& b) { check_borrowed_type(&p, *b.type); });
   });
 
   knot::preorder(f.expr, [&](const TypedExpr& e) {
@@ -696,7 +696,7 @@ std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunct
   std::vector<TypeCheckError> errors;
 
   const auto check_unresolved = [&](const auto& v) {
-    if(knot::preorder_accumulate(v.type, false, [](bool, Floating) { return true; })) {
+    if(knot::preorder_accumulate(v.type, false, [](bool, FloatingType) { return true; })) {
       errors.push_back({UnableToDeduce{}, &v});
     }
   };
