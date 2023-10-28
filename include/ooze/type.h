@@ -19,11 +19,8 @@ template <typename T>
 constexpr TypeID type_id(knot::Type<T> t) {
   static_assert(t == decay(t));
   static_assert(std::is_move_constructible_v<T>);
-
-  return {reinterpret_cast<uintptr_t>(&type_id<T>) | uintptr_t(std::is_copy_constructible_v<T>)};
+  return {reinterpret_cast<uintptr_t>(&type_id<T>)};
 }
-
-constexpr bool is_copyable(TypeID t) { return t.id & 1; }
 
 struct FloatingType {
   KNOT_ORDERED(FloatingType);

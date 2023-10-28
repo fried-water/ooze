@@ -21,7 +21,6 @@ add_executable(ooze_test
   result_test.cpp
   sema_test.cpp
   stress_test.cpp
-  type_test.cpp
   type_check_test.cpp)
 
 target_link_libraries(ooze_test PRIVATE ooze tbb ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
