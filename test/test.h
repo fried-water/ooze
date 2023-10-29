@@ -4,6 +4,13 @@
 
 #include <boost/test/unit_test.hpp>
 
+#define BOOST_CHECK_RANGE_EQUAL(r1, r2)                                                                                \
+  do {                                                                                                                 \
+    auto&& _r1 = (r1);                                                                                                 \
+    auto&& _r2 = (r2);                                                                                                 \
+    BOOST_CHECK_EQUAL_COLLECTIONS(_r1.begin(), _r1.end(), _r2.begin(), _r2.end());                                     \
+  } while(0)
+
 #define check_result(expr)                                                                                             \
   [](auto r) {                                                                                                         \
     if(!r.has_value()) {                                                                                               \

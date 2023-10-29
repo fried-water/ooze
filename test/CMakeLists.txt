@@ -10,6 +10,7 @@ add_executable(ooze_test
   any_test.cpp
   async_test.cpp
   borrowed_future_test.cpp
+  forest_test.cpp
   future_test.cpp
   graph_test.cpp
   lexer_test.cpp
