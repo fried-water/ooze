@@ -2,6 +2,7 @@
 
 #include "ooze/iter.h"
 #include "ooze/primitives.h"
+#include "ooze/strong_id.h"
 
 #include <knot/core.h>
 
@@ -50,24 +51,24 @@ class Forest {
   };
 
   struct AllIDs {
-    ID operator()(const Forest&, ID id) const { return id + 1; };
+    ID operator()(const Forest&, ID id) const { return ID(as_integral(id) + 1); };
   };
 
   struct SiblingIDs {
-    ID operator()(const Forest& f, ID id) const { return f._connectivity[id].next_sibling; };
+    ID operator()(const Forest& f, ID id) const { return f._connectivity[as_integral(id)].next_sibling; };
   };
 
   struct PreOrderIDs {
     ID operator()(const Forest& f, ID id) const {
-      const ID child = f._connectivity[id].first_child;
+      const ID child = f._connectivity[as_integral(id)].first_child;
       return child != INVALID ? child : f.next_pre_order_sibling(id);
     }
   };
 
   struct PostOrderIDs {
     ID operator()(const Forest& f, ID id) const {
-      const ID sibling = f._connectivity[id].next_sibling;
-      return sibling != INVALID ? f.first_leaf(sibling) : f._connectivity[id].parent;
+      const ID sibling = f._connectivity[as_integral(id)].next_sibling;
+      return sibling != INVALID ? f.first_leaf(sibling) : f._connectivity[as_integral(id)].parent;
     }
   };
 
@@ -111,8 +112,8 @@ public:
     std::transform(other._values.begin(), other._values.end(), std::back_inserter(_values), f);
   }
 
-  const T& operator[](ID id) const { return _values[id]; }
-  T& operator[](ID id) { return _values[id]; }
+  const T& operator[](ID id) const { return _values[as_integral(id)]; }
+  T& operator[](ID id) { return _values[as_integral(id)]; }
 
   void reserve(size_t s) {
     _values.reserve(s);
@@ -127,30 +128,30 @@ public:
   i64 ssize() const { return i64(_values.size()); }
   size_t size() const { return _values.size(); }
 
-  ID num_children(ID id) const { return static_cast<ID>(child_ids(id).size()); }
-  ID num_roots() const { return static_cast<ID>(root_ids().size()); }
+  ID num_children(ID id) const { return ID(child_ids(id).size()); }
+  ID num_roots() const { return ID(root_ids().size()); }
 
-  bool is_root(ID id) const { return _connectivity[id].parent == INVALID; }
-  bool is_leaf(ID id) const { return _connectivity[id].first_child == INVALID; }
+  bool is_root(ID id) const { return _connectivity[as_integral(id)].parent == INVALID; }
+  bool is_leaf(ID id) const { return _connectivity[as_integral(id)].first_child == INVALID; }
 
   std::optional<ID> first_root() const { return opt(_first_root); }
-  std::optional<ID> parent(ID id) const { return opt(_connectivity[id].parent); }
-  std::optional<ID> next_sibling(ID id) const { return opt(_connectivity[id].next_sibling); }
-  std::optional<ID> first_child(ID id) const { return opt(_connectivity[id].first_child); }
+  std::optional<ID> parent(ID id) const { return opt(_connectivity[as_integral(id)].parent); }
+  std::optional<ID> next_sibling(ID id) const { return opt(_connectivity[as_integral(id)].next_sibling); }
+  std::optional<ID> first_child(ID id) const { return opt(_connectivity[as_integral(id)].first_child); }
 
   ID first_leaf(ID id) const {
-    while(_connectivity[id].first_child != INVALID) {
-      id = _connectivity[id].first_child;
+    while(_connectivity[as_integral(id)].first_child != INVALID) {
+      id = _connectivity[as_integral(id)].first_child;
     }
     return id;
   }
 
   ID next_pre_order_sibling(ID id) const {
     while(id != INVALID) {
-      if(ID sibling = _connectivity[id].next_sibling; sibling != INVALID) {
+      if(ID sibling = _connectivity[as_integral(id)].next_sibling; sibling != INVALID) {
         return sibling;
       }
-      id = _connectivity[id].parent;
+      id = _connectivity[as_integral(id)].parent;
     }
 
     return INVALID;
@@ -163,9 +164,9 @@ public:
   ID append_child(ID parent, T value) {
     const ID id = ID(_values.size());
 
-    ID* slot = parent == ABOVE_ROOTS ? &_first_root : &_connectivity[parent].first_child;
+    ID* slot = parent == ABOVE_ROOTS ? &_first_root : &_connectivity[as_integral(parent)].first_child;
     while(*slot != INVALID) {
-      slot = &_connectivity[*slot].next_sibling;
+      slot = &_connectivity[as_integral(*slot)].next_sibling;
     }
     *slot = id;
 
@@ -210,17 +211,19 @@ public:
   auto values() const { return IterRange(AllConstIter(this, ID(0)), AllConstIter(this, ID(_values.size()))); }
 
   auto child_ids(ID id) const {
-    return IterRange(SiblingIDIter(this, id == ABOVE_ROOTS ? _first_root : _connectivity[id].first_child),
+    return IterRange(SiblingIDIter(this, id == ABOVE_ROOTS ? _first_root : _connectivity[as_integral(id)].first_child),
                      SiblingIDIter());
   }
 
   auto children(ID id) {
-    return IterRange(SiblingIter(this, id == ABOVE_ROOTS ? _first_root : _connectivity[id].first_child), SiblingIter());
+    return IterRange(SiblingIter(this, id == ABOVE_ROOTS ? _first_root : _connectivity[as_integral(id)].first_child),
+                     SiblingIter());
   }
 
   auto children(ID id) const {
-    return IterRange(SiblingConstIter(this, id == ABOVE_ROOTS ? _first_root : _connectivity[id].first_child),
-                     SiblingConstIter());
+    return IterRange(
+      SiblingConstIter(this, id == ABOVE_ROOTS ? _first_root : _connectivity[as_integral(id)].first_child),
+      SiblingConstIter());
   }
 
   auto root_ids() const { return child_ids(ABOVE_ROOTS); }

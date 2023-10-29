@@ -96,6 +96,17 @@ BOOST_AUTO_TEST_CASE(post_order) {
   BOOST_CHECK_RANGE_EQUAL((std::array{"d"}), f.post_order(3));
 }
 
+BOOST_AUTO_TEST_CASE(forest_strong_id) {
+  using ID = StrongID<struct S>;
+
+  Forest<int, ID> f;
+
+  BOOST_CHECK(ID(2) == f.merge_path(std::array{1, 2, 3}));
+  BOOST_CHECK_RANGE_EQUAL((std::array{1, 2, 3}), f.pre_order());
+  BOOST_CHECK_RANGE_EQUAL((std::array{3, 2, 1}), f.post_order());
+  BOOST_CHECK_RANGE_EQUAL((std::array{1}), f.roots());
+}
+
 BOOST_AUTO_TEST_CASE(dot, *boost::unit_test::disabled()) {
   std::ofstream file("output.dot");
   generate_dot(make_test_forest(), file, [](const std::string& s, int) { return NodeDotOptions{s}; });
