@@ -123,15 +123,15 @@ auto tuple(P p) {
     });
 }
 
-ParseResult<UnTypedPattern> pattern(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+ParseResult<UnTypedPattern> pattern(std::string_view s, Span<Token> tokens, ParseLocation loc) {
   return construct_with_type_ref<UnTypedPattern>(choose(tuple(pattern), construct<WildCard>(underscore()), ident()))(
-    s, loc);
+    s, tokens, loc);
 }
 
 using TypeVar =
   std::variant<std::vector<Type<NamedType>>, FunctionType<NamedType>, FloatingType, BorrowType<NamedType>, NamedType>;
 
-ParseResult<Type<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc);
+ParseResult<Type<NamedType>> type(std::string_view, Span<Token>, ParseLocation);
 
 auto borrow_type() { return construct<BorrowType<NamedType>>(seq(symbol("&"), type)); }
 
@@ -146,10 +146,10 @@ auto leaf_type() {
   });
 }
 
-ParseResult<Type<NamedType>> type(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+ParseResult<Type<NamedType>> type(std::string_view s, Span<Token> tokens, ParseLocation loc) {
   return construct_with_ref<Type<NamedType>>(choose(
     construct<TypeVar>(tuple(type)), construct<TypeVar>(borrow_type()), construct<TypeVar>(fn_type()), leaf_type()))(
-    s, loc);
+    s, tokens, loc);
 }
 
 auto binding() {
@@ -167,11 +167,11 @@ auto literal() {
   });
 }
 
-ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>&, ParseLocation);
-ParseResult<UnTypedExpr> call_expr(const ParseState<std::string_view, Token>&, ParseLocation);
-ParseResult<UnTypedExpr> non_call_expr(const ParseState<std::string_view, Token>&, ParseLocation);
+ParseResult<UnTypedExpr> expr(std::string_view, Span<Token>, ParseLocation);
+ParseResult<UnTypedExpr> call_expr(std::string_view, Span<Token>, ParseLocation);
+ParseResult<UnTypedExpr> non_call_expr(std::string_view, Span<Token>, ParseLocation);
 
-ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+ParseResult<UnTypedExpr> expr(std::string_view s, Span<Token> tokens, ParseLocation loc) {
   return transform(
     seq(call_expr,
         n(seq(symbol("."),
@@ -184,10 +184,10 @@ ParseResult<UnTypedExpr> expr(const ParseState<std::string_view, Token>& s, Pars
         call.ref.begin = acc.ref.begin;
         return call;
       });
-    })(s, loc);
+    })(s, tokens, loc);
 }
 
-ParseResult<UnTypedExpr> call_expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+ParseResult<UnTypedExpr> call_expr(std::string_view s, Span<Token> tokens, ParseLocation loc) {
   return transform(
     seq(non_call_expr, n(construct_with_type_ref<UnTypedExpr>(tuple(expr)))),
     [](UnTypedExpr callee, std::vector<UnTypedExpr> arg_sets) {
@@ -195,7 +195,7 @@ ParseResult<UnTypedExpr> call_expr(const ParseState<std::string_view, Token>& s,
         return UnTypedExpr{
           UnTypedCallExpr{std::move(acc), std::move(args)}, floating_type<NamedType>(), {acc.ref.begin, args.ref.end}};
       });
-    })(s, loc);
+    })(s, tokens, loc);
 }
 
 auto borrow_expr() { return construct<UnTypedBorrowExpr>(seq(symbol("&"), expr)); }
@@ -220,11 +220,11 @@ auto select_expr() {
         construct_with_type_ref<UnTypedExpr>(scope())));
 }
 
-ParseResult<UnTypedExpr> non_call_expr(const ParseState<std::string_view, Token>& s, ParseLocation loc) {
+ParseResult<UnTypedExpr> non_call_expr(std::string_view s, Span<Token> tokens, ParseLocation loc) {
   return construct_with_type_ref<UnTypedExpr>(
     transform(choose(tuple(expr), scope(), select_expr(), borrow_expr(), ident(), literal()), [](auto v) {
       return std::visit([](auto&& ele) { return ast::ExprVariant<NamedType>{std::move(ele)}; }, std::move(v));
-    }))(s, loc);
+    }))(s, tokens, loc);
 }
 
 auto function() {
@@ -242,7 +242,7 @@ template <typename Parser>
 ContextualResult<parser_result_t<std::string_view, Token, Parser>> parse_string(Parser p, const std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
-  auto [parse_slice, value, error] = p(ParseState<std::string_view, Token>{src, tokens}, {});
+  auto [parse_slice, value, error] = p(src, Span<Token>{tokens}, {});
 
   assert(value || error);
 

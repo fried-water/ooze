@@ -13,7 +13,7 @@ auto pass(char c) {
 
 template <typename R, typename P>
 auto test(P parser, std::string_view str, ParseResult<R> expected) {
-  const auto actual = parser(ParseState<int, char>{0, Span<char>(str.data(), str.size())}, {});
+  const auto actual = parser(0, Span<char>(str.data(), str.size()), {});
 
   if(actual != expected) {
     fmt::print("E {} {}\n", expected.value.has_value(), knot::debug(expected));
@@ -41,7 +41,7 @@ BOOST_AUTO_TEST_CASE(test_any) {
   test(any(), "b", passing_result({0, 1}, 'b'));
   test(any(), "ab", passing_result({0, 1}, 'a'));
 
-  test(any(), "", failing_result<char>({0, 0}, {{"anything", {0, 0}}}));
+  test(any(), "", failing_result<char>({0, 0}, {{"token", {0, 0}}}));
 }
 
 BOOST_AUTO_TEST_CASE(test_filter) {
