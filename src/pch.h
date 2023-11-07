@@ -10,6 +10,7 @@
 #include <fmt/core.h>
 #include <knot/core.h>
 
+#include <cassert>
 #include <cstdlib>
 #include <memory>
 #include <optional>

@@ -10,6 +10,7 @@
 #include <knot/core.h>
 
 #include <algorithm>
+#include <cassert>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
