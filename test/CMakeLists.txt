@@ -17,6 +17,7 @@ add_executable(ooze_test
   ooze_test.cpp
   parser_combinator_test.cpp
   parser_test.cpp
+  parser_flat_test.cpp
   pretty_print_test.cpp
   repl_test.cpp
   result_test.cpp

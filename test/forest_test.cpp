@@ -96,6 +96,22 @@ BOOST_AUTO_TEST_CASE(post_order) {
   BOOST_CHECK_RANGE_EQUAL((std::array{"d"}), f.post_order(3));
 }
 
+BOOST_AUTO_TEST_CASE(append_post_order) {
+  auto f = Forest<std::string>();
+
+  const int c = f.append_root("c");
+  const int d = f.append_root("d");
+  const int b = f.append_root_post_order("b", std::array{c, d});
+  const int a = f.append_root_post_order("a", std::array{b});
+
+  const std::array exp_pre = {"a", "b", "c", "d"};
+  BOOST_CHECK_RANGE_EQUAL(exp_pre, f.pre_order());
+
+  const std::array exp_post = {"c", "d", "b", "a"};
+  BOOST_CHECK_RANGE_EQUAL(exp_post, f.post_order());
+  BOOST_CHECK_RANGE_EQUAL(exp_post, f.values());
+}
+
 BOOST_AUTO_TEST_CASE(forest_strong_id) {
   using ID = StrongID<struct S>;
 

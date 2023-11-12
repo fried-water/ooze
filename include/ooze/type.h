@@ -12,6 +12,9 @@ namespace ooze {
 
 struct TypeID {
   uintptr_t id = {};
+
+  static constexpr TypeID Invalid() { return TypeID{}; }
+
   KNOT_ORDERED(TypeID);
 };
 

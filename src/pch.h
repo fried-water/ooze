@@ -40,6 +40,8 @@ Overloaded(Ts...) -> Overloaded<Ts...>;
 template <typename T, typename... Ts>
 using StringResult = Result<T, std::vector<std::string>, Ts...>;
 
+inline constexpr std::string_view sv(std::string_view src, Slice s) { return {src.data() + s.begin, size_t(size(s))}; }
+
 template <typename... Ts>
 auto make_vector(Ts&&... ts) {
   std::vector<std::common_type_t<std::decay_t<Ts>...>> v;

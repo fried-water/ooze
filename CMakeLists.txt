@@ -23,6 +23,7 @@ add_library(ooze
   src/lexer.cpp
   src/io.cpp
   src/parser.cpp
+  src/parser_flat.cpp
   src/pretty_print.cpp
   src/graph.cpp
   src/graph_construction.cpp

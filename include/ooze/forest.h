@@ -76,8 +76,6 @@ class Forest {
     ID parent = INVALID;
     ID next_sibling = INVALID;
     ID first_child = INVALID;
-
-    KNOT_COMPAREABLE(Connectivity);
   };
 
   std::vector<T> _values;
@@ -85,6 +83,23 @@ class Forest {
   ID _first_root = INVALID;
 
   static std::optional<ID> opt(ID id) { return id != INVALID ? std::optional(id) : std::nullopt; }
+
+  void disconnect(ID id) {
+    const ID parent = _connectivity[as_integral(id)].parent;
+    ID& child_ref = parent == INVALID ? _first_root : _connectivity[as_integral(parent)].first_child;
+
+    if(child_ref == id) {
+
+      child_ref = _connectivity[as_integral(id)].next_sibling;
+    } else {
+      const auto siblings = parent == INVALID ? root_ids() : child_ids(parent);
+      const ID prev_sibling = *std::find_if(siblings.begin(), siblings.end(), [&](ID sibling) {
+        return _connectivity[as_integral(sibling)].next_sibling == id;
+      });
+
+      _connectivity[as_integral(prev_sibling)].next_sibling = _connectivity[as_integral(id)].next_sibling;
+    }
+  }
 
 public:
   using AllIDIter = Iter<AllIDs, IDIterTraits>;
@@ -176,6 +191,30 @@ public:
     return id;
   }
 
+  void move_first_child(ID parent, ID child) {
+    disconnect(child);
+
+    _connectivity[as_integral(child)].next_sibling = _connectivity[as_integral(parent)].first_child;
+    _connectivity[as_integral(child)].parent = parent;
+    _connectivity[as_integral(parent)].first_child = child;
+  }
+
+  template <typename IDs>
+  ID append_root_post_order(T value, const IDs& ids) {
+    const ID id = append_child(ABOVE_ROOTS, std::move(value));
+    if(!ids.empty()) {
+      for(ID child : ids) disconnect(child);
+      for(ID child : ids) _connectivity[as_integral(child)].parent = id;
+
+      _connectivity[as_integral(id)].first_child = ids.front();
+      for(int i = 1; i < ids.size(); i++) {
+        _connectivity[as_integral(ids[i - 1])].next_sibling = ids[i];
+      }
+      _connectivity[as_integral(ids.back())].next_sibling = INVALID;
+    }
+    return id;
+  }
+
   template <typename Range>
   ID append_path(ID id, const Range& range) {
     return std::accumulate(range.begin(), range.end(), id, [&](ID id, const auto& ele) {
@@ -184,22 +223,25 @@ public:
   }
 
   template <typename Range>
-  ID merge_path(const Range& range) {
-    ID current = ABOVE_ROOTS;
-
+  ID merge_path(ID id, const Range& range) {
     for(auto it = range.begin(); it != range.end(); ++it) {
-      const auto children = current == ABOVE_ROOTS ? root_ids() : child_ids(current);
+      const auto children = id == ABOVE_ROOTS ? root_ids() : child_ids(id);
       const auto find_it = std::find_if(children.begin(), children.end(), [&](ID id) { return (*this)[id] == *it; });
 
       if(find_it != children.end()) {
-        current = *find_it;
+        id = *find_it;
       } else {
-        current = append_path(current, IterRange(it, range.end()));
+        id = append_path(id, IterRange(it, range.end()));
         break;
       }
     }
 
-    return current;
+    return id;
+  }
+
+  template <typename Range>
+  ID merge_path(const Range& range) {
+    return merge_path(ABOVE_ROOTS, range);
   }
 
   /// traversals
@@ -266,8 +308,29 @@ public:
       PostOrderConstIter(this, id == ABOVE_ROOTS ? INVALID : PostOrderIDs{}(*this, id)));
   }
 
+  friend bool compare_trees(const Forest& f1, const Forest& f2, ID lhs, ID rhs) {
+    const auto lhs_children = f1.child_ids(lhs);
+    const auto rhs_children = f2.child_ids(rhs);
+
+    return f1[lhs] == f2[rhs] &&
+           std::equal(
+             lhs_children.begin(), lhs_children.end(), rhs_children.begin(), rhs_children.end(), [&](ID x, ID y) {
+               return compare_trees(f1, f2, x, y);
+             });
+  }
+
   friend auto as_tie(const Forest& f) { return std::tie(f._connectivity, f._values, f._first_root); }
-  KNOT_COMPAREABLE(Forest);
+
+  friend bool operator==(const Forest& f1, const Forest& f2) {
+    const auto lhs_roots = f1.root_ids();
+    const auto rhs_roots = f2.root_ids();
+
+    return std::equal(lhs_roots.begin(), lhs_roots.end(), rhs_roots.begin(), rhs_roots.end(), [&](ID x, ID y) {
+      return compare_trees(f1, f2, x, y);
+    });
+  }
+
+  friend bool operator!=(const Forest& f1, const Forest& f2) { return !(f1 == f2); }
 };
 
 } // namespace ooze
