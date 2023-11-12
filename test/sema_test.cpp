@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "parser.h"
+#include "parser_flat.h"
 #include "pretty_print.h"
 #include "sema.h"
 #include "type_check.h"
@@ -52,8 +53,22 @@ void test_inferred_inputs(const Env& e,
   }
 }
 
-void test_nr_error(const Env& e, std::string_view f, const std::vector<ContextualError>& expected_errors) {
-  const auto result = parse_function(f).and_then([&](const UnTypedFunction& f) { return type_name_resolution(e, f); });
+void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp) {
+  const auto result = parse_function2(src).and_then(
+    applied([&](const AST& ast, const ASTTypes& types) { return type_name_resolution(e, src, types); }));
+
+  BOOST_REQUIRE(result.has_value());
+
+  if(exp != result.value()) {
+    fmt::print("E {}\n", knot::debug(exp));
+    fmt::print("A {}\n", knot::debug(result.value()));
+    BOOST_CHECK(exp == result.value());
+  }
+}
+
+void test_nr_error(const Env& e, std::string_view src, const std::vector<ContextualError>& expected_errors) {
+  const auto result = parse_function2(src).and_then(
+    applied([&](const AST& ast, const ASTTypes& types) { return type_name_resolution(e, src, types); }));
 
   BOOST_REQUIRE(!result.has_value());
 
@@ -122,6 +137,22 @@ BOOST_AUTO_TEST_CASE(infer_with_let) {
 
 BOOST_AUTO_TEST_CASE(infer_multi_let) {
   test_inferred_inputs(create_primative_env(), "{ let x = a; let y = x; y }", "(a)", {{10, 11}});
+}
+
+BOOST_AUTO_TEST_CASE(nr_return) { test_nr(create_primative_env(), "() -> i32 = x", {type_id(knot::Type<i32>{})}); }
+
+BOOST_AUTO_TEST_CASE(nr_arg) {
+  test_nr(create_primative_env(), "(x: i32) -> () = ()", {type_id(knot::Type<i32>{}), TypeID::Invalid()});
+}
+
+BOOST_AUTO_TEST_CASE(nr_let) {
+  test_nr(create_primative_env(), "() -> () { let x : i32 = y; x }", {TypeID::Invalid(), type_id(knot::Type<i32>{})});
+}
+
+BOOST_AUTO_TEST_CASE(nr_multi) {
+  test_nr(create_primative_env(),
+          "(x: i32) -> f32 { let x : string = y; x }",
+          {type_id(knot::Type<i32>{}), type_id(knot::Type<f32>{}), type_id(knot::Type<std::string>{})});
 }
 
 BOOST_AUTO_TEST_CASE(nr_undefined_return) {

@@ -137,6 +137,23 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
+ContextualResult<std::vector<TypeID>> type_name_resolution(const Env& e, std::string_view src, const ASTTypes& types) {
+  std::vector<TypeID> ids(types.forest.size(), TypeID::Invalid());
+  std::vector<ContextualError> errors;
+
+  for(TypeRef t : types.forest.ids()) {
+    if(types.forest[t] == TypeTag::Leaf) {
+      if(const auto it = e.type_ids.find(std::string(sv(src, types.srcs[t.get()]))); it != e.type_ids.end()) {
+        ids[t.get()] = it->second;
+      } else {
+        errors.push_back(ContextualError{types.srcs[t.get()], "undefined type"});
+      }
+    }
+  }
+
+  return value_or_errors(std::move(ids), std::move(errors));
+}
+
 TypedPattern inferred_inputs(const TypedExpr& expr, Set<std::string> active) {
   const std::vector<std::pair<std::string, Slice>> args =
     inferred_bindings({make_vector(std::move(active))}, expr).args;
