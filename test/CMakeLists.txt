@@ -12,7 +12,7 @@ add_executable(ooze_test
   borrowed_future_test.cpp
   forest_test.cpp
   future_test.cpp
-  graph_test.cpp
+  function_graph_test.cpp
   lexer_test.cpp
   ooze_test.cpp
   parser_combinator_test.cpp

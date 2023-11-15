@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ooze/async_fn.h"
-#include "ooze/graph.h"
+#include "ooze/function_graph.h"
 
 namespace ooze {
 

@@ -25,8 +25,8 @@ add_library(ooze
   src/parser.cpp
   src/parser_flat.cpp
   src/pretty_print.cpp
-  src/graph.cpp
-  src/graph_construction.cpp
+  src/function_graph.cpp
+  src/function_graph_construction.cpp
   src/type_check.cpp
   src/sema.cpp
   src/repl.cpp

@@ -2,7 +2,7 @@
 
 #include "async_functions.h"
 #include "bindings.h"
-#include "graph_construction.h"
+#include "function_graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
 #include "ooze/executor/task_executor.h"

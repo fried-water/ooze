@@ -1,7 +1,7 @@
 #include "pch.h"
 
-#include "graph_construction.h"
-#include "graph_inner.h"
+#include "function_graph_construction.h"
+#include "function_graph_inner.h"
 #include "ooze/tree.h"
 
 #include <numeric>

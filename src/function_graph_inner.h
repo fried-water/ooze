@@ -2,7 +2,7 @@
 
 #include "async_functions.h"
 #include "ooze/any_function.h"
-#include "ooze/graph.h"
+#include "ooze/function_graph.h"
 
 #include <exception>
 

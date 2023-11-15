@@ -1,7 +1,7 @@
 #include "test.h"
 
 #include "async_functions.h"
-#include "graph_inner.h"
+#include "function_graph_inner.h"
 #include "ooze/executor/sequential_executor.h"
 #include "ooze/executor/task_executor.h"
 #include "ooze/executor/tbb_executor.h"

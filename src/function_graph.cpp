@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "graph_inner.h"
+#include "function_graph_inner.h"
 
 namespace ooze {
 
