@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ooze/forest.h"
+#include "ooze/graph.h"
 #include "ooze/primitives.h"
 #include "ooze/type_flat.h"
 
@@ -57,7 +58,8 @@ struct AST {
 };
 
 struct ASTTypes {
-  Forest<TypeTag, TypeRef> forest;
+  Graph<TypeRef> graph;
+  std::vector<TypeTag> tags;
   std::vector<Slice> srcs;
   std::vector<TypeRef> ast_types;
 

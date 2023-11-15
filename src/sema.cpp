@@ -138,11 +138,11 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
 }
 
 ContextualResult<std::vector<TypeID>> type_name_resolution(const Env& e, std::string_view src, const ASTTypes& types) {
-  std::vector<TypeID> ids(types.forest.size(), TypeID::Invalid());
+  std::vector<TypeID> ids(types.graph.num_nodes(), TypeID::Invalid());
   std::vector<ContextualError> errors;
 
-  for(TypeRef t : types.forest.ids()) {
-    if(types.forest[t] == TypeTag::Leaf) {
+  for(TypeRef t : types.graph.nodes()) {
+    if(types.tags[t.get()] == TypeTag::Leaf) {
       if(const auto it = e.type_ids.find(std::string(sv(src, types.srcs[t.get()]))); it != e.type_ids.end()) {
         ids[t.get()] = it->second;
       } else {

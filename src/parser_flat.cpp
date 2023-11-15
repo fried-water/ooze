@@ -138,7 +138,12 @@ struct TypeAppender {
 
   TypeRef operator()(State& s, Span<Token> tokens, Slice ref, Span<TypeRef> ids) const {
     s.types.srcs.push_back(char_slice(tokens, ref));
-    return s.types.forest.append_root_post_order(_tag, ids);
+    s.types.tags.push_back(_tag);
+    const TypeRef n = s.types.graph.add_node();
+    for(TypeRef child : ids) {
+      s.types.graph.add_fanout_to_last_node(child);
+    }
+    return n;
   }
 };
 
