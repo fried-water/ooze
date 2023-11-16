@@ -11,12 +11,12 @@ namespace {
     BOOST_REQUIRE(result);                                                                                             \
     const auto& [ast, types] = *result;                                                                                \
     if(exp_ast != ast) {                                                                                               \
-      fmt::print("Actual:   {}\n", knot::debug(std::get<0>(result.value())));                                          \
+      fmt::print("Actual:   {}\n", knot::debug(ast));                                                                  \
       fmt::print("Expected: {}\n", knot::debug(exp_ast));                                                              \
       BOOST_CHECK(exp_ast == ast);                                                                                     \
     }                                                                                                                  \
     if(exp_types != types) {                                                                                           \
-      fmt::print("Actual:   {}\n", knot::debug(std::get<1>(result.value())));                                          \
+      fmt::print("Actual:   {}\n", knot::debug(types));                                                                \
       fmt::print("Expected: {}\n", knot::debug(exp_types));                                                            \
       BOOST_CHECK(exp_types == types);                                                                                 \
     }                                                                                                                  \
@@ -68,10 +68,10 @@ ASTTypes make_types(std::vector<TypeTag> tags,
     }
   }
 
-  return {std::move(g), std::move(tags), std::move(slices), std::move(ast_ids)};
+  return {std::move(g).append_column(std::move(tags)).append_column(std::move(slices)), std::move(ast_ids)};
 }
 
-ASTTypes types(size_t s) { return {{}, {}, {}, std::vector<TypeRef>(s)}; }
+ASTTypes types(size_t s) { return {{}, std::vector<TypeRef>(s)}; }
 
 } // namespace
 

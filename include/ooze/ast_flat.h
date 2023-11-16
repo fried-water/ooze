@@ -58,9 +58,7 @@ struct AST {
 };
 
 struct ASTTypes {
-  Graph<TypeRef> graph;
-  std::vector<TypeTag> tags;
-  std::vector<Slice> srcs;
+  Graph<TypeRef, TypeTag, Slice> graph;
   std::vector<TypeRef> ast_types;
 
   KNOT_COMPAREABLE(ASTTypes);

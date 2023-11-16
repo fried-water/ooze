@@ -142,11 +142,11 @@ ContextualResult<std::vector<TypeID>> type_name_resolution(const Env& e, std::st
   std::vector<ContextualError> errors;
 
   for(TypeRef t : types.graph.nodes()) {
-    if(types.tags[t.get()] == TypeTag::Leaf) {
-      if(const auto it = e.type_ids.find(std::string(sv(src, types.srcs[t.get()]))); it != e.type_ids.end()) {
+    if(types.graph.get<TypeTag>(t) == TypeTag::Leaf) {
+      if(const auto it = e.type_ids.find(std::string(sv(src, types.graph.get<Slice>(t)))); it != e.type_ids.end()) {
         ids[t.get()] = it->second;
       } else {
-        errors.push_back(ContextualError{types.srcs[t.get()], "undefined type"});
+        errors.push_back(ContextualError{types.graph.get<Slice>(t), "undefined type"});
       }
     }
   }
