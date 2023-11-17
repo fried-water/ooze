@@ -20,7 +20,7 @@ public:
   constexpr StrongID() = default;
   constexpr explicit StrongID(T t) : _value(t) {}
 
-  constexpr bool is_valid() const { return *this == StrongID(); }
+  constexpr bool is_valid() const { return *this != StrongID(); }
 
   constexpr T get() const { return _value; }
 
@@ -35,7 +35,7 @@ public:
     return tmp;
   }
 
-  KNOT_COMPAREABLE(StrongID);
+  KNOT_ORDERED(StrongID);
   friend auto as_tie(const StrongID& s) { return std::tie(s._value); }
 };
 

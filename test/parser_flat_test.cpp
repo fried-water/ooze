@@ -432,9 +432,9 @@ BOOST_AUTO_TEST_CASE(ast_empty) { check_pass({}, {}, parse2("")); }
 
 BOOST_AUTO_TEST_CASE(ast_fn) {
   const std::string_view src = "fn f() -> T = x";
-  const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
-                               {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
-                               {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}}),
+  const AST ast = {ast_forest({{ASTTag::RootFn, ASTTag::PatternIdent},
+                               {ASTTag::RootFn, ASTTag::Fn, ASTTag::PatternTuple},
+                               {ASTTag::RootFn, ASTTag::Fn, ASTTag::ExprIdent}}),
                    {{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}}};
   const ASTTypes types = make_types(
     {TypeTag::Leaf}, slices(src, {"T"}), {}, {TypeRef{-1}, TypeRef{-1}, TypeRef{0}, TypeRef{-1}, TypeRef{-1}});
@@ -444,11 +444,11 @@ BOOST_AUTO_TEST_CASE(ast_fn) {
 BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
   const std::string_view src = "fn f() -> T = x fn g() -> T = x";
   Forest<ASTTag, ASTID> f =
-    ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
-                {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
-                {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}});
+    ast_forest({{ASTTag::RootFn, ASTTag::PatternIdent},
+                {ASTTag::RootFn, ASTTag::Fn, ASTTag::PatternTuple},
+                {ASTTag::RootFn, ASTTag::Fn, ASTTag::ExprIdent}});
 
-  const ASTID f2 = f.append_root(ASTTag::Assignment);
+  const ASTID f2 = f.append_root(ASTTag::RootFn);
   f.merge_path(f2, std::array{ASTTag::PatternIdent});
   f.merge_path(f2, std::array{ASTTag::Fn, ASTTag::PatternTuple});
   f.merge_path(f2, std::array{ASTTag::Fn, ASTTag::ExprIdent});

@@ -7,6 +7,7 @@
 
 #include <knot/core.h>
 
+#include <algorithm>
 #include <string_view>
 
 namespace ooze {
@@ -27,7 +28,8 @@ enum class ASTTag {
   ExprIdent,
 
   Assignment,
-  Fn
+  Fn,
+  RootFn
 };
 
 constexpr auto names(knot::Type<ASTTag>) {
@@ -44,7 +46,8 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprTuple",
      "ExprIdent",
      "Assignment",
-     "Fn"});
+     "Fn",
+     "RootFn"});
 }
 
 using ASTID = StrongID<struct ASTSpace>;
@@ -63,5 +66,11 @@ struct ASTTypes {
 
   KNOT_COMPAREABLE(ASTTypes);
 };
+
+inline const Literal& lookup_literal(const AST& ast, ASTID id) {
+  return std::lower_bound(
+           ast.literals.begin(), ast.literals.end(), id, [](const auto& p, ASTID id) { return p.first < id; })
+    ->second;
+}
 
 } // namespace ooze

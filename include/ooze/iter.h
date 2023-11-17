@@ -33,7 +33,7 @@ struct ForwardIter {
     return static_cast<Iter&>(*this);
   }
   Iter operator++(int) {
-    Iter copy = *this;
+    Iter copy = static_cast<Iter&>(*this);
     operator++();
     return copy;
   }

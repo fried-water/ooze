@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ooze/ast.h"
+#include "ooze/ast_flat.h"
 #include "ooze/env.h"
 
 namespace ooze {
@@ -28,6 +29,15 @@ std::string pretty_print(const Env&, const TypedExpr&);
 std::string pretty_print(const Env&, const CheckedFunction&);
 std::string pretty_print(const Env&, const CheckedAssignment&);
 std::string pretty_print(const Env&, const CheckedExpr&);
+
+std::string pretty_print(std::string_view,
+                         const Env&,
+                         const AST&,
+                         const Graph<TypeRef, TypeTag, TypeID>&,
+                         const std::vector<TypeRef>&,
+                         std::optional<ASTID> = {});
+
+std::string pretty_print(const Env&, const Graph<TypeRef, TypeTag, TypeID>&, TypeRef);
 
 template <typename R, typename T>
 R untype(const Env& e, const T& t) {

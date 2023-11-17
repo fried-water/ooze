@@ -256,7 +256,7 @@ auto function() {
                    });
 }
 
-auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::Assignment})); }
+auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::RootFn})); }
 
 template <typename Parser>
 ContextualResult<std::tuple<AST, ASTTypes>> parse_ast(Parser p, std::string_view src) {
