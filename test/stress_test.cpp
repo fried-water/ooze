@@ -41,12 +41,12 @@ FunctionGraph create_graph(int depth) {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
-  const int depth = 12;
-  const int num_executions = 100;
-  auto ex = make_task_executor();
+  const int depth = 14;
+  const int graph_size = ((1 << depth) * 2 - 1);
+  const int num_executions = 10;
 
   fmt::print("Thread count: {}\n", std::thread::hardware_concurrency());
-  fmt::print("Creating graph of size {}\n", ((1 << depth) * 2 - 1));
+  fmt::print("Creating graph of size {}\n", graph_size);
 
   auto t0 = std::chrono::steady_clock::now();
   auto g = create_graph(depth);
@@ -54,16 +54,23 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
   fmt::print("Creating graph took {}ms\n",
              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 
-  t0 = std::chrono::steady_clock::now();
-  int result = -1;
-  for(int i = 0; i < num_executions; i++) {
-    result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(ex, 1)), {})[0]).wait());
-  }
+  for(int i = 1; i <= std::thread::hardware_concurrency(); i++) {
+    auto ex = make_task_executor(i);
+    auto t0 = std::chrono::steady_clock::now();
+    int result = -1;
+    for(int i = 0; i < num_executions; i++) {
+      result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(ex, 1)), {})[0]).wait());
+    }
 
-  fmt::print("Result is {}, {} executions took {}ms\n",
-             result,
-             num_executions,
-             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
+    const auto ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    fmt::print("R = {} using {} threads {} executions took {}ms ({:0.0f} nodes/s)\n",
+               result,
+               i,
+               num_executions,
+               ms,
+               1000.0 * graph_size * num_executions / ms);
+  }
 }
 
 } // namespace ooze
