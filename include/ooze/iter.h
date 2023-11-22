@@ -57,7 +57,7 @@ public:
   using iterator_category = typename std::iterator_traits<Iter>::iterator_category;
   using difference_type = typename std::iterator_traits<Iter>::difference_type;
 
-  using iterator_type = Iter;
+  using iterator = Iter;
 
   i64 ssize() const { return i64(std::distance(_begin, _end)); }
   size_t size() const { return size_t(std::distance(_begin, _end)); }

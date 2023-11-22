@@ -89,7 +89,6 @@ class Forest {
     ID& child_ref = parent == INVALID ? _first_root : _connectivity[as_integral(parent)].first_child;
 
     if(child_ref == id) {
-
       child_ref = _connectivity[as_integral(id)].next_sibling;
     } else {
       const auto siblings = parent == INVALID ? root_ids() : child_ids(parent);
@@ -143,7 +142,7 @@ public:
   i64 ssize() const { return i64(_values.size()); }
   size_t size() const { return _values.size(); }
 
-  ID num_children(ID id) const { return ID(child_ids(id).size()); }
+  size_t num_children(ID id) const { return child_ids(id).size(); }
   ID num_roots() const { return ID(root_ids().size()); }
 
   bool is_root(ID id) const { return _connectivity[as_integral(id)].parent == INVALID; }

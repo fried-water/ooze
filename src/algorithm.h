@@ -100,6 +100,11 @@ bool any_of(const Range& range, F f) {
 }
 
 template <typename Range, typename F>
+bool all_of(const Range& range, F f) {
+  return std::all_of(range.begin(), range.end(), f);
+}
+
+template <typename Range, typename F>
 auto find_if(const Range& range, F f) {
   return std::find_if(range.begin(), range.end(), f);
 }

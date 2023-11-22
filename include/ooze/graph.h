@@ -22,6 +22,7 @@ public:
 
   i32 num_nodes() const { return int(_indices.size() - 1); }
   i32 num_edges() const { return int(_fanout.size()); }
+  i32 num_fanout(ID n) const { return _indices[as_integral(n) + 1] - _indices[as_integral(n)]; }
 
   auto nodes() const { return id_range(ID(underlying_type(num_nodes()))); }
   auto fanout(ID n) const {
@@ -31,6 +32,31 @@ public:
   template <typename T>
   T get(ID id) const {
     return static_cast<const std::vector<T>&>(*this)[as_integral(id)];
+  }
+
+  void add_graph(const Graph& g) {
+    const auto node_offset = _indices.size() - 1;
+    const auto edge_offset = _fanout.size();
+
+    for(int idx : IterRange(g._indices.begin() + 1, g._indices.end())) {
+      _indices.push_back(idx + edge_offset);
+    }
+
+    for(ID node : g._fanout) {
+      _fanout.push_back(ID(underlying_type(as_integral(node) + node_offset)));
+    }
+
+    (static_cast<std::vector<Ts>&>(*this).insert(static_cast<std::vector<Ts>&>(*this).end(),
+                                                 static_cast<const std::vector<Ts>&>(g).begin(),
+                                                 static_cast<const std::vector<Ts>&>(g).end()),
+     ...);
+  }
+
+  ID add_node(Span<ID> fanout, Ts... ts) {
+    _indices.push_back(int(_fanout.size() + fanout.size()));
+    _fanout.insert(_fanout.end(), fanout.begin(), fanout.end());
+    (static_cast<std::vector<Ts>&>(*this).push_back(std::move(ts)), ...);
+    return ID{underlying_type(num_nodes() - 1)};
   }
 
   ID add_node(Ts... ts) {
@@ -70,6 +96,26 @@ public:
 
   std::tuple<Graph<ID>, std::vector<Ts>...> decompose() && {
     return {{std::move(_indices), std::move(_fanout)}, static_cast<std::vector<Ts>&&>(*this)...};
+  }
+
+  friend bool compare_dags(const Graph& g, ID x, ID y) {
+    const auto x_fanout = g.fanout(x);
+    const auto y_fanout = g.fanout(y);
+
+    return x == y || (((g.get<Ts>(x) == g.get<Ts>(y)) && ...) &&
+                      std::equal(x_fanout.begin(), x_fanout.end(), y_fanout.begin(), y_fanout.end(), [&](ID xf, ID yf) {
+                        return compare_dags(g, xf, yf);
+                      }));
+  }
+
+  friend bool compare_dags(const Graph& g1, const Graph& g2, ID x, ID y) {
+    const auto x_fanout = g1.fanout(x);
+    const auto y_fanout = g2.fanout(y);
+
+    return ((g1.get<Ts>(x) == g2.get<Ts>(y)) && ...) &&
+           std::equal(x_fanout.begin(), x_fanout.end(), y_fanout.begin(), y_fanout.end(), [&](ID xf, ID yf) {
+             return compare_dags(g1, g2, xf, yf);
+           });
   }
 
   friend auto as_tie(const Graph& g) {
