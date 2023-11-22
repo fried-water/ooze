@@ -138,16 +138,16 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
 }
 
 ContextualResult<std::vector<TypeID>>
-type_name_resolution(const Env& e, std::string_view src, const UnresolvedTypes& types) {
-  std::vector<TypeID> ids(types.graph.num_nodes(), TypeID::Invalid());
+type_name_resolution(const Env& e, std::string_view src, const Graph<TypeRef, TypeTag, Slice>& type_graph) {
+  std::vector<TypeID> ids(type_graph.num_nodes(), TypeID::Invalid());
   std::vector<ContextualError> errors;
 
-  for(TypeRef t : types.graph.nodes()) {
-    if(types.graph.get<TypeTag>(t) == TypeTag::Leaf) {
-      if(const auto it = e.type_ids.find(std::string(sv(src, types.graph.get<Slice>(t)))); it != e.type_ids.end()) {
+  for(TypeRef t : type_graph.nodes()) {
+    if(type_graph.get<TypeTag>(t) == TypeTag::Leaf) {
+      if(const auto it = e.type_ids.find(std::string(sv(src, type_graph.get<Slice>(t)))); it != e.type_ids.end()) {
         ids[t.get()] = it->second;
       } else {
-        errors.push_back(ContextualError{types.graph.get<Slice>(t), "undefined type"});
+        errors.push_back(ContextualError{type_graph.get<Slice>(t), "undefined type"});
       }
     }
   }

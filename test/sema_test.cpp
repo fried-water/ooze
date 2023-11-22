@@ -55,7 +55,7 @@ void test_inferred_inputs(const Env& e,
 
 void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp) {
   const auto result = parse_function2(src).and_then(
-    applied([&](const AST& ast, const UnresolvedTypes& types) { return type_name_resolution(e, src, types); }));
+    applied([&](const AST& ast, const UnresolvedTypes& types) { return type_name_resolution(e, src, types.graph); }));
 
   BOOST_REQUIRE(result.has_value());
 
@@ -68,7 +68,7 @@ void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp)
 
 void test_nr_error(const Env& e, std::string_view src, const std::vector<ContextualError>& expected_errors) {
   const auto result = parse_function2(src).and_then(
-    applied([&](const AST& ast, const UnresolvedTypes& types) { return type_name_resolution(e, src, types); }));
+    applied([&](const AST& ast, const UnresolvedTypes& types) { return type_name_resolution(e, src, types.graph); }));
 
   BOOST_REQUIRE(!result.has_value());
 
