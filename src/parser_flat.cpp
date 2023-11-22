@@ -14,7 +14,7 @@ namespace {
 
 struct State {
   AST ast;
-  ASTTypes types;
+  UnresolvedTypes types;
   std::string_view src;
 };
 
@@ -259,10 +259,10 @@ auto function() {
 auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::RootFn})); }
 
 template <typename Parser>
-ContextualResult<std::tuple<AST, ASTTypes>> parse_ast(Parser p, std::string_view src) {
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_ast(Parser p, std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
-  State state = {AST{}, ASTTypes{}, src};
+  State state = {AST{}, UnresolvedTypes{}, src};
   auto [parse_slice, value, error] = p(state, Span<Token>{tokens}, {});
 
   assert(value || error);
@@ -279,17 +279,23 @@ ContextualResult<std::tuple<AST, ASTTypes>> parse_ast(Parser p, std::string_view
 
 } // namespace
 
-ContextualResult<std::tuple<AST, ASTTypes>> parse_expr2(std::string_view src) { return parse_ast(expr, src); }
-ContextualResult<std::tuple<AST, ASTTypes>> parse_repl2(std::string_view src);
-ContextualResult<std::tuple<AST, ASTTypes>> parse_function2(std::string_view src) { return parse_ast(function(), src); }
-ContextualResult<std::tuple<AST, ASTTypes>> parse2(std::string_view src) { return parse_ast(root(), src); }
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_expr2(std::string_view src) { return parse_ast(expr, src); }
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_repl2(std::string_view src);
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_function2(std::string_view src) {
+  return parse_ast(function(), src);
+}
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse2(std::string_view src) { return parse_ast(root(), src); }
 
 // Exposed for unit testing
-ContextualResult<std::tuple<AST, ASTTypes>> parse_binding2(std::string_view src) { return parse_ast(binding(), src); }
-ContextualResult<std::tuple<AST, ASTTypes>> parse_assignment2(std::string_view src) {
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_binding2(std::string_view src) {
+  return parse_ast(binding(), src);
+}
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_assignment2(std::string_view src) {
   return parse_ast(assignment(), src);
 }
-ContextualResult<std::tuple<AST, ASTTypes>> parse_type2(std::string_view src) { return parse_ast(type, src); }
-ContextualResult<std::tuple<AST, ASTTypes>> parse_pattern2(std::string_view src) { return parse_ast(pattern, src); }
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_type2(std::string_view src) { return parse_ast(type, src); }
+ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_pattern2(std::string_view src) {
+  return parse_ast(pattern, src);
+}
 
 } // namespace ooze

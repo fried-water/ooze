@@ -137,7 +137,8 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
-ContextualResult<std::vector<TypeID>> type_name_resolution(const Env& e, std::string_view src, const ASTTypes& types) {
+ContextualResult<std::vector<TypeID>>
+type_name_resolution(const Env& e, std::string_view src, const UnresolvedTypes& types) {
   std::vector<TypeID> ids(types.graph.num_nodes(), TypeID::Invalid());
   std::vector<ContextualError> errors;
 

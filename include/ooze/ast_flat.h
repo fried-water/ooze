@@ -3,6 +3,7 @@
 #include "ooze/forest.h"
 #include "ooze/graph.h"
 #include "ooze/primitives.h"
+#include "ooze/type.h"
 #include "ooze/type_flat.h"
 
 #include <knot/core.h>
@@ -18,6 +19,7 @@ enum class ASTTag {
   PatternWildCard,
   PatternIdent,
   PatternTuple,
+  // PatternBorrow, // TODO
 
   ExprLiteral,
   ExprCall,
@@ -60,12 +62,16 @@ struct AST {
   KNOT_COMPAREABLE(AST);
 };
 
-struct ASTTypes {
-  Graph<TypeRef, TypeTag, Slice> graph;
+template <typename T>
+struct TypesGeneric {
+  Graph<TypeRef, TypeTag, T> graph;
   std::vector<TypeRef> ast_types;
 
-  KNOT_COMPAREABLE(ASTTypes);
+  KNOT_COMPAREABLE(TypesGeneric);
 };
+
+using UnresolvedTypes = TypesGeneric<Slice>;
+using Types = TypesGeneric<TypeID>;
 
 inline const Literal& lookup_literal(const AST& ast, ASTID id) {
   return std::lower_bound(

@@ -13,7 +13,7 @@ ContextualResult<TypedPattern> type_name_resolution(const Env&, const UnTypedPat
 ContextualResult<TypedAssignment> type_name_resolution(const Env&, const UnTypedAssignment&);
 ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<NamedType>&);
 
-ContextualResult<std::vector<TypeID>> type_name_resolution(const Env&, std::string_view src, const ASTTypes&);
+ContextualResult<std::vector<TypeID>> type_name_resolution(const Env&, std::string_view src, const UnresolvedTypes&);
 
 TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 
