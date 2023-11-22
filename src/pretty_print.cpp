@@ -191,16 +191,16 @@ void print_literal(std::ostream& os, const Literal& l) {
     Overloaded{
       [](bool b) { return std::string(b ? "true" : "false"); },
       [](const std::string& s) { return fmt::format("\"{}\"", s); },
-      [](i8 i) { return fmt::format("'{}'", i); },
+      [](i8 i) { return fmt::format("'{}i8'", i); },
       [](i16 i) { return fmt::format("{}i16", i); },
-      [](i32 i) { return fmt::format("{}i32", i); },
+      [](i32 i) { return fmt::format("{}", i); },
       [](i64 i) { return fmt::format("{}i64", i); },
       [](u8 u) { return fmt::format("'{}u8'", u); },
       [](u16 u) { return fmt::format("{}u16", u); },
       [](u32 u) { return fmt::format("{}u32", u); },
       [](u64 u) { return fmt::format("{}u64", u); },
-      [](f32 f) { return fmt::format("{}f", f); },
-      [](f64 f) { return fmt::format("{}", f); }},
+      [](f32 f) { return fmt::format(f == std::floor(f) ? "{:.1f}f" : "{}f", f); },
+      [](f64 f) { return fmt::format(f == std::floor(f) ? "{:.1f}" : "{}", f); }},
     l);
 }
 
@@ -220,7 +220,7 @@ void pretty_print(std::ostream& os, const Env& e, const Graph<TypeRef, TypeTag, 
     return;
   case TypeTag::Fn:
     assert(children.size() == 2);
-    pretty_print(os << "fn", e, g, children[0]);
+    pretty_print(os << (g.get<TypeTag>(children[0]) == TypeTag::Tuple ? "fn" : "fn "), e, g, children[0]);
     pretty_print(os << " -> ", e, g, children[1]);
     return;
   case TypeTag::Tuple:
@@ -264,8 +264,9 @@ void pretty_print(std::ostream& os,
   case ASTTag::ExprBorrow: pretty_print(os << "&", src, e, ast, types, *it, indentation); return;
   case ASTTag::ExprSelect:
     pretty_print(os << "select ", src, e, ast, types, *it++, indentation);
-    pretty_print(os << " ", src, e, ast, types, *it++, indentation);
-    pretty_print(os << " else ", src, e, ast, types, *it, indentation);
+    pretty_print(os << " { ", src, e, ast, types, *it++, indentation);
+    pretty_print(os << " } else { ", src, e, ast, types, *it, indentation);
+    os << " }";
     return;
   case ASTTag::Assignment:
     print_binding(os << "let ", *it++);
@@ -296,7 +297,7 @@ void pretty_print(std::ostream& os,
     os << '(';
     if(pattern_it != pattern_children.end()) {
       print_binding(os, *pattern_it);
-      std::for_each(++pattern_it, children.end(), [&](ASTID c) { print_binding(os, c); });
+      std::for_each(++pattern_it, children.end(), [&](ASTID c) { print_binding(os << ", ", c); });
     }
     os << ')';
 

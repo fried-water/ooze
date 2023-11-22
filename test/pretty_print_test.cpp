@@ -78,20 +78,26 @@ BOOST_AUTO_TEST_CASE(unnamed_type) {
 }
 
 BOOST_AUTO_TEST_CASE(expr) {
-  test_expr("1i32", "1");
+  test_expr("1", "1");
+  test_expr("1i16", "1i16");
+  test_expr("1.0f", "1.0f");
+  test_expr("1.0", "1.0");
   test_expr("\"abc\"", "\"abc\"");
   test_expr("abc", "abc");
   test_expr("&abc", "&abc");
 
-  test_expr("(1i32, abc)", "(1, abc)");
+  test_expr("(1, abc)", "(1, abc)");
 
-  test_expr("f(1i32)", "f(1)");
+  test_expr("select x { y } else { z }", "select x { y } else { z }");
+
+  test_expr("f(1)", "f(1)");
 }
 
 BOOST_AUTO_TEST_CASE(assignment) {
   test_assign("let x = y", "let x = y");
   test_assign("let x = y", "let x : _ = y");
   test_assign("let x: i32 = y", "let x: i32 = y");
+  test_assign("let (x, y): (i32, _) = (1, 2)", "let (x, y): (i32, _) = (1, 2)");
 }
 
 BOOST_AUTO_TEST_CASE(scope) {
@@ -106,6 +112,7 @@ BOOST_AUTO_TEST_CASE(fn) {
   test_fn("() -> i32 = x", "() -> i32 = x");
   test_fn("(x) -> i32 = x", "(x) -> i32 = x");
   test_fn("(x: i32) -> i32 = x", "(x: i32) -> i32 = x");
+  test_fn("(x: i32, _) -> i32 = x", "(x: i32, _) -> i32 = x");
   test_fn("() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
 }
 
