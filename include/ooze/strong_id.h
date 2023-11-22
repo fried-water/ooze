@@ -4,18 +4,20 @@
 
 #include <knot/core.h>
 
+#include <ostream>
+
 namespace ooze {
 
-template <typename Space, typename T = int, T Invalid = T(-1)>
+template <typename Space, typename T = int, T INVALID = T(-1)>
 class StrongID {
   static_assert(std::is_integral_v<T>);
 
-  T _value = Invalid;
+  T _value = INVALID;
 
 public:
   using underlying_type = T;
 
-  constexpr static StrongID invalid() { return StrongID(); }
+  constexpr static StrongID Invalid() { return StrongID(); }
 
   constexpr StrongID() = default;
   constexpr explicit StrongID(T t) : _value(t) {}
@@ -37,6 +39,8 @@ public:
 
   KNOT_ORDERED(StrongID);
   friend auto as_tie(const StrongID& s) { return std::tie(s._value); }
+
+  friend std::ostream& operator<<(std::ostream& os, StrongID id) { return os << id.get(); }
 };
 
 template <typename Space, typename T, T Invalid>

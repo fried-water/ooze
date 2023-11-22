@@ -115,6 +115,60 @@ struct FunctionConverter {
   }
 };
 
+struct IdentToBindingCtx {
+  Map<ASTID, ASTID> expr_to_binding;
+  std::vector<ASTID> unbound_exprs;
+  std::vector<std::pair<std::string_view, ASTID>> stack;
+};
+
+void ident_to_binding_references(IdentToBindingCtx& ctx, ASTID id, std::string_view src, const AST& ast) {
+  switch(ast.forest[id]) {
+  case ASTTag::PatternIdent: ctx.stack.emplace_back(sv(src, ast.srcs[id.get()]), id); break;
+  case ASTTag::Fn:
+  case ASTTag::ExprWith: {
+    const size_t original_size = ctx.stack.size();
+    for(ASTID child : ast.forest.child_ids(id)) {
+      ident_to_binding_references(ctx, child, src, ast);
+    }
+    ctx.stack.erase(ctx.stack.begin() + original_size, ctx.stack.end());
+    break;
+  }
+  case ASTTag::ExprIdent: {
+    const std::string_view ident = sv(src, ast.srcs[id.get()]);
+    const auto it = std::find_if(
+      ctx.stack.rbegin(), ctx.stack.rend(), applied([=](std::string_view v, ASTID) { return v == ident; }));
+    if(it == ctx.stack.rend()) {
+      ctx.unbound_exprs.push_back(id);
+    } else {
+      const auto [sv, pattern_id] = *it;
+      ctx.expr_to_binding.emplace(id, pattern_id);
+    }
+    break;
+  }
+  case ASTTag::RootFn:
+  case ASTTag::Assignment: {
+    const ASTID pattern = *ast.forest.first_child(id);
+    const ASTID expr = *ast.forest.next_sibling(pattern);
+
+    // Parse expr before pattern
+    ident_to_binding_references(ctx, expr, src, ast);
+    ident_to_binding_references(ctx, pattern, src, ast);
+    break;
+  }
+  case ASTTag::PatternWildCard:
+  case ASTTag::PatternTuple:
+  case ASTTag::ExprLiteral:
+  case ASTTag::ExprCall:
+  case ASTTag::ExprSelect:
+  case ASTTag::ExprBorrow:
+  case ASTTag::ExprTuple:
+    for(ASTID child : ast.forest.child_ids(id)) {
+      ident_to_binding_references(ctx, child, src, ast);
+    }
+    break;
+  };
+}
+
 } // namespace
 
 ContextualResult<TypedFunction> type_name_resolution(const Env& e, const UnTypedFunction& f) {
@@ -153,6 +207,16 @@ type_name_resolution(const Env& e, std::string_view src, const Graph<TypeRef, Ty
   }
 
   return value_or_errors(std::move(ids), std::move(errors));
+}
+
+std::tuple<Map<ASTID, ASTID>, std::vector<ASTID>> ident_to_binding_references(std::string_view src, const AST& ast) {
+  IdentToBindingCtx ctx;
+
+  for(ASTID root : ast.forest.root_ids()) {
+    ident_to_binding_references(ctx, root, src, ast);
+  }
+
+  return std::tuple(std::move(ctx.expr_to_binding), std::move(ctx.unbound_exprs));
 }
 
 TypedPattern inferred_inputs(const TypedExpr& expr, Set<std::string> active) {

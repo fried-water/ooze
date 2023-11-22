@@ -301,4 +301,146 @@ BOOST_AUTO_TEST_CASE(or_only_undeclared_error) {
   test_or_error(e, "() -> _ = f(missing())", {{{12, 19}, "use of undeclared binding 'missing'"}});
 }
 
+BOOST_AUTO_TEST_CASE(ib_null) {
+  const auto [indent_to_binding, unbound] = ident_to_binding_references("", {});
+  BOOST_CHECK(indent_to_binding.empty());
+  BOOST_CHECK(unbound.empty());
+}
+
+BOOST_AUTO_TEST_CASE(ib_unbound) {
+  const std::string_view src = "x";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  BOOST_CHECK(indent_to_binding.empty());
+  check_range(std::array{ASTID{0}}, unbound);
+}
+
+BOOST_AUTO_TEST_CASE(ib_scope) {
+  // x, 1, assign, x, with
+  const std::string_view src = "{ let x = 1; x}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  BOOST_CHECK(unbound.empty());
+
+  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}};
+  BOOST_CHECK(exp == indent_to_binding);
+}
+
+BOOST_AUTO_TEST_CASE(ib_unused) {
+  // x, 1, assign, 1, with
+  const std::string_view src = "{ let x = 1; 1}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  BOOST_CHECK(indent_to_binding.empty());
+  BOOST_CHECK(unbound.empty());
+}
+
+BOOST_AUTO_TEST_CASE(ib_multiple_uses) {
+  // x, 1, assign, x, x, tuple, with
+  const std::string_view src = "{ let x = 1; (x, x)}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  BOOST_CHECK(unbound.empty());
+
+  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}, {ASTID{4}, ASTID{0}}};
+  BOOST_CHECK(exp == indent_to_binding);
+}
+
+BOOST_AUTO_TEST_CASE(ib_scope_and_unbound) {
+  // x, 1, assign, x, y, tuple, with
+  const std::string_view src = "{ let x = 1; (x, y)}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  check_range(std::array{ASTID{4}}, unbound);
+}
+
+BOOST_AUTO_TEST_CASE(ib_scope_tuple) {
+  // x, y, (), 1, assign, x, y, tuple, with
+  const std::string_view src = "{ let (x, y) = 1; (x, y)}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{5}, ASTID{0}}, {ASTID{6}, ASTID{1}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  BOOST_CHECK(unbound.empty());
+}
+
+BOOST_AUTO_TEST_CASE(ib_self_assign) {
+  // x, x, assign, x, with
+  const std::string_view src = "{ let x = x; x}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  check_range(std::array{ASTID{1}}, unbound);
+}
+
+BOOST_AUTO_TEST_CASE(ib_nested) {
+  // ((x, ((x, x, assign), x, with), assign), x, assign)
+  const std::string_view src = "{ let x = { let x = x; x }; x}";
+  const auto [ast, types] = check_result(parse_expr2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{7}, ASTID{0}}, {ASTID{4}, ASTID{1}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  check_range(std::array{ASTID{2}}, unbound);
+}
+
+BOOST_AUTO_TEST_CASE(ib_fn) {
+  // x, (), x, fn
+  const std::string_view src = "(x) -> T = x";
+  const auto [ast, types] = check_result(parse_function2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{2}, ASTID{0}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  BOOST_CHECK(unbound.empty());
+}
+
+BOOST_AUTO_TEST_CASE(ib_fn_tuple) {
+  // x, y, (), x, y, (), fn
+  const std::string_view src = "(x, y) -> T = (x, y)";
+  const auto [ast, types] = check_result(parse_function2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}, {ASTID{4}, ASTID{1}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  BOOST_CHECK(unbound.empty());
+}
+
+BOOST_AUTO_TEST_CASE(ib_fn_unbound) {
+  // (), x, fn
+  const std::string_view src = "() -> T = x";
+  const auto [ast, types] = check_result(parse_function2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  BOOST_CHECK(indent_to_binding.empty());
+  check_range(std::array{ASTID{1}}, unbound);
+}
+
+BOOST_AUTO_TEST_CASE(ib_fn_unused) {
+  // x, (), 1, fn
+  const std::string_view src = "(x) -> T = 1";
+  const auto [ast, types] = check_result(parse_function2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  BOOST_CHECK(indent_to_binding.empty());
+  BOOST_CHECK(unbound.empty());
+}
+
+BOOST_AUTO_TEST_CASE(ib_fn_nested) {
+  // x, (), ((x, ((x, x, assign), x, with), assign), x, assign) fn
+  const std::string_view src = "(x) -> T { let x = { let x = x; x }; x}";
+  const auto [ast, types] = check_result(parse_function2(src));
+  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+
+  const Map<ASTID, ASTID> exp = {{ASTID{4}, ASTID{0}}, {ASTID{9}, ASTID{2}}, {ASTID{6}, ASTID{3}}};
+  BOOST_CHECK(exp == indent_to_binding);
+  BOOST_CHECK(unbound.empty());
+}
+
 } // namespace ooze
