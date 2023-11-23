@@ -17,6 +17,23 @@ class Graph : std::vector<Ts>... {
 public:
   Graph() = default;
 
+  Graph(const std::vector<std::vector<ID>>& fanouts, std::vector<Ts>... columns)
+      : std::vector<Ts>{std::move(columns)}..., _indices() {
+    _indices.reserve(fanouts.size() + 1);
+    size_t offset = 0;
+
+    for(const auto& fanout : fanouts) {
+      _indices.push_back(i32(offset));
+      offset += fanout.size();
+    }
+    _indices.push_back(i32(offset));
+
+    _fanout.reserve(_indices.back());
+    for(const auto& fanout : fanouts) {
+      _fanout.insert(_fanout.end(), fanout.begin(), fanout.end());
+    }
+  }
+
   Graph(std::vector<i32> indices, std::vector<ID> fanout, std::vector<Ts>... columns)
       : std::vector<Ts>{std::move(columns)}..., _indices(std::move(indices)), _fanout(std::move(fanout)) {}
 
