@@ -19,13 +19,13 @@ void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debu
 
   BOOST_REQUIRE(exp_ast.forest == act_ast.forest);
 
-  const auto& [ident_to_binding, undeclared_bindings] = ident_to_binding_references(src, act_ast);
+  const auto& [act_ident_graph, undeclared_bindings] = calculate_ident_graph(src, act_ast);
   const auto [act_g, act_types] =
-    check_result(type_check(src, e, ident_to_binding, undeclared_bindings, act_ast, std::move(act_parse_types), debug));
+    check_result(type_check(src, e, act_ident_graph, undeclared_bindings, act_ast, std::move(act_parse_types), debug));
 
-  const auto& [exp_ident_to_binding, exp_undeclared_bindings] = ident_to_binding_references(src, act_ast);
+  const auto& [exp_ident_graph, exp_undeclared_bindings] = calculate_ident_graph(src, act_ast);
   const auto [exp_g, exp_types] = check_result(
-    type_check(exp, e, exp_ident_to_binding, exp_undeclared_bindings, exp_ast, std::move(exp_parse_types), debug));
+    type_check(exp, e, exp_ident_graph, exp_undeclared_bindings, exp_ast, std::move(exp_parse_types), debug));
 
   for(ASTID id : exp_ast.forest.ids()) {
     const TypeRef exp_type = exp_types[id.get()];
@@ -44,9 +44,9 @@ void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debu
 void test_tc_error(
   const Env& e, std::string_view src, const std::vector<ContextualError>& expected_errors, bool debug = false) {
   auto [act_ast, act_types] = check_result(type_name_resolution(e, src, parse_function2(src)));
-  const auto& [ident_to_binding, undeclared_bindings] = ident_to_binding_references(src, act_ast);
+  const auto& [ident_graph, undeclared_bindings] = calculate_ident_graph(src, act_ast);
   const auto errors =
-    check_error(type_check(src, e, ident_to_binding, undeclared_bindings, act_ast, std::move(act_types), debug));
+    check_error(type_check(src, e, ident_graph, undeclared_bindings, act_ast, std::move(act_types), debug));
   if(expected_errors != errors) {
     fmt::print("E {}\n", knot::debug(expected_errors));
     fmt::print("A {}\n", knot::debug(errors));
@@ -268,6 +268,14 @@ BOOST_AUTO_TEST_CASE(apply_fn_deduce_arg) {
 BOOST_AUTO_TEST_CASE(apply_fn_deduce_arg_ref) {
   test_tc(
     create_primative_env(), "(f: fn(_) -> i32, x:i32) -> _ = f(&x)", "(f: fn(&i32) -> i32, x: i32) -> i32 = f(&x)");
+}
+
+BOOST_AUTO_TEST_CASE(global_fn) { test_tc(create_primative_env(), "() -> _ = f()", "() -> _ = f()"); }
+
+BOOST_AUTO_TEST_CASE(global_fn_deduce) {
+  test_tc(create_primative_env(),
+          "(x: i32) -> i32 { let g = f; g(x) }",
+          "(x: i32) -> i32 { let g: fn(i32) -> i32 = f; g(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(parameter_tuple) {
@@ -584,7 +592,24 @@ BOOST_AUTO_TEST_CASE(unused_binding_ignore) {
 
 BOOST_AUTO_TEST_CASE(binding_reuse) {
   test_tc_error(create_primative_env(), "(x: string) -> _ = (x, x)", {{{1, 2}, "binding 'x' used 2 times"}});
-  test_tc_error(create_primative_env(), "(x) -> _ = (x, x)", {{{1, 2}, "binding 'x' used 2 times"}});
+}
+
+BOOST_AUTO_TEST_CASE(binding_reuse_floating) {
+  test_tc(create_primative_env(), "(x) -> _ = (x, x)", "(x) -> _ = (x, x)");
+}
+
+BOOST_AUTO_TEST_CASE(binding_reuse_both) {
+  test_tc_error(create_primative_env(),
+                "(x: string, y: i32) -> _ { let z = (x, y); (z, z) }",
+                {{{31, 32}, "binding 'z' used 2 times"}});
+}
+
+BOOST_AUTO_TEST_CASE(binding_ref_reuse) {
+  test_tc(create_primative_env(), "(x: &_) -> _ = f(x, x)", "(x: &_) -> _ = f(x, x)");
+}
+
+BOOST_AUTO_TEST_CASE(binding_ref_value_reuse) {
+  test_tc(create_primative_env(), "(x: _) -> _ = f(&x, x)", "(x: _) -> _ = f(&x, x)");
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse_copy) {

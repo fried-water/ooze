@@ -26,7 +26,7 @@ ContextualResult<Types> apply_language_rules(const Env&, const AST&, Types);
 ContextualResult<Types>
 type_check(std::string_view,
            const Env&,
-           const Map<ASTID, ASTID>& ident_to_binding,
+           const Graph<ASTID>& ident_graph,
            const std::vector<ASTID>& undeclared_bindings,
            const AST&,
            Types,

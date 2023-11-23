@@ -317,17 +317,13 @@ auto calculate_propagations(const TypedFunction& f) {
   return std::tuple(std::move(v.propagations), std::move(v.binding_usages), std::move(v.undeclared_bindings));
 }
 
-auto calculate_propagations(const Map<ASTID, ASTID>& ident_to_binding, const Forest<ASTTag, ASTID>& ast) {
+auto calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, ASTID>& ast) {
   std::vector<std::vector<ASTPropagation>> propagations(ast.size());
 
   const auto add_pair = [&](ASTID bottom, ASTID top, Propagation prop) {
     propagations[top.get()].push_back({bottom, true, prop});
     propagations[bottom.get()].push_back({top, false, prop});
   };
-
-  for(const auto [expr, binding] : ident_to_binding) {
-    add_pair(expr, binding, DirectProp{});
-  }
 
   for(ASTID id : ast.ids()) {
     const ASTTag tag = ast[id];
@@ -377,11 +373,15 @@ auto calculate_propagations(const Map<ASTID, ASTID>& ident_to_binding, const For
       add_pair(id, expr, FnOutputProp{});
       break;
     }
+    case ASTTag::ExprIdent: {
+      assert(ident_graph.num_fanout(id) <= 1);
+      if(ident_graph.num_fanout(id) == 1) {
+        add_pair(id, ident_graph.fanout(id)[0], DirectProp{});
+      }
+    }
     case ASTTag::ExprLiteral:
     case ASTTag::PatternIdent:
-    case ASTTag::ExprIdent:
     case ASTTag::PatternWildCard:
-
     case ASTTag::RootFn: break;
     }
   }
@@ -953,31 +953,31 @@ std::vector<TypeCheckError2> find_returned_borrows(const Forest<ASTTag, ASTID>& 
 }
 
 std::vector<TypeCheckError2> find_binding_usage_errors(
-  std::string_view src, const Env& e, const AST& ast, const Types& types, const Map<ASTID, ASTID>& ident_to_binding) {
-  const auto has_copy_type = [&](auto self, TypeRef t) -> bool {
-    if(const auto tag = types.graph.get<TypeTag>(t); tag == TypeTag::Leaf) {
-      return e.copy_types.find(types.graph.get<TypeID>(t)) != e.copy_types.end();
-    } else if(tag == TypeTag::Floating) {
-      return false;
-    } else {
-      return all_of(types.graph.fanout(t), [=](TypeRef t) { return self(self, t); });
+  std::string_view src, const Env& e, const AST& ast, const Types& types, const Graph<ASTID>& ident_graph) {
+  const auto has_non_copy_type = [&](auto self, TypeRef t) -> bool {
+    switch(types.graph.get<TypeTag>(t)) {
+    case TypeTag::Leaf: return e.copy_types.find(types.graph.get<TypeID>(t)) == e.copy_types.end();
+    case TypeTag::Tuple: return any_of(types.graph.fanout(t), [=](TypeRef t) { return self(self, t); });
+    case TypeTag::Floating: return false;
+    case TypeTag::Borrow: return false;
+    case TypeTag::Fn: return false;
     }
   };
 
-  Map<ASTID, int> binding_count;
-  for(const auto [expr, binding] : ident_to_binding) {
-    binding_count[binding]++;
-  }
+  const auto not_borrowed = [&](ASTID id) {
+    const auto parent = ast.forest.parent(id);
+    return !parent || ast.forest[*parent] != ASTTag::ExprBorrow;
+  };
 
   return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {
     const TypeRef t = types.ast_types[id.get()];
     if(ast.forest[id] != ASTTag::PatternIdent) {
       return std::nullopt;
-    } else if(const auto it = binding_count.find(id);
-              sv(src, ast.srcs[id.get()])[0] != '_' && it == binding_count.end()) {
+    } else if(sv(src, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
       return TypeCheckError2{UnusedBinding{}, id};
-    } else if(it != binding_count.end() && it->second > 1 && !has_copy_type(has_copy_type, types.ast_types[id.get()])) {
-      return TypeCheckError2{OverusedBinding{it->second}, id};
+    } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
+              has_non_copy_type(has_non_copy_type, types.ast_types[id.get()])) {
+      return TypeCheckError2{OverusedBinding{ident_graph.num_fanout(id)}, id};
     } else {
       return std::nullopt;
     }
@@ -1238,13 +1238,13 @@ std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunct
 ContextualResult<Types>
 type_check(std::string_view src,
            const Env& e,
-           const Map<ASTID, ASTID>& ident_to_binding,
+           const Graph<ASTID>& ident_graph,
            const std::vector<ASTID>& undeclared_bindings,
            const AST& ast,
            Types types,
            bool debug) {
   return apply_language_rules(e, ast, std::move(types)).and_then([&](Types types) {
-    const std::vector<std::vector<ASTPropagation>> propagations = calculate_propagations(ident_to_binding, ast.forest);
+    const std::vector<std::vector<ASTPropagation>> propagations = calculate_propagations(ident_graph, ast.forest);
 
     std::vector<TypeCheckError2> cp_errors;
     std::tie(types, cp_errors) =
@@ -1275,7 +1275,7 @@ type_check(std::string_view src,
                        flatten(std::move(cp_errors),
                                find_invalid_borrows(ast.forest, types),
                                find_returned_borrows(ast.forest, types),
-                               find_binding_usage_errors(src, e, ast, types, ident_to_binding))));
+                               find_binding_usage_errors(src, e, ast, types, ident_graph))));
 
     return value_or_errors(std::move(types), std::move(errors));
   });

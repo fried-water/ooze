@@ -301,145 +301,149 @@ BOOST_AUTO_TEST_CASE(or_only_undeclared_error) {
   test_or_error(e, "() -> _ = f(missing())", {{{12, 19}, "use of undeclared binding 'missing'"}});
 }
 
-BOOST_AUTO_TEST_CASE(ib_null) {
-  const auto [indent_to_binding, unbound] = ident_to_binding_references("", {});
-  BOOST_CHECK(indent_to_binding.empty());
+BOOST_AUTO_TEST_CASE(ig_null) {
+  const auto [ident_graph, unbound] = calculate_ident_graph("", {});
+  BOOST_CHECK(ident_graph == Graph<ASTID>{});
   BOOST_CHECK(unbound.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ib_unbound) {
+BOOST_AUTO_TEST_CASE(ig_unbound) {
   const std::string_view src = "x";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
-  BOOST_CHECK(indent_to_binding.empty());
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   check_range(std::array{ASTID{0}}, unbound);
 }
 
-BOOST_AUTO_TEST_CASE(ib_scope) {
+BOOST_AUTO_TEST_CASE(ig_scope) {
   // x, 1, assign, x, with
   const std::string_view src = "{ let x = 1; x}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
   BOOST_CHECK(unbound.empty());
 
-  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {}, {}, {ASTID{0}}, {}};
+  BOOST_CHECK(exp == ident_graph);
 }
 
-BOOST_AUTO_TEST_CASE(ib_unused) {
+BOOST_AUTO_TEST_CASE(ig_unused) {
   // x, 1, assign, 1, with
   const std::string_view src = "{ let x = 1; 1}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
-  BOOST_CHECK(indent_to_binding.empty());
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   BOOST_CHECK(unbound.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ib_multiple_uses) {
+BOOST_AUTO_TEST_CASE(ig_multiple_uses) {
   // x, 1, assign, x, x, tuple, with
   const std::string_view src = "{ let x = 1; (x, x)}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
   BOOST_CHECK(unbound.empty());
 
-  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}, {ASTID{4}, ASTID{0}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp =
+    std::vector<std::vector<ASTID>>{{ASTID{3}, ASTID{4}}, {}, {}, {ASTID{0}}, {ASTID{0}}, {}, {}};
+  BOOST_CHECK(exp == ident_graph);
 }
 
-BOOST_AUTO_TEST_CASE(ib_scope_and_unbound) {
+BOOST_AUTO_TEST_CASE(ig_scope_and_unbound) {
   // x, 1, assign, x, y, tuple, with
   const std::string_view src = "{ let x = 1; (x, y)}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {}, {}, {ASTID{0}}, {}, {}, {}};
+  BOOST_CHECK(exp == ident_graph);
   check_range(std::array{ASTID{4}}, unbound);
 }
 
-BOOST_AUTO_TEST_CASE(ib_scope_tuple) {
+BOOST_AUTO_TEST_CASE(ig_scope_tuple) {
   // x, y, (), 1, assign, x, y, tuple, with
   const std::string_view src = "{ let (x, y) = 1; (x, y)}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{5}, ASTID{0}}, {ASTID{6}, ASTID{1}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp =
+    std::vector<std::vector<ASTID>>{{ASTID{5}}, {ASTID{6}}, {}, {}, {}, {ASTID{0}}, {ASTID{1}}, {}, {}};
+  BOOST_CHECK(exp == ident_graph);
   BOOST_CHECK(unbound.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ib_self_assign) {
+BOOST_AUTO_TEST_CASE(ig_self_assign) {
   // x, x, assign, x, with
   const std::string_view src = "{ let x = x; x}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {}, {}, {ASTID{0}}, {}};
+  BOOST_CHECK(exp == ident_graph);
   check_range(std::array{ASTID{1}}, unbound);
 }
 
-BOOST_AUTO_TEST_CASE(ib_nested) {
+BOOST_AUTO_TEST_CASE(ig_nested) {
   // ((x, ((x, x, assign), x, with), assign), x, assign)
   const std::string_view src = "{ let x = { let x = x; x }; x}";
   const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{7}, ASTID{0}}, {ASTID{4}, ASTID{1}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp =
+    std::vector<std::vector<ASTID>>{{ASTID{7}}, {ASTID{4}}, {}, {}, {ASTID{1}}, {}, {}, {ASTID{0}}, {}};
+  BOOST_CHECK(exp == ident_graph);
   check_range(std::array{ASTID{2}}, unbound);
 }
 
-BOOST_AUTO_TEST_CASE(ib_fn) {
+BOOST_AUTO_TEST_CASE(ig_fn) {
   // x, (), x, fn
   const std::string_view src = "(x) -> T = x";
   const auto [ast, types] = check_result(parse_function2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{2}, ASTID{0}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{2}}, {}, {ASTID{0}}, {}};
+  BOOST_CHECK(exp == ident_graph);
   BOOST_CHECK(unbound.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ib_fn_tuple) {
+BOOST_AUTO_TEST_CASE(ig_fn_tuple) {
   // x, y, (), x, y, (), fn
   const std::string_view src = "(x, y) -> T = (x, y)";
   const auto [ast, types] = check_result(parse_function2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{3}, ASTID{0}}, {ASTID{4}, ASTID{1}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {ASTID{4}}, {}, {ASTID{0}}, {ASTID{1}}, {}, {}};
+  BOOST_CHECK(exp == ident_graph);
   BOOST_CHECK(unbound.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ib_fn_unbound) {
+BOOST_AUTO_TEST_CASE(ig_fn_unbound) {
   // (), x, fn
   const std::string_view src = "() -> T = x";
   const auto [ast, types] = check_result(parse_function2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  BOOST_CHECK(indent_to_binding.empty());
+  BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   check_range(std::array{ASTID{1}}, unbound);
 }
 
-BOOST_AUTO_TEST_CASE(ib_fn_unused) {
+BOOST_AUTO_TEST_CASE(ig_fn_unused) {
   // x, (), 1, fn
   const std::string_view src = "(x) -> T = 1";
   const auto [ast, types] = check_result(parse_function2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  BOOST_CHECK(indent_to_binding.empty());
+  BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   BOOST_CHECK(unbound.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ib_fn_nested) {
+BOOST_AUTO_TEST_CASE(ig_fn_nested) {
   // x, (), ((x, ((x, x, assign), x, with), assign), x, assign) fn
   const std::string_view src = "(x) -> T { let x = { let x = x; x }; x}";
   const auto [ast, types] = check_result(parse_function2(src));
-  const auto [indent_to_binding, unbound] = ident_to_binding_references(src, ast);
+  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
 
-  const Map<ASTID, ASTID> exp = {{ASTID{4}, ASTID{0}}, {ASTID{9}, ASTID{2}}, {ASTID{6}, ASTID{3}}};
-  BOOST_CHECK(exp == indent_to_binding);
+  const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{
+    {ASTID{4}}, {}, {ASTID{9}}, {ASTID{6}}, {ASTID{0}}, {}, {ASTID{3}}, {}, {}, {ASTID{2}}, {}, {}};
+  BOOST_CHECK(exp == ident_graph);
   BOOST_CHECK(unbound.empty());
 }
 

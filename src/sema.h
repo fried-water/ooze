@@ -16,7 +16,7 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<Named
 ContextualResult<std::vector<TypeID>>
 type_name_resolution(const Env&, std::string_view src, const Graph<TypeRef, TypeTag, Slice>&);
 
-std::tuple<Map<ASTID, ASTID>, std::vector<ASTID>> ident_to_binding_references(std::string_view src, const AST&);
+std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(std::string_view src, const AST&);
 
 TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 
