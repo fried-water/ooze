@@ -927,9 +927,9 @@ void find_returned_borrows(
       break;
     case ASTTag::ExprSelect:
     case ASTTag::ExprWith: {
-      auto children = forest.child_ids(id);
       // Skip first child for both With (assignment) and Select (condition)
-      for(ASTID id : IterRange(++children.begin(), children.end())) {
+      auto [_, rest] = forest.child_ids(id).match();
+      for(ASTID id : rest) {
         find_returned_borrows(forest, types, errors, id);
       }
 

@@ -249,37 +249,42 @@ void pretty_print(std::ostream& os,
     }
   };
 
-  const auto children = ast.forest.child_ids(id);
-  auto it = children.begin();
-
   switch(ast.forest[id]) {
   case ASTTag::PatternWildCard: os << "_"; return;
   case ASTTag::PatternIdent:
   case ASTTag::ExprIdent: os << sv(src, ast.srcs[id.get()]); return;
   case ASTTag::ExprLiteral: print_literal(os, lookup_literal(ast, id)); return;
-  case ASTTag::ExprCall:
-    pretty_print(os, src, e, ast, types, *it++, indentation);
-    pretty_print(os, src, e, ast, types, *it, indentation);
+  case ASTTag::ExprCall: {
+    const auto [callee, arg] = ast.forest.child_ids(id).take<2>();
+    pretty_print(os, src, e, ast, types, callee, indentation);
+    pretty_print(os, src, e, ast, types, arg, indentation);
     return;
-  case ASTTag::ExprBorrow: pretty_print(os << "&", src, e, ast, types, *it, indentation); return;
-  case ASTTag::ExprSelect:
-    pretty_print(os << "select ", src, e, ast, types, *it++, indentation);
-    pretty_print(os << " { ", src, e, ast, types, *it++, indentation);
-    pretty_print(os << " } else { ", src, e, ast, types, *it, indentation);
+  }
+  case ASTTag::ExprBorrow:
+    pretty_print(os << "&", src, e, ast, types, *ast.forest.first_child(id), indentation);
+    return;
+  case ASTTag::ExprSelect: {
+    const auto [cond, if_expr, else_expr] = ast.forest.child_ids(id).take<3>();
+    pretty_print(os << "select ", src, e, ast, types, cond, indentation);
+    pretty_print(os << " { ", src, e, ast, types, if_expr, indentation);
+    pretty_print(os << " } else { ", src, e, ast, types, else_expr, indentation);
     os << " }";
     return;
-  case ASTTag::Assignment:
-    print_binding(os << "let ", *it++);
-    pretty_print(os << " = ", src, e, ast, types, *it, indentation);
+  }
+  case ASTTag::Assignment: {
+    const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
+    print_binding(os << "let ", pattern);
+    pretty_print(os << " = ", src, e, ast, types, expr, indentation);
     return;
+  }
   case ASTTag::ExprWith:
     os << "{\n";
     while(ast.forest[id] == ASTTag::ExprWith) {
+      const auto [assignment, expr] = ast.forest.child_ids(id).take<2>();
       for(int i = 0; i < indentation + 1; i++) os << "  ";
-      pretty_print(os, src, e, ast, types, *it++, indentation + 1);
+      pretty_print(os, src, e, ast, types, assignment, indentation + 1);
       os << ";\n";
-      id = *it;
-      it = ast.forest.child_ids(id).begin();
+      id = expr;
     }
     for(int i = 0; i < indentation + 1; i++) os << "  ";
     pretty_print(os, src, e, ast, types, id, indentation + 1);
@@ -288,16 +293,14 @@ void pretty_print(std::ostream& os,
     os << "}";
     return;
   case ASTTag::Fn: {
-    const ASTID pattern = *it++;
-    const ASTID expr = *it;
-
-    const auto pattern_children = ast.forest.child_ids(pattern);
-    auto pattern_it = pattern_children.begin();
-
+    const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
     os << '(';
-    if(pattern_it != pattern_children.end()) {
-      print_binding(os, *pattern_it);
-      std::for_each(++pattern_it, children.end(), [&](ASTID c) { print_binding(os << ", ", c); });
+    if(!ast.forest.is_leaf(pattern)) {
+      const auto [pattern_first, pattern_rest] = ast.forest.child_ids(pattern).match();
+      print_binding(os, pattern_first);
+      for(ASTID c : pattern_rest) {
+        print_binding(os << ", ", c);
+      }
     }
     os << ')';
 
@@ -315,18 +318,21 @@ void pretty_print(std::ostream& os,
 
     return;
   }
-  case ASTTag::RootFn:
-    pretty_print(os << "fn ", src, e, ast, types, *it++, indentation);
-    pretty_print(os, src, e, ast, types, *it, indentation);
+  case ASTTag::RootFn: {
+    const auto [ident, fn] = ast.forest.child_ids(id).take<2>();
+    pretty_print(os << "fn ", src, e, ast, types, ident, indentation);
+    pretty_print(os, src, e, ast, types, fn, indentation);
     return;
+  }
   case ASTTag::PatternTuple:
   case ASTTag::ExprTuple:
     os << '(';
-    if(it != children.end()) {
-      pretty_print(os, src, e, ast, types, *it, indentation);
-      std::for_each(++it, children.end(), [&](ASTID c) {
+    if(!ast.forest.is_leaf(id)) {
+      const auto [first, rest] = ast.forest.child_ids(id).match();
+      pretty_print(os, src, e, ast, types, first, indentation);
+      for(ASTID c : rest) {
         pretty_print(os << ", ", src, e, ast, types, c, indentation);
-      });
+      }
     }
     os << ')';
     return;

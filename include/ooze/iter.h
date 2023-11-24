@@ -2,7 +2,9 @@
 
 #include "ooze/primitives.h"
 
+#include <cassert>
 #include <iterator>
+#include <tuple>
 
 namespace ooze {
 
@@ -47,6 +49,17 @@ class IterRange {
   Iter _begin;
   Iter _end;
 
+  template <size_t... Is>
+  auto take(std::index_sequence<Is...>) const {
+    auto it = begin();
+    auto next = [&](size_t) {
+      assert(it != end());
+      return *it++;
+    };
+
+    return std::tuple(next(Is)...);
+  }
+
 public:
   IterRange() = default;
   IterRange(Iter begin, Iter end) : _begin(std::move(begin)), _end(std::move(end)) {}
@@ -65,6 +78,17 @@ public:
 
   Iter begin() const { return _begin; }
   Iter end() const { return _end; }
+
+  template <size_t N>
+  auto take() const {
+    return take(std::make_index_sequence<N>());
+  }
+
+  auto match() const {
+    assert(!empty());
+    auto it = begin();
+    return std::tuple(*_begin, IterRange(++it, end()));
+  }
 
   friend bool operator==(const IterRange& lhs, const IterRange& rhs) {
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
