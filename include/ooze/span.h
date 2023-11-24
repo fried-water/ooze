@@ -36,6 +36,12 @@ public:
   const T* cbegin() const { return _begin; }
   const T* cend() const { return _end; }
 
+  auto rbegin() const { return std::make_reverse_iterator(_end); }
+  auto rend() const { return std::make_reverse_iterator(_begin); }
+
+  auto rcbegin() const { return std::make_reverse_iterator(_end); }
+  auto rcend() const { return std::make_reverse_iterator(_begin); }
+
   const T& front() const { return *_begin; }
   const T& back() const { return *(_end - 1); }
 

@@ -5,6 +5,8 @@
 #include "ooze/span.h"
 #include "ooze/strong_id.h"
 
+#include <vector>
+
 namespace ooze {
 
 template <typename ID, typename... Ts>
@@ -140,5 +142,20 @@ public:
   }
   KNOT_COMPAREABLE(Graph);
 };
+
+template <typename ID, typename... Ts, typename F>
+void preorder(const Graph<ID, Ts...>& g, ID start, F f) {
+  std::vector<ID> to_visit{start};
+
+  while(!to_visit.empty()) {
+    const ID id = to_visit.back();
+    to_visit.pop_back();
+
+    if(f(id)) {
+      const auto fanout = g.fanout(id);
+      to_visit.insert(to_visit.end(), fanout.rbegin(), fanout.rend());
+    }
+  }
+}
 
 } // namespace ooze
