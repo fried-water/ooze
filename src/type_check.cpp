@@ -569,43 +569,40 @@ cluster_adjacent(const std::vector<std::vector<ASTPropagation>>& propagations, s
   return groups;
 }
 
-ContextualError generate_error(std::string_view src,
-                               const Env& e,
-                               const std::vector<Slice>& refs,
-                               const Types& types,
-                               const TypeCheckError2& error) {
+ContextualError2 generate_error(
+  const SrcMap& sm, const Env& e, const std::vector<SrcRef>& refs, const Types& types, const TypeCheckError2& error) {
   const TypeRef type = types.ast_types[error.id.get()];
-  const Slice ref = refs[error.id.get()];
+  const SrcRef ref = refs[error.id.get()];
   return std::visit(
     Overloaded{
       [&](const MismatchedType2& m) {
-        return ContextualError{ref,
-                               fmt::format("expected {}, given {}",
-                                           pretty_print(e, types.graph, type),
-                                           pretty_print(e, types.graph, m.conflicting_type))};
+        return ContextualError2{ref,
+                                fmt::format("expected {}, given {}",
+                                            pretty_print(e, types.graph, type),
+                                            pretty_print(e, types.graph, m.conflicting_type))};
       },
       [&](const UnableToDeduce&) {
-        return ContextualError{
+        return ContextualError2{
           ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(e, types.graph, type))};
       },
       [&](const ReturnBorrow&) {
-        return ContextualError{ref, "cannot return a borrowed value"};
+        return ContextualError2{ref, "cannot return a borrowed value"};
       },
       [&](const InvalidBorrow& b) {
-        return ContextualError{ref, fmt::format("cannot borrow a {}", b.type)};
+        return ContextualError2{ref, fmt::format("cannot borrow a {}", b.type)};
       },
       [&](const UnusedBinding&) {
-        return ContextualError{
-          ref, fmt::format("unused binding '{}'", sv(src, ref)), {"prefix with an _ to silence this error"}};
+        return ContextualError2{
+          ref, fmt::format("unused binding '{}'", sv(sm, ref)), {"prefix with an _ to silence this error"}};
       },
       [&](const OverusedBinding& b) {
-        return ContextualError{ref, fmt::format("binding '{}' used {} times", sv(src, ref), b.count)};
+        return ContextualError2{ref, fmt::format("binding '{}' used {} times", sv(sm, ref), b.count)};
       }},
     error.type);
 }
 
-std::vector<ContextualError>
-generate_errors(std::string_view src,
+std::vector<ContextualError2>
+generate_errors(const SrcMap& sm,
                 const Env& e,
                 const AST& ast,
                 const Types& types,
@@ -620,7 +617,7 @@ generate_errors(std::string_view src,
             return knot::accumulate(types.graph.fanout(t), 1, [&](TypeRef fanout) { return self(self, fanout); });
           };
 
-          const Slice ref = ast.srcs[error.id.get()];
+          const SrcRef ref = ast.srcs[error.id.get()];
           const int complexity =
             type_complexity(type_complexity, types.ast_types[error.id.get()]) +
             std::visit(
@@ -631,17 +628,18 @@ generate_errors(std::string_view src,
             error.type.index(),
             ast.forest[error.id] == ASTTag::PatternWildCard,
             complexity,
-            ref.end,
-            ref.end - ref.begin,
-            ref.begin);
+            ref.file,
+            ref.slice.end,
+            size(ref.slice),
+            ref.slice.begin);
         };
 
         return generate_error(
-          src, e, ast.srcs, types, *std::min_element(group.begin(), group.end(), [&](const auto& lhs, const auto& rhs) {
+          sm, e, ast.srcs, types, *std::min_element(group.begin(), group.end(), [&](const auto& lhs, const auto& rhs) {
             return projection(lhs) < projection(rhs);
           }));
       }),
-    [](const auto& e) { return std::tie(e.ref.end, e); });
+    [](const auto& e) { return std::tie(e.ref.slice.end, e); });
 }
 
 std::pair<Map<Variable, Type<TypeID>>, std::vector<TypeCheckError>> constraint_propagation(
@@ -953,7 +951,7 @@ std::vector<TypeCheckError2> find_returned_borrows(const Forest<ASTTag, ASTID>& 
 }
 
 std::vector<TypeCheckError2> find_binding_usage_errors(
-  std::string_view src, const Env& e, const AST& ast, const Types& types, const Graph<ASTID>& ident_graph) {
+  const SrcMap& sm, const Env& e, const AST& ast, const Types& types, const Graph<ASTID>& ident_graph) {
   const auto has_non_copy_type = [&](auto self, TypeRef t) -> bool {
     switch(types.graph.get<TypeTag>(t)) {
     case TypeTag::Leaf: return e.copy_types.find(types.graph.get<TypeID>(t)) == e.copy_types.end();
@@ -973,7 +971,7 @@ std::vector<TypeCheckError2> find_binding_usage_errors(
     const TypeRef t = types.ast_types[id.get()];
     if(ast.forest[id] != ASTTag::PatternIdent) {
       return std::nullopt;
-    } else if(sv(src, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
+    } else if(sv(sm, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
       return TypeCheckError2{UnusedBinding{}, id};
     } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
               has_non_copy_type(has_non_copy_type, types.ast_types[id.get()])) {
@@ -1126,7 +1124,7 @@ TypeRef unify(Graph<TypeRef, TypeTag, TypeID>& g, TypeRef x, TypeRef y, bool rec
   }
 }
 
-ContextualResult<Types> apply_language_rules(const Env& e, const AST& ast, Types types) {
+ContextualResult2<Types> apply_language_rules(const Env& e, const AST& ast, Types types) {
   const TypeRef floating = types.graph.add_node(TypeTag::Floating, TypeID{});
   const TypeRef boolean = types.graph.add_node(TypeTag::Leaf, type_id(knot::Type<bool>{}));
   const TypeRef unit = types.graph.add_node(TypeTag::Tuple, TypeID{});
@@ -1138,7 +1136,7 @@ ContextualResult<Types> apply_language_rules(const Env& e, const AST& ast, Types
   types.graph.add_fanout_to_last_node(floating);
   types.graph.add_fanout_to_last_node(floating);
 
-  std::vector<ContextualError> errors;
+  std::vector<ContextualError2> errors;
 
   const auto apply_type = [&](ASTID id, TypeRef t) {
     const TypeRef unified =
@@ -1235,8 +1233,8 @@ std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunct
   return generate_errors(e, propagations, std::move(errors));
 }
 
-ContextualResult<Types>
-type_check(std::string_view src,
+ContextualResult2<Types>
+type_check(const SrcMap& sm,
            const Env& e,
            const Graph<ASTID>& ident_graph,
            const std::vector<ASTID>& undeclared_bindings,
@@ -1266,8 +1264,8 @@ type_check(std::string_view src,
       });
     };
 
-    std::vector<ContextualError> errors = generate_errors(
-      src,
+    std::vector<ContextualError2> errors = generate_errors(
+      sm,
       e,
       ast,
       types,
@@ -1275,7 +1273,7 @@ type_check(std::string_view src,
                        flatten(std::move(cp_errors),
                                find_invalid_borrows(ast.forest, types),
                                find_returned_borrows(ast.forest, types),
-                               find_binding_usage_errors(src, e, ast, types, ident_graph))));
+                               find_binding_usage_errors(sm, e, ast, types, ident_graph))));
 
     return value_or_errors(std::move(types), std::move(errors));
   });

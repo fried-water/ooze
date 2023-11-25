@@ -21,10 +21,10 @@ inline FunctionType<TypeID> type_of(const TypedFunction& f) { return {f.pattern.
 
 TypeRef unify(Graph<TypeRef, TypeTag, TypeID>&, TypeRef, TypeRef, bool recurse);
 
-ContextualResult<Types> apply_language_rules(const Env&, const AST&, Types);
+ContextualResult2<Types> apply_language_rules(const Env&, const AST&, Types);
 
-ContextualResult<Types>
-type_check(std::string_view,
+ContextualResult2<Types>
+type_check(const SrcMap&,
            const Env&,
            const Graph<ASTID>& ident_graph,
            const std::vector<ASTID>& undeclared_bindings,

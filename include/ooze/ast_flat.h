@@ -3,6 +3,7 @@
 #include "ooze/forest.h"
 #include "ooze/graph.h"
 #include "ooze/primitives.h"
+#include "ooze/src_map.h"
 #include "ooze/type.h"
 #include "ooze/type_flat.h"
 
@@ -56,7 +57,7 @@ using ASTID = StrongID<struct ASTSpace>;
 
 struct AST {
   Forest<ASTTag, ASTID> forest;
-  std::vector<Slice> srcs;
+  std::vector<SrcRef> srcs;
   std::vector<std::pair<ASTID, Literal>> literals;
 
   KNOT_COMPAREABLE(AST);
@@ -70,7 +71,7 @@ struct TypesGeneric {
   KNOT_COMPAREABLE(TypesGeneric);
 };
 
-using UnresolvedTypes = TypesGeneric<Slice>;
+using UnresolvedTypes = TypesGeneric<SrcRef>;
 using Types = TypesGeneric<TypeID>;
 
 inline const Literal& lookup_literal(const AST& ast, ASTID id) {

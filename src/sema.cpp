@@ -121,20 +121,20 @@ struct IdentGraphCtx {
   std::vector<std::pair<std::string_view, ASTID>> stack;
 };
 
-void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, std::string_view src, const AST& ast) {
+void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const AST& ast) {
   switch(ast.forest[id]) {
-  case ASTTag::PatternIdent: ctx.stack.emplace_back(sv(src, ast.srcs[id.get()]), id); break;
+  case ASTTag::PatternIdent: ctx.stack.emplace_back(sv(sm, ast.srcs[id.get()]), id); break;
   case ASTTag::Fn:
   case ASTTag::ExprWith: {
     const size_t original_size = ctx.stack.size();
     for(ASTID child : ast.forest.child_ids(id)) {
-      calculate_ident_graph(ctx, child, src, ast);
+      calculate_ident_graph(ctx, child, sm, ast);
     }
     ctx.stack.erase(ctx.stack.begin() + original_size, ctx.stack.end());
     break;
   }
   case ASTTag::ExprIdent: {
-    const std::string_view ident = sv(src, ast.srcs[id.get()]);
+    const std::string_view ident = sv(sm, ast.srcs[id.get()]);
     const auto it = std::find_if(
       ctx.stack.rbegin(), ctx.stack.rend(), applied([=](std::string_view v, ASTID) { return v == ident; }));
     if(it == ctx.stack.rend()) {
@@ -152,8 +152,8 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, std::string_view src, c
     const ASTID expr = *ast.forest.next_sibling(pattern);
 
     // Parse expr before pattern
-    calculate_ident_graph(ctx, expr, src, ast);
-    calculate_ident_graph(ctx, pattern, src, ast);
+    calculate_ident_graph(ctx, expr, sm, ast);
+    calculate_ident_graph(ctx, pattern, sm, ast);
     break;
   }
   case ASTTag::PatternWildCard:
@@ -164,7 +164,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, std::string_view src, c
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:
     for(ASTID child : ast.forest.child_ids(id)) {
-      calculate_ident_graph(ctx, child, src, ast);
+      calculate_ident_graph(ctx, child, sm, ast);
     }
     break;
   };
@@ -192,17 +192,17 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
-ContextualResult<std::vector<TypeID>>
-type_name_resolution(const Env& e, std::string_view src, const Graph<TypeRef, TypeTag, Slice>& type_graph) {
+ContextualResult2<std::vector<TypeID>>
+type_name_resolution(const SrcMap& sm, const Env& e, const Graph<TypeRef, TypeTag, SrcRef>& type_graph) {
   std::vector<TypeID> ids(type_graph.num_nodes(), TypeID::Invalid());
-  std::vector<ContextualError> errors;
+  std::vector<ContextualError2> errors;
 
   for(TypeRef t : type_graph.nodes()) {
     if(type_graph.get<TypeTag>(t) == TypeTag::Leaf) {
-      if(const auto it = e.type_ids.find(std::string(sv(src, type_graph.get<Slice>(t)))); it != e.type_ids.end()) {
+      if(const auto it = e.type_ids.find(std::string(sv(sm, type_graph.get<SrcRef>(t)))); it != e.type_ids.end()) {
         ids[t.get()] = it->second;
       } else {
-        errors.push_back(ContextualError{type_graph.get<Slice>(t), "undefined type"});
+        errors.push_back(ContextualError2{type_graph.get<SrcRef>(t), "undefined type"});
       }
     }
   }
@@ -210,11 +210,11 @@ type_name_resolution(const Env& e, std::string_view src, const Graph<TypeRef, Ty
   return value_or_errors(std::move(ids), std::move(errors));
 }
 
-std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(std::string_view src, const AST& ast) {
+std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap& sm, const AST& ast) {
   IdentGraphCtx ctx = {std::vector<std::vector<ASTID>>(ast.forest.size())};
 
   for(ASTID root : ast.forest.root_ids()) {
-    calculate_ident_graph(ctx, root, src, ast);
+    calculate_ident_graph(ctx, root, sm, ast);
   }
 
   return std::tuple(Graph<ASTID>(ctx.fanouts), std::move(ctx.unbound_exprs));

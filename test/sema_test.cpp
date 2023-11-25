@@ -54,8 +54,11 @@ void test_inferred_inputs(const Env& e,
 }
 
 void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp) {
-  const auto result = parse_function2(src).and_then(
-    applied([&](const AST& ast, const UnresolvedTypes& types) { return type_name_resolution(e, src, types.graph); }));
+  const SrcMap sm = {{"", std::string(src)}};
+  const auto result =
+    parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const UnresolvedTypes& types) {
+      return type_name_resolution(sm, e, types.graph);
+    }));
 
   BOOST_REQUIRE(result.has_value());
 
@@ -66,16 +69,17 @@ void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp)
   }
 }
 
-void test_nr_error(const Env& e, std::string_view src, const std::vector<ContextualError>& expected_errors) {
-  const auto result = parse_function2(src).and_then(
-    applied([&](const AST& ast, const UnresolvedTypes& types) { return type_name_resolution(e, src, types.graph); }));
+void test_nr_error(const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
+  const SrcMap sm = {{"", std::string(src)}};
+  const auto errors = check_error(
+    parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const UnresolvedTypes& types) {
+      return type_name_resolution(sm, e, types.graph);
+    })));
 
-  BOOST_REQUIRE(!result.has_value());
-
-  if(expected_errors != result.error()) {
+  if(expected_errors != errors) {
     fmt::print("E {}\n", knot::debug(expected_errors));
-    fmt::print("A {}\n", knot::debug(result.error()));
-    BOOST_CHECK(expected_errors == result.error());
+    fmt::print("A {}\n", knot::debug(errors));
+    BOOST_CHECK(expected_errors == errors);
   }
 }
 
@@ -156,21 +160,23 @@ BOOST_AUTO_TEST_CASE(nr_multi) {
 }
 
 BOOST_AUTO_TEST_CASE(nr_undefined_return) {
-  test_nr_error(create_primative_env(), "() -> abc = x", {{{6, 9}, "undefined type"}});
+  test_nr_error(create_primative_env(), "() -> abc = x", {{{SrcID{0}, {6, 9}}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(nr_undefined_arg) {
-  test_nr_error(create_primative_env(), "(x: abc) -> () = ()", {{{4, 7}, "undefined type"}});
+  test_nr_error(create_primative_env(), "(x: abc) -> () = ()", {{{SrcID{0}, {4, 7}}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(nr_undefined_let) {
-  test_nr_error(create_primative_env(), "() -> () { let x : abc = y; x }", {{{19, 22}, "undefined type"}});
+  test_nr_error(create_primative_env(), "() -> () { let x : abc = y; x }", {{{SrcID{0}, {19, 22}}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(nr_undefined_multi) {
   test_nr_error(create_primative_env(),
                 "(x: a) -> b { let x : c = y; x }",
-                {{{4, 5}, "undefined type"}, {{10, 11}, "undefined type"}, {{22, 23}, "undefined type"}});
+                {{{SrcID{0}, {4, 5}}, "undefined type"},
+                 {{SrcID{0}, {10, 11}}, "undefined type"},
+                 {{SrcID{0}, {22, 23}}, "undefined type"}});
 }
 
 BOOST_AUTO_TEST_CASE(or_function_return) {
@@ -302,24 +308,24 @@ BOOST_AUTO_TEST_CASE(or_only_undeclared_error) {
 }
 
 BOOST_AUTO_TEST_CASE(ig_null) {
-  const auto [ident_graph, unbound] = calculate_ident_graph("", {});
+  const auto [ident_graph, unbound] = calculate_ident_graph({}, {});
   BOOST_CHECK(ident_graph == Graph<ASTID>{});
   BOOST_CHECK(unbound.empty());
 }
 
 BOOST_AUTO_TEST_CASE(ig_unbound) {
-  const std::string_view src = "x";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "x"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
   BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   check_range(std::array{ASTID{0}}, unbound);
 }
 
 BOOST_AUTO_TEST_CASE(ig_scope) {
   // x, 1, assign, x, with
-  const std::string_view src = "{ let x = 1; x}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let x = 1; x}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
   BOOST_CHECK(unbound.empty());
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {}, {}, {ASTID{0}}, {}};
@@ -328,18 +334,18 @@ BOOST_AUTO_TEST_CASE(ig_scope) {
 
 BOOST_AUTO_TEST_CASE(ig_unused) {
   // x, 1, assign, 1, with
-  const std::string_view src = "{ let x = 1; 1}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let x = 1; 1}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
   BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   BOOST_CHECK(unbound.empty());
 }
 
 BOOST_AUTO_TEST_CASE(ig_multiple_uses) {
   // x, 1, assign, x, x, tuple, with
-  const std::string_view src = "{ let x = 1; (x, x)}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let x = 1; (x, x)}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
   BOOST_CHECK(unbound.empty());
 
   const Graph<ASTID> exp =
@@ -349,9 +355,9 @@ BOOST_AUTO_TEST_CASE(ig_multiple_uses) {
 
 BOOST_AUTO_TEST_CASE(ig_scope_and_unbound) {
   // x, 1, assign, x, y, tuple, with
-  const std::string_view src = "{ let x = 1; (x, y)}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let x = 1; (x, y)}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {}, {}, {ASTID{0}}, {}, {}, {}};
   BOOST_CHECK(exp == ident_graph);
@@ -360,9 +366,9 @@ BOOST_AUTO_TEST_CASE(ig_scope_and_unbound) {
 
 BOOST_AUTO_TEST_CASE(ig_scope_tuple) {
   // x, y, (), 1, assign, x, y, tuple, with
-  const std::string_view src = "{ let (x, y) = 1; (x, y)}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let (x, y) = 1; (x, y)}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp =
     std::vector<std::vector<ASTID>>{{ASTID{5}}, {ASTID{6}}, {}, {}, {}, {ASTID{0}}, {ASTID{1}}, {}, {}};
@@ -372,9 +378,9 @@ BOOST_AUTO_TEST_CASE(ig_scope_tuple) {
 
 BOOST_AUTO_TEST_CASE(ig_self_assign) {
   // x, x, assign, x, with
-  const std::string_view src = "{ let x = x; x}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let x = x; x}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {}, {}, {ASTID{0}}, {}};
   BOOST_CHECK(exp == ident_graph);
@@ -383,9 +389,9 @@ BOOST_AUTO_TEST_CASE(ig_self_assign) {
 
 BOOST_AUTO_TEST_CASE(ig_nested) {
   // ((x, ((x, x, assign), x, with), assign), x, assign)
-  const std::string_view src = "{ let x = { let x = x; x }; x}";
-  const auto [ast, types] = check_result(parse_expr2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "{ let x = { let x = x; x }; x}"}};
+  const auto [ast, types] = check_result(parse_expr2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp =
     std::vector<std::vector<ASTID>>{{ASTID{7}}, {ASTID{4}}, {}, {}, {ASTID{1}}, {}, {}, {ASTID{0}}, {}};
@@ -395,9 +401,9 @@ BOOST_AUTO_TEST_CASE(ig_nested) {
 
 BOOST_AUTO_TEST_CASE(ig_fn) {
   // x, (), x, fn
-  const std::string_view src = "(x) -> T = x";
-  const auto [ast, types] = check_result(parse_function2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "(x) -> T = x"}};
+  const auto [ast, types] = check_result(parse_function2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{2}}, {}, {ASTID{0}}, {}};
   BOOST_CHECK(exp == ident_graph);
@@ -406,9 +412,9 @@ BOOST_AUTO_TEST_CASE(ig_fn) {
 
 BOOST_AUTO_TEST_CASE(ig_fn_tuple) {
   // x, y, (), x, y, (), fn
-  const std::string_view src = "(x, y) -> T = (x, y)";
-  const auto [ast, types] = check_result(parse_function2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "(x, y) -> T = (x, y)"}};
+  const auto [ast, types] = check_result(parse_function2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {ASTID{4}}, {}, {ASTID{0}}, {ASTID{1}}, {}, {}};
   BOOST_CHECK(exp == ident_graph);
@@ -417,9 +423,9 @@ BOOST_AUTO_TEST_CASE(ig_fn_tuple) {
 
 BOOST_AUTO_TEST_CASE(ig_fn_unbound) {
   // (), x, fn
-  const std::string_view src = "() -> T = x";
-  const auto [ast, types] = check_result(parse_function2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "() -> T = x"}};
+  const auto [ast, types] = check_result(parse_function2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   check_range(std::array{ASTID{1}}, unbound);
@@ -427,9 +433,9 @@ BOOST_AUTO_TEST_CASE(ig_fn_unbound) {
 
 BOOST_AUTO_TEST_CASE(ig_fn_unused) {
   // x, (), 1, fn
-  const std::string_view src = "(x) -> T = 1";
-  const auto [ast, types] = check_result(parse_function2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "(x) -> T = 1"}};
+  const auto [ast, types] = check_result(parse_function2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
   BOOST_CHECK(unbound.empty());
@@ -437,9 +443,9 @@ BOOST_AUTO_TEST_CASE(ig_fn_unused) {
 
 BOOST_AUTO_TEST_CASE(ig_fn_nested) {
   // x, (), ((x, ((x, x, assign), x, with), assign), x, assign) fn
-  const std::string_view src = "(x) -> T { let x = { let x = x; x }; x}";
-  const auto [ast, types] = check_result(parse_function2(src));
-  const auto [ident_graph, unbound] = calculate_ident_graph(src, ast);
+  const SrcMap sm = {{"", "(x) -> T { let x = { let x = x; x }; x}"}};
+  const auto [ast, types] = check_result(parse_function2({}, {}, SrcID{0}, sm[0].src));
+  const auto [ident_graph, unbound] = calculate_ident_graph(sm, ast);
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{
     {ASTID{4}}, {}, {ASTID{9}}, {ASTID{6}}, {ASTID{0}}, {}, {ASTID{3}}, {}, {}, {ASTID{2}}, {}, {}};

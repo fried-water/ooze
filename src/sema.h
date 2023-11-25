@@ -13,19 +13,19 @@ ContextualResult<TypedPattern> type_name_resolution(const Env&, const UnTypedPat
 ContextualResult<TypedAssignment> type_name_resolution(const Env&, const UnTypedAssignment&);
 ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<NamedType>&);
 
-ContextualResult<std::vector<TypeID>>
-type_name_resolution(const Env&, std::string_view src, const Graph<TypeRef, TypeTag, Slice>&);
+ContextualResult2<std::vector<TypeID>>
+type_name_resolution(const SrcMap&, const Env&, const Graph<TypeRef, TypeTag, SrcRef>&);
 
-std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(std::string_view src, const AST&);
+std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap&, const AST&);
 
 TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 
 ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
 
-inline auto type_name_resolution(
-  const Env& e, std::string_view src, ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_result) {
+inline auto
+type_name_resolution(const SrcMap& sm, const Env& e, ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_result) {
   return std::move(parse_result).and_then(applied([&](AST ast, UnresolvedTypes types) {
-    return type_name_resolution(e, src, types.graph).map([&](auto type_ids) {
+    return type_name_resolution(sm, e, types.graph).map([&](auto type_ids) {
       auto&& [g, tags, slices] = std::move(types.graph).decompose();
       return std::tuple(std::move(ast),
                         Types{std::move(g).append_column(std::move(tags)).append_column(std::move(type_ids)),

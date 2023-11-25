@@ -14,18 +14,20 @@ namespace ooze {
 namespace {
 
 void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
-  auto [act_ast, act_parse_types] = check_result(type_name_resolution(e, src, parse_function2(src)));
-  auto [exp_ast, exp_parse_types] = check_result(type_name_resolution(e, exp, parse_function2(exp)));
+  const SrcMap sm = {{"src", std::string(src)}, {"exp", std::string(exp)}};
+
+  auto [act_ast, act_parse_types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{0}, src)));
+  auto [exp_ast, exp_parse_types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{1}, exp)));
 
   BOOST_REQUIRE(exp_ast.forest == act_ast.forest);
 
-  const auto& [act_ident_graph, undeclared_bindings] = calculate_ident_graph(src, act_ast);
+  const auto& [act_ident_graph, undeclared_bindings] = calculate_ident_graph(sm, act_ast);
   const auto [act_g, act_types] =
-    check_result(type_check(src, e, act_ident_graph, undeclared_bindings, act_ast, std::move(act_parse_types), debug));
+    check_result(type_check(sm, e, act_ident_graph, undeclared_bindings, act_ast, std::move(act_parse_types), debug));
 
-  const auto& [exp_ident_graph, exp_undeclared_bindings] = calculate_ident_graph(src, act_ast);
+  const auto& [exp_ident_graph, exp_undeclared_bindings] = calculate_ident_graph(sm, exp_ast);
   const auto [exp_g, exp_types] = check_result(
-    type_check(exp, e, exp_ident_graph, exp_undeclared_bindings, exp_ast, std::move(exp_parse_types), debug));
+    type_check(sm, e, exp_ident_graph, exp_undeclared_bindings, exp_ast, std::move(exp_parse_types), debug));
 
   for(ASTID id : exp_ast.forest.ids()) {
     const TypeRef exp_type = exp_types[id.get()];
@@ -42,11 +44,12 @@ void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debu
 }
 
 void test_tc_error(
-  const Env& e, std::string_view src, const std::vector<ContextualError>& expected_errors, bool debug = false) {
-  auto [act_ast, act_types] = check_result(type_name_resolution(e, src, parse_function2(src)));
-  const auto& [ident_graph, undeclared_bindings] = calculate_ident_graph(src, act_ast);
+  const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors, bool debug = false) {
+  const SrcMap sm = {{"src", std::string(src)}};
+  auto [act_ast, act_types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{0}, src)));
+  const auto& [ident_graph, undeclared_bindings] = calculate_ident_graph(sm, act_ast);
   const auto errors =
-    check_error(type_check(src, e, ident_graph, undeclared_bindings, act_ast, std::move(act_types), debug));
+    check_error(type_check(sm, e, ident_graph, undeclared_bindings, act_ast, std::move(act_types), debug));
   if(expected_errors != errors) {
     fmt::print("E {}\n", knot::debug(expected_errors));
     fmt::print("A {}\n", knot::debug(errors));
@@ -55,7 +58,8 @@ void test_tc_error(
 }
 
 auto type_graph_of(const Env& e, std::string_view src) {
-  return Get<1>{}(check_result(type_name_resolution(e, src, parse_type2(src)))).graph;
+  const SrcMap sm = {{"src", std::string(src)}};
+  return Get<1>{}(check_result(type_name_resolution(sm, e, parse_type2({}, {}, SrcID{0}, src)))).graph;
 };
 
 void test_unify(std::string_view exp, std::string_view x, std::string_view y, bool recurse = true) {
@@ -93,9 +97,10 @@ void test_unify_error(std::string_view x, std::string_view y, bool recurse = tru
 
 void test_alr_pass(std::string_view src,
                    std::vector<std::string> exp,
-                   ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_result) {
+                   ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_result) {
   const Env e = create_primative_env();
-  auto [ast, types] = check_result(type_name_resolution(e, src, std::move(parse_result)));
+  const SrcMap sm = {{"src", std::string(src)}};
+  auto [ast, types] = check_result(type_name_resolution(sm, e, std::move(parse_result)));
   const auto language_types = check_result(apply_language_rules(e, ast, std::move(types)));
 
   BOOST_REQUIRE_EQUAL(exp.size(), language_types.ast_types.size());
@@ -105,27 +110,29 @@ void test_alr_pass(std::string_view src,
 }
 
 void test_alr_expr(std::string_view src, std::vector<std::string> exp) {
-  return test_alr_pass(src, exp, parse_expr2(src));
+  return test_alr_pass(src, exp, parse_expr2({}, {}, SrcID{0}, src));
 }
 
 void test_alr_assign(std::string_view src, std::vector<std::string> exp) {
-  return test_alr_pass(src, exp, parse_assignment2(src));
+  return test_alr_pass(src, exp, parse_assignment2({}, {}, SrcID{0}, src));
 }
 
 void test_alr_fn(std::string_view src, std::vector<std::string> exp) {
-  return test_alr_pass(src, exp, parse_function2(src));
+  return test_alr_pass(src, exp, parse_function2({}, {}, SrcID{0}, src));
 }
 
-void test_alr_expr_error(std::string_view src, std::vector<ContextualError> exp) {
+void test_alr_expr_error(std::string_view src, std::vector<ContextualError2> exp) {
   const Env e = create_primative_env();
-  auto [ast, types] = check_result(type_name_resolution(e, src, parse_expr2(src)));
+  const SrcMap sm = {{"src", std::string(src)}};
+  auto [ast, types] = check_result(type_name_resolution(sm, e, parse_expr2({}, {}, SrcID{0}, src)));
   const auto act = check_error(apply_language_rules(e, ast, std::move(types)));
   BOOST_CHECK(exp == act);
 }
 
-void test_alr_assign_error(std::string_view src, std::vector<ContextualError> exp) {
+void test_alr_assign_error(std::string_view src, std::vector<ContextualError2> exp) {
   const Env e = create_primative_env();
-  auto [ast, types] = check_result(type_name_resolution(e, src, parse_assignment2(src)));
+  const SrcMap sm = {{"src", std::string(src)}};
+  auto [ast, types] = check_result(type_name_resolution(sm, e, parse_assignment2({}, {}, SrcID{0}, src)));
   const auto act = check_error(apply_language_rules(e, ast, std::move(types)));
   BOOST_CHECK(exp == act);
 }
@@ -194,7 +201,7 @@ BOOST_AUTO_TEST_CASE(expr) {
 
   test_alr_expr("select x { y } else { z }", {"bool", "_", "_", "_"});
 
-  test_alr_expr_error("1()", {{{0, 1}, "expected fn _ -> _, given i32"}});
+  test_alr_expr_error("1()", {{{SrcID{0}, {0, 1}}, "expected fn _ -> _, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(assign) {
@@ -203,8 +210,8 @@ BOOST_AUTO_TEST_CASE(assign) {
   test_alr_assign("let x: i32 = y", {"i32", "_", "()"});
   test_alr_assign("let (x): (i32) = y", {"_", "(i32)", "_", "()"});
 
-  test_alr_assign_error("let (): (i32) = y", {{{4, 6}, "expected (), given (i32)"}});
-  test_alr_assign_error("let (x): () = y", {{{4, 7}, "expected (_), given ()"}});
+  test_alr_assign_error("let (): (i32) = y", {{{SrcID{0}, {4, 6}}, "expected (), given (i32)"}});
+  test_alr_assign_error("let (x): () = y", {{{SrcID{0}, {4, 7}}, "expected (_), given ()"}});
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -499,91 +506,101 @@ BOOST_AUTO_TEST_CASE(borrow) {
 // }
 
 BOOST_AUTO_TEST_CASE(invalid_borrow_expr) {
-  test_tc_error(create_primative_env(), "() -> _ { let _ = &(1, 1); 1 }", {{{18, 25}, "cannot borrow a tuple"}});
-  test_tc_error(create_primative_env(), "() -> _ { let _ = &&1; 1 }", {{{18, 21}, "cannot borrow a borrow"}});
-  test_tc_error(create_primative_env(), "(x : (i32)) -> _ { let _ = &x; 1 }", {{{27, 29}, "cannot borrow a tuple"}});
+  test_tc_error(
+    create_primative_env(), "() -> _ { let _ = &(1, 1); 1 }", {{{SrcID{0}, {18, 25}}, "cannot borrow a tuple"}});
+  test_tc_error(
+    create_primative_env(), "() -> _ { let _ = &&1; 1 }", {{{SrcID{0}, {18, 21}}, "cannot borrow a borrow"}});
+  test_tc_error(
+    create_primative_env(), "(x : (i32)) -> _ { let _ = &x; 1 }", {{{SrcID{0}, {27, 29}}, "cannot borrow a tuple"}});
 }
 
 BOOST_AUTO_TEST_CASE(invalid_borrow_pattern) {
   // TODO update error to highlight type instead of pattern
-  test_tc_error(create_primative_env(), "(_ : &&i32) -> _ = 1", {{{1, 2}, "cannot borrow a borrow"}});
+  test_tc_error(create_primative_env(), "(_ : &&i32) -> _ = 1", {{{SrcID{0}, {1, 2}}, "cannot borrow a borrow"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_borrow) {
-  test_tc_error(create_primative_env(), "() -> _ = &1", {{{10, 12}, "cannot return a borrowed value"}});
-  test_tc_error(create_primative_env(), "() -> _ = (&1)", {{{11, 13}, "cannot return a borrowed value"}});
+  test_tc_error(create_primative_env(), "() -> _ = &1", {{{SrcID{0}, {10, 12}}, "cannot return a borrowed value"}});
+  test_tc_error(create_primative_env(), "() -> _ = (&1)", {{{SrcID{0}, {11, 13}}, "cannot return a borrowed value"}});
   test_tc_error(create_primative_env(),
                 "() -> _ = (&1, &2)",
-                {{{11, 13}, "cannot return a borrowed value"}, {{15, 17}, "cannot return a borrowed value"}});
+                {{{SrcID{0}, {11, 13}}, "cannot return a borrowed value"},
+                 {{SrcID{0}, {15, 17}}, "cannot return a borrowed value"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_borrow_ident) {
-  test_tc_error(create_primative_env(), "(x : &i32) -> _ = x", {{{18, 19}, "cannot return a borrowed value"}});
-  test_tc_error(create_primative_env(), "(x : &i32) -> _ = (x)", {{{19, 20}, "cannot return a borrowed value"}});
+  test_tc_error(
+    create_primative_env(), "(x : &i32) -> _ = x", {{{SrcID{0}, {18, 19}}, "cannot return a borrowed value"}});
+  test_tc_error(
+    create_primative_env(), "(x : &i32) -> _ = (x)", {{{SrcID{0}, {19, 20}}, "cannot return a borrowed value"}});
   test_tc_error(create_primative_env(),
                 "(x : &i32) -> _ = (x, x)",
-                {{{19, 20}, "cannot return a borrowed value"}, {{22, 23}, "cannot return a borrowed value"}});
+                {{{SrcID{0}, {19, 20}}, "cannot return a borrowed value"},
+                 {{SrcID{0}, {22, 23}}, "cannot return a borrowed value"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_floating_borrow) {
-  test_tc_error(create_primative_env(), "(x) -> _ = &x", {{{11, 13}, "cannot return a borrowed value"}});
-  test_tc_error(create_primative_env(), "(x : &_) -> _ = x", {{{16, 17}, "cannot return a borrowed value"}});
-  test_tc_error(create_primative_env(), "(x) -> _ = (&x)", {{{12, 14}, "cannot return a borrowed value"}});
+  test_tc_error(create_primative_env(), "(x) -> _ = &x", {{{SrcID{0}, {11, 13}}, "cannot return a borrowed value"}});
+  test_tc_error(
+    create_primative_env(), "(x : &_) -> _ = x", {{{SrcID{0}, {16, 17}}, "cannot return a borrowed value"}});
+  test_tc_error(create_primative_env(), "(x) -> _ = (&x)", {{{SrcID{0}, {12, 14}}, "cannot return a borrowed value"}});
 }
 
 BOOST_AUTO_TEST_CASE(pattern_mismatch) {
-  test_tc_error(create_primative_env(), "() -> () { let () = (1); () }", {{{15, 17}, "expected (), given (i32)"}});
-  test_tc_error({}, "() -> () { let (x) = (); () }", {{{15, 18}, "expected (_), given ()"}});
+  test_tc_error(
+    create_primative_env(), "() -> () { let () = (1); () }", {{{SrcID{0}, {15, 17}}, "expected (), given (i32)"}});
+  test_tc_error({}, "() -> () { let (x) = (); () }", {{{SrcID{0}, {15, 18}}, "expected (_), given ()"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_type_mismatch) {
-  test_tc_error(create_primative_env(), "() -> () = 1", {{{11, 12}, "expected i32, given ()"}});
-  test_tc_error(create_primative_env(), "() -> () = (1)", {{{11, 14}, "expected (_), given ()"}});
+  test_tc_error(create_primative_env(), "() -> () = 1", {{{SrcID{0}, {11, 12}}, "expected i32, given ()"}});
+  test_tc_error(create_primative_env(), "() -> () = (1)", {{{SrcID{0}, {11, 14}}, "expected (_), given ()"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_arity_mismatch) {
-  test_tc_error(
-    create_primative_env(), "() -> (i32, i32) = (1, 1, 1)", {{{19, 28}, "expected (_, _, _), given (i32, i32)"}});
+  test_tc_error(create_primative_env(),
+                "() -> (i32, i32) = (1, 1, 1)",
+                {{{SrcID{0}, {19, 28}}, "expected (_, _, _), given (i32, i32)"}});
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding) {
   test_tc_error(create_primative_env(),
                 "(x: i32) -> _ = 1",
-                {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {1, 2}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_tc_error(create_primative_env(),
                 "() -> _ { let x = 1; 1 }",
-                {{{14, 15}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {14, 15}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_tc_error(create_primative_env(),
                 "(x: i32) -> _ { let x = 1; x }",
-                {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {1, 2}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_tc_error(create_primative_env(),
                 "() -> _ { let x = 1; let x = 1; x }",
-                {{{14, 15}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {14, 15}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding_tuple) {
   test_tc_error(create_primative_env(),
                 "((x): (i32)) -> _ = 1",
-                {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {2, 3}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 
   test_tc_error(create_primative_env(),
                 "() -> _ { let (x) = (1); 1 }",
-                {{{15, 16}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {15, 16}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding_self_assign) {
   test_tc_error(create_primative_env(),
                 "(x: i32) -> _ { let x = x; 1 }",
-                {{{20, 21}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {20, 21}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding_scope) {
   test_tc_error(create_primative_env(),
                 "() -> _ { { let x = 1; 1 } }",
-                {{{16, 17}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {16, 17}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding_ignore) {
@@ -591,7 +608,8 @@ BOOST_AUTO_TEST_CASE(unused_binding_ignore) {
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse) {
-  test_tc_error(create_primative_env(), "(x: string) -> _ = (x, x)", {{{1, 2}, "binding 'x' used 2 times"}});
+  test_tc_error(
+    create_primative_env(), "(x: string) -> _ = (x, x)", {{{SrcID{0}, {1, 2}}, "binding 'x' used 2 times"}});
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse_floating) {
@@ -601,7 +619,7 @@ BOOST_AUTO_TEST_CASE(binding_reuse_floating) {
 BOOST_AUTO_TEST_CASE(binding_reuse_both) {
   test_tc_error(create_primative_env(),
                 "(x: string, y: i32) -> _ { let z = (x, y); (z, z) }",
-                {{{31, 32}, "binding 'z' used 2 times"}});
+                {{{SrcID{0}, {31, 32}}, "binding 'z' used 2 times"}});
 }
 
 BOOST_AUTO_TEST_CASE(binding_ref_reuse) {
@@ -619,41 +637,42 @@ BOOST_AUTO_TEST_CASE(binding_reuse_copy) {
 BOOST_AUTO_TEST_CASE(function_ident_reuse) {
   test_tc_error(create_primative_env(),
                 "(x: i32, x: i32) -> _ = x",
-                {{{1, 2}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {1, 2}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
   test_tc_error(create_primative_env(),
                 "((x, x): (i32, i32)) -> _ = x",
-                {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {2, 3}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
   test_tc_error(create_primative_env(),
                 "((x, (x)): (i32, (i32))) -> _ = x",
-                {{{2, 3}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
+                {{{SrcID{0}, {2, 3}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
 // BOOST_AUTO_TEST_CASE(wrong_arg_count) {
 //   Env env = create_primative_env();
 //   env.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(env, "() -> i32 = identity()", {{{20, 22}, "expected (), given (i32)"}});
+//   test_tc_error(env, "() -> i32 = identity()", {{{SrcID{0}, {20, 22}}, "expected (), given (i32)"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_arg) {
 //   Env env = create_primative_env();
 //   env.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(env, "(x: u32) -> i32 = identity(x)", {{{27, 28}, "expected u32, given i32"}});
+//   test_tc_error(env, "(x: u32) -> i32 = identity(x)", {{{SrcID{0}, {27, 28}}, "expected u32, given i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_bind_count) {
 //   Env env = create_primative_env();
 //   env.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(env, "(x: i32) -> i32 { let () = identity(x); x }", {{{27, 38}, "expected (), given i32"}});
+//   test_tc_error(env, "(x: i32) -> i32 { let () = identity(x); x }", {{{SrcID{0}, {27, 38}}, "expected (), given
+//   i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_return_count) {
 //   Env env = create_primative_env();
 //   env.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(env, "(x: i32) -> () = identity(x)", {{{17, 28}, "expected (), given i32"}});
+//   test_tc_error(env, "(x: i32) -> () = identity(x)", {{{SrcID{0}, {17, 28}}, "expected (), given i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(multi_overload_match) {
@@ -661,77 +680,79 @@ BOOST_AUTO_TEST_CASE(function_ident_reuse) {
 //   env.add_function("f", []() { return i32(); });
 //   env.add_function("f", []() { return f32(); });
 
-//   test_tc_error(env, "() -> (i32, f32) { let x = f(); (x, x) }", {{{23, 24}, "expected i32, given f32"}});
+//   test_tc_error(env, "() -> (i32, f32) { let x = f(); (x, x) }", {{{SrcID{0}, {23, 24}}, "expected i32, given
+//   f32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_arg_type) {
 //   Env e = create_primative_env();
 //   e.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(e, "(x: u32) -> i32 = identity(x)", {{{27, 28}, "expected u32, given i32"}});
+//   test_tc_error(e, "(x: u32) -> i32 = identity(x)", {{{SrcID{0}, {27, 28}}, "expected u32, given i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_bind_type) {
 //   Env e = create_primative_env();
 //   e.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(e, "(x: i32) -> i32 { let x: u32 = identity(x); x }", {{{22, 23}, "expected u32, given i32"}});
+//   test_tc_error(e, "(x: i32) -> i32 { let x: u32 = identity(x); x }", {{{SrcID{0}, {22, 23}}, "expected u32, given
+//   i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_return_type) {
 //   Env e = create_primative_env();
 //   e.add_function("identity", [](i32 x) { return x; });
 
-//   test_tc_error(e, "(x: i32) -> u32 = identity(x)", {{{18, 29}, "expected u32, given i32"}});
+//   test_tc_error(e, "(x: i32) -> u32 = identity(x)", {{{SrcID{0}, {18, 29}}, "expected u32, given i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(wrong_value_type) {
 //   Env e = create_primative_env();
 //   e.add_function("val", [](i32 x) {});
-//   test_tc_error(e, "(x: &i32) -> () = val(x)", {{{22, 23}, "expected &i32, given i32"}});
+//   test_tc_error(e, "(x: &i32) -> () = val(x)", {{{SrcID{0}, {22, 23}}, "expected &i32, given i32"}});
 // }
 
 // BOOST_AUTO_TEST_CASE(empty_tuple_as_arg) {
 //   Env e = create_primative_env();
 //   e.add_function("take", [](i32) {});
-//   test_tc_error(e, "() -> () = take(())", {{{16, 18}, "expected (), given i32"}});
+//   test_tc_error(e, "() -> () = take(())", {{{SrcID{0}, {16, 18}}, "expected (), given i32"}});
 // }
 
 BOOST_AUTO_TEST_CASE(wrong_type) {
   Env e = create_primative_env();
 
-  test_tc_error(e, "(x: i32) -> f32 = x", {{{1, 2}, "expected i32, given f32"}});
-  test_tc_error(e, "(x: i32) -> f32 { let y = x; y }", {{{22, 23}, "expected i32, given f32"}});
-  test_tc_error(e, "(x: i32) -> f32 { let y: i32 = x; y }", {{{34, 35}, "expected i32, given f32"}});
-  test_tc_error(e, "(x: i32) -> (f32) { let y: i32 = x; (y) }", {{{37, 38}, "expected i32, given f32"}});
-  test_tc_error(e, "(x: i32) -> f32 { let y: f32 = x; y }", {{{22, 23}, "expected f32, given i32"}});
-  test_tc_error(e, "() -> f32 = 1", {{{12, 13}, "expected i32, given f32"}});
-  test_tc_error(e, "() -> f32 { let x = 1; x }", {{{16, 17}, "expected i32, given f32"}});
-  test_tc_error(e, "() -> f32 { let x: f32 = 1; x }", {{{16, 17}, "expected f32, given i32"}});
+  test_tc_error(e, "(x: i32) -> f32 = x", {{{SrcID{0}, {1, 2}}, "expected i32, given f32"}});
+  test_tc_error(e, "(x: i32) -> f32 { let y = x; y }", {{{SrcID{0}, {22, 23}}, "expected i32, given f32"}});
+  test_tc_error(e, "(x: i32) -> f32 { let y: i32 = x; y }", {{{SrcID{0}, {34, 35}}, "expected i32, given f32"}});
+  test_tc_error(e, "(x: i32) -> (f32) { let y: i32 = x; (y) }", {{{SrcID{0}, {37, 38}}, "expected i32, given f32"}});
+  test_tc_error(e, "(x: i32) -> f32 { let y: f32 = x; y }", {{{SrcID{0}, {22, 23}}, "expected f32, given i32"}});
+  test_tc_error(e, "() -> f32 = 1", {{{SrcID{0}, {12, 13}}, "expected i32, given f32"}});
+  test_tc_error(e, "() -> f32 { let x = 1; x }", {{{SrcID{0}, {16, 17}}, "expected i32, given f32"}});
+  test_tc_error(e, "() -> f32 { let x: f32 = 1; x }", {{{SrcID{0}, {16, 17}}, "expected f32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_wrong_type_tuple_arg) {
-  test_tc_error(create_primative_env(), "((x): (i32)) -> f32 = x", {{{2, 3}, "expected i32, given f32"}});
+  test_tc_error(create_primative_env(), "((x): (i32)) -> f32 = x", {{{SrcID{0}, {2, 3}}, "expected i32, given f32"}});
 }
 
 BOOST_AUTO_TEST_CASE(missized_pattern) {
   Env e = create_primative_env();
 
-  test_tc_error(e, "(() : (_)) -> _ = 1", {{{1, 3}, "expected (), given (_)"}});
-  test_tc_error(e, "((x) : ()) -> _ = 1", {{{1, 4}, "expected (_), given ()"}});
-  test_tc_error(e, "((x) : (_, _)) -> _ = 1", {{{1, 4}, "expected (_), given (_, _)"}});
+  test_tc_error(e, "(() : (_)) -> _ = 1", {{{SrcID{0}, {1, 3}}, "expected (), given (_)"}});
+  test_tc_error(e, "((x) : ()) -> _ = 1", {{{SrcID{0}, {1, 4}}, "expected (_), given ()"}});
+  test_tc_error(e, "((x) : (_, _)) -> _ = 1", {{{SrcID{0}, {1, 4}}, "expected (_), given (_, _)"}});
 
-  test_tc_error(e, "() -> _ { let () = (1); 1 }", {{{14, 16}, "expected (), given (i32)"}});
-  test_tc_error(e, "() -> _ { let (x) = (); 1 }", {{{14, 17}, "expected (_), given ()"}});
-  test_tc_error(e, "() -> _ { let (x) = (1, 1); 1 }", {{{14, 17}, "expected (_), given (i32, i32)"}});
+  test_tc_error(e, "() -> _ { let () = (1); 1 }", {{{SrcID{0}, {14, 16}}, "expected (), given (i32)"}});
+  test_tc_error(e, "() -> _ { let (x) = (); 1 }", {{{SrcID{0}, {14, 17}}, "expected (_), given ()"}});
+  test_tc_error(e, "() -> _ { let (x) = (1, 1); 1 }", {{{SrcID{0}, {14, 17}}, "expected (_), given (i32, i32)"}});
 
-  test_tc_error(e, "(x) -> _ { let () : (_) = x; 1 }", {{{15, 17}, "expected (), given (_)"}});
-  test_tc_error(e, "(x) -> _ { let (x) : () = x; 1 }", {{{15, 18}, "expected (_), given ()"}});
-  test_tc_error(e, "(x) -> _ { let (x) : (_, _) = x; 1 }", {{{15, 18}, "expected (_), given (_, _)"}});
+  test_tc_error(e, "(x) -> _ { let () : (_) = x; 1 }", {{{SrcID{0}, {15, 17}}, "expected (), given (_)"}});
+  test_tc_error(e, "(x) -> _ { let (x) : () = x; 1 }", {{{SrcID{0}, {15, 18}}, "expected (_), given ()"}});
+  test_tc_error(e, "(x) -> _ { let (x) : (_, _) = x; 1 }", {{{SrcID{0}, {15, 18}}, "expected (_), given (_, _)"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_copy_ref_arg) {
-  test_tc_error(create_primative_env(), "(x: &i32) -> i32 = x", {{{1, 2}, "expected &i32, given i32"}});
+  test_tc_error(create_primative_env(), "(x: &i32) -> i32 = x", {{{SrcID{0}, {1, 2}}, "expected &i32, given i32"}});
 }
 
 BOOST_AUTO_TEST_SUITE_END()

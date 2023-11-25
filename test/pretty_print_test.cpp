@@ -9,39 +9,45 @@ namespace ooze {
 namespace {
 
 void test(std::string_view exp, std::string_view src) {
+  const SrcMap sm = {{"", std::string(src)}};
   const Env e = create_primative_env();
-  const auto [ast, types] = check_result(type_name_resolution(e, src, parse2(src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(src, e, ast, types));
+  const auto [ast, types] = check_result(type_name_resolution(sm, e, parse2({}, {}, SrcID{0}, src)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(sm, e, ast, types));
 }
 
 void test_pattern(std::string_view exp, std::string_view src) {
+  const SrcMap sm = {{"", std::string(src)}};
   const Env e = create_primative_env();
-  const auto [ast, types] = check_result(type_name_resolution(e, src, parse_pattern2(src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(src, e, ast, types));
+  const auto [ast, types] = check_result(type_name_resolution(sm, e, parse_pattern2({}, {}, SrcID{0}, src)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(sm, e, ast, types));
 }
 
 void test_type(std::string_view exp, std::string_view src) {
+  const SrcMap sm = {{"", std::string(src)}};
   const Env e = create_primative_env();
-  const auto [ast, types] = check_result(type_name_resolution(e, src, parse_type2(src)));
+  const auto [ast, types] = check_result(type_name_resolution(sm, e, parse_type2({}, {}, SrcID{0}, src)));
   BOOST_CHECK_EQUAL(exp, pretty_print(e, types.graph, TypeRef(types.graph.num_nodes() - 1)));
 }
 
 void test_expr(std::string_view exp, std::string_view src) {
+  const SrcMap sm = {{"", std::string(src)}};
   const Env e = create_primative_env();
-  const auto [ast, types] = check_result(type_name_resolution(e, src, parse_expr2(src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(src, e, ast, types));
+  const auto [ast, types] = check_result(type_name_resolution(sm, e, parse_expr2({}, {}, SrcID{0}, src)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(sm, e, ast, types));
 }
 
 void test_assign(std::string_view exp, std::string_view src) {
+  const SrcMap sm = {{"", std::string(src)}};
   const Env e = create_primative_env();
-  const auto [ast, types] = check_result(type_name_resolution(e, src, parse_assignment2(src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(src, e, ast, types));
+  const auto [ast, types] = check_result(type_name_resolution(sm, e, parse_assignment2({}, {}, SrcID{0}, src)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(sm, e, ast, types));
 }
 
 void test_fn(std::string_view exp, std::string_view src) {
+  const SrcMap sm = {{"", std::string(src)}};
   const Env e = create_primative_env();
-  const auto [ast, types] = check_result(type_name_resolution(e, src, parse_function2(src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(src, e, ast, types));
+  const auto [ast, types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{0}, src)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(sm, e, ast, types));
 }
 
 } // namespace

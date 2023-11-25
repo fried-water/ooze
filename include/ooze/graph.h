@@ -53,6 +53,11 @@ public:
     return static_cast<const std::vector<T>&>(*this)[as_integral(id)];
   }
 
+  template <typename T>
+  void set(ID id, T t) {
+    static_cast<std::vector<T>&>(*this)[as_integral(id)] = std::move(t);
+  }
+
   void add_graph(const Graph& g) {
     const auto node_offset = _indices.size() - 1;
     const auto edge_offset = _fanout.size();

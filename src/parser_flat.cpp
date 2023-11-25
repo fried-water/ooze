@@ -15,6 +15,7 @@ namespace {
 struct State {
   AST ast;
   UnresolvedTypes types;
+  SrcID src_id;
   std::string_view src;
 };
 
@@ -65,7 +66,7 @@ Slice char_slice(Span<Token> tokens, Slice token_slice) {
            : Slice{tokens[token_slice.begin].ref.begin, tokens[token_slice.end - 1].ref.end};
 }
 
-Slice join(Slice x, Slice y) { return {x.begin, y.end}; }
+SrcRef join(SrcRef x, SrcRef y) { return {x.file, {x.slice.begin, y.slice.end}}; }
 
 auto token_parser(TokenType type) {
   return transform(filter(any(), "token", [=](Token t) { return t.type == type; }), [](State& s, Token t) {
@@ -116,11 +117,11 @@ struct ASTAppender {
   }
 
   ASTID operator()(State& s, Span<Token> tokens, Slice ref, Span<ASTID> ids) const {
-    return (*this)(s, char_slice(tokens, ref), ids);
+    return (*this)(s, SrcRef{s.src_id, char_slice(tokens, ref)}, ids);
   }
 
-  ASTID operator()(State& s, Slice char_slice, Span<ASTID> ids) const {
-    s.ast.srcs.push_back(char_slice);
+  ASTID operator()(State& s, SrcRef ref, Span<ASTID> ids) const {
+    s.ast.srcs.push_back(ref);
     s.types.ast_types.push_back(_type);
     return s.ast.forest.append_root_post_order(_tag, ids);
   }
@@ -137,7 +138,7 @@ struct TypeAppender {
   }
 
   TypeRef operator()(State& s, Span<Token> tokens, Slice ref, Span<TypeRef> ids) const {
-    const TypeRef n = s.types.graph.add_node(_tag, char_slice(tokens, ref));
+    const TypeRef n = s.types.graph.add_node(_tag, SrcRef{s.src_id, char_slice(tokens, ref)});
     for(TypeRef child : ids) {
       s.types.graph.add_fanout_to_last_node(child);
     }
@@ -259,10 +260,11 @@ auto function() {
 auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::RootFn})); }
 
 template <typename Parser>
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_ast(Parser p, std::string_view src) {
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_ast(Parser p, AST ast, UnresolvedTypes types, SrcID src_id, std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
-  State state = {AST{}, UnresolvedTypes{}, src};
+  State state = {std::move(ast), std::move(types), src_id, src};
   auto [parse_slice, value, error] = p(state, Span<Token>{tokens}, {});
 
   assert(value || error);
@@ -270,32 +272,47 @@ ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_ast(Parser p, std::stri
   if(value && size(parse_slice) == tokens.size() && lex_end == src.size()) {
     return std::tuple(std::move(state.ast), std::move(state.types));
   } else {
-    return Failure{std::vector<ContextualError>{
-      {(error && error->second.pos < tokens.size()) ? tokens[error->second.pos].ref
-                                                    : Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1},
+    return Failure{std::vector<ContextualError2>{
+      {(error && error->second.pos < tokens.size())
+         ? SrcRef{src_id, tokens[error->second.pos].ref}
+         : SrcRef{src_id, Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1}},
        error ? fmt::format("expected {}", error->first) : fmt::format("unknown token")}}};
   }
 }
 
 } // namespace
 
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_expr2(std::string_view src) { return parse_ast(expr, src); }
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_repl2(std::string_view src);
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_function2(std::string_view src) {
-  return parse_ast(function(), src);
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_expr2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(expr, std::move(ast), std::move(types), id, src);
 }
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse2(std::string_view src) { return parse_ast(root(), src); }
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_repl2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src);
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_function2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(function(), std::move(ast), std::move(types), id, src);
+}
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(root(), std::move(ast), std::move(types), id, src);
+}
 
 // Exposed for unit testing
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_binding2(std::string_view src) {
-  return parse_ast(binding(), src);
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_binding2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(binding(), std::move(ast), std::move(types), id, src);
 }
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_assignment2(std::string_view src) {
-  return parse_ast(assignment(), src);
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_assignment2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(assignment(), std::move(ast), std::move(types), id, src);
 }
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_type2(std::string_view src) { return parse_ast(type, src); }
-ContextualResult<std::tuple<AST, UnresolvedTypes>> parse_pattern2(std::string_view src) {
-  return parse_ast(pattern, src);
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_type2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(type, std::move(ast), std::move(types), id, src);
+}
+ContextualResult2<std::tuple<AST, UnresolvedTypes>>
+parse_pattern2(AST ast, UnresolvedTypes types, SrcID id, std::string_view src) {
+  return parse_ast(pattern, std::move(ast), std::move(types), id, src);
 }
 
 } // namespace ooze
