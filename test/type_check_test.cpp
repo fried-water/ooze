@@ -13,6 +13,11 @@ namespace ooze {
 
 namespace {
 
+Graph<TypeRef, TypeTag, TypeID> remove_refs(TypeGraph full_graph) {
+  auto&& [g, tags, refs, ids] = std::move(full_graph).decompose();
+  return std::move(g).append_column(std::move(tags), std::move(ids));
+};
+
 void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
   const SrcMap sm = {{"src", std::string(src)}, {"exp", std::string(exp)}};
 
@@ -22,21 +27,27 @@ void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debu
   BOOST_REQUIRE(exp_ast.forest == act_ast.forest);
 
   const auto& [act_ident_graph, undeclared_bindings] = calculate_ident_graph(sm, act_ast);
-  const auto [act_g, act_types] =
+  const Types act_types =
     check_result(type_check(sm, e, act_ident_graph, undeclared_bindings, act_ast, std::move(act_parse_types), debug));
 
   const auto& [exp_ident_graph, exp_undeclared_bindings] = calculate_ident_graph(sm, exp_ast);
-  const auto [exp_g, exp_types] = check_result(
+  const Types exp_types = check_result(
     type_check(sm, e, exp_ident_graph, exp_undeclared_bindings, exp_ast, std::move(exp_parse_types), debug));
 
+  const auto exp_g = remove_refs(exp_types.graph);
+  const auto act_g = remove_refs(act_types.graph);
+
   for(ASTID id : exp_ast.forest.ids()) {
-    const TypeRef exp_type = exp_types[id.get()];
-    const TypeRef act_type = act_types[id.get()];
+    const TypeRef exp_type = exp_types.ast_types[id.get()];
+    const TypeRef act_type = act_types.ast_types[id.get()];
 
     const bool same_types = compare_dags(exp_g, act_g, exp_type, act_type);
 
     if(!same_types) {
-      fmt::print("{:<3} E: {} A: {}\n", id.get(), pretty_print(e, exp_g, exp_type), pretty_print(e, act_g, act_type));
+      fmt::print("{:<3} E: {} A: {}\n",
+                 id.get(),
+                 pretty_print(e, exp_types.graph, exp_type),
+                 pretty_print(e, act_types.graph, act_type));
     }
 
     BOOST_CHECK(same_types);
@@ -59,7 +70,7 @@ void test_tc_error(
 
 auto type_graph_of(const Env& e, std::string_view src) {
   const SrcMap sm = {{"src", std::string(src)}};
-  return Get<1>{}(check_result(type_name_resolution(sm, e, parse_type2({}, {}, SrcID{0}, src)))).graph;
+  return std::get<1>(check_result(type_name_resolution(sm, e, parse_type2({}, {}, SrcID{0}, src)))).graph;
 };
 
 void test_unify(std::string_view exp, std::string_view x, std::string_view y, bool recurse = true) {
@@ -75,10 +86,11 @@ void test_unify(std::string_view exp, std::string_view x, std::string_view y, bo
 
   const auto gexp = type_graph_of(e, exp);
 
-  const TypeRef unified = unify(g, xid, yid, recurse);
+  const TypeRef unified_type = unify(g, xid, yid, recurse);
+  const TypeRef exp_type = TypeRef{gexp.num_nodes() - 1};
 
-  BOOST_REQUIRE(unified != TypeRef::Invalid());
-  BOOST_CHECK(compare_dags(gexp, g, TypeRef{gexp.num_nodes() - 1}, unified));
+  BOOST_REQUIRE(unified_type != TypeRef::Invalid());
+  BOOST_CHECK(compare_dags(remove_refs(std::move(gexp)), remove_refs(std::move(g)), exp_type, unified_type));
 }
 
 void test_unify_error(std::string_view x, std::string_view y, bool recurse = true) {

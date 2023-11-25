@@ -63,16 +63,18 @@ struct AST {
   KNOT_COMPAREABLE(AST);
 };
 
-template <typename T>
+template <typename... Ts>
 struct TypesGeneric {
-  Graph<TypeRef, TypeTag, T> graph;
+  Graph<TypeRef, TypeTag, Ts...> graph;
   std::vector<TypeRef> ast_types;
 
   KNOT_COMPAREABLE(TypesGeneric);
 };
 
 using UnresolvedTypes = TypesGeneric<SrcRef>;
-using Types = TypesGeneric<TypeID>;
+using Types = TypesGeneric<SrcRef, TypeID>;
+
+using TypeGraph = Graph<TypeRef, TypeTag, SrcRef, TypeID>;
 
 inline const Literal& lookup_literal(const AST& ast, ASTID id) {
   return std::lower_bound(

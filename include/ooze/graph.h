@@ -113,9 +113,9 @@ public:
     (static_cast<std::vector<Ts>&>(*this).shrink_to_fit(), ...);
   }
 
-  template <typename T>
-  Graph<ID, Ts..., T> append_column(std::vector<T> c) && {
-    return {std::move(_indices), std::move(_fanout), static_cast<std::vector<Ts>&&>(*this)..., std::move(c)};
+  template <typename... Rs>
+  Graph<ID, Ts..., Rs...> append_column(std::vector<Rs>... rs) && {
+    return {std::move(_indices), std::move(_fanout), static_cast<std::vector<Ts>&&>(*this)..., std::move(rs)...};
   }
 
   std::tuple<Graph<ID>, std::vector<Ts>...> decompose() && {

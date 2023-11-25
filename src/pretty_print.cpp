@@ -204,7 +204,7 @@ void print_literal(std::ostream& os, const Literal& l) {
     l);
 }
 
-void pretty_print(std::ostream& os, const Env& e, const Graph<TypeRef, TypeTag, TypeID>& g, TypeRef t) {
+void pretty_print(std::ostream& os, const Env& e, const TypeGraph& g, TypeRef t) {
   const auto children = g.fanout(t);
 
   switch(g.get<TypeTag>(t)) {
@@ -385,7 +385,7 @@ std::string pretty_print(const SrcMap& sm, const Env& e, const AST& ast, const T
   return std::move(os).str();
 }
 
-std::string pretty_print(const Env& e, const Graph<TypeRef, TypeTag, TypeID>& g, TypeRef t) {
+std::string pretty_print(const Env& e, const TypeGraph& g, TypeRef t) {
   std::ostringstream os;
   pretty_print(os, e, g, t);
   return std::move(os).str();

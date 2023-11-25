@@ -26,10 +26,8 @@ inline auto
 type_name_resolution(const SrcMap& sm, const Env& e, ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_result) {
   return std::move(parse_result).and_then(applied([&](AST ast, UnresolvedTypes types) {
     return type_name_resolution(sm, e, types.graph).map([&](auto type_ids) {
-      auto&& [g, tags, slices] = std::move(types.graph).decompose();
       return std::tuple(std::move(ast),
-                        Types{std::move(g).append_column(std::move(tags)).append_column(std::move(type_ids)),
-                              std::move(types.ast_types)});
+                        Types{std::move(types.graph).append_column(std::move(type_ids)), std::move(types.ast_types)});
     });
   }));
 }

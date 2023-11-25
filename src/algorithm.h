@@ -94,6 +94,12 @@ std::vector<T> sorted(std::vector<T> v, P projection = {}) {
   return v;
 }
 
+template <typename T, typename P = Identity>
+std::vector<T> unique(std::vector<T> v) {
+  v.erase(std::unique(v.begin(), v.end()), v.end());
+  return v;
+}
+
 template <typename Range, typename F>
 bool any_of(const Range& range, F f) {
   return std::any_of(range.begin(), range.end(), f);

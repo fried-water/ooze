@@ -32,7 +32,7 @@ std::string pretty_print(const Env&, const CheckedExpr&);
 
 std::string pretty_print(const SrcMap&, const Env&, const AST&, const Types&, std::optional<ASTID> = {});
 
-std::string pretty_print(const Env&, const Graph<TypeRef, TypeTag, TypeID>&, TypeRef);
+std::string pretty_print(const Env&, const TypeGraph&, TypeRef);
 
 template <typename R, typename T>
 R untype(const Env& e, const T& t) {

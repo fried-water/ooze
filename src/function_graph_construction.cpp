@@ -68,8 +68,7 @@ int output_count_of(const Type<TypeID>& type) {
   return count;
 }
 
-std::vector<PassBy>
-pass_bys_of(const Env& e, const Graph<TypeRef, TypeTag, TypeID>& g, TypeRef t, std::vector<PassBy> pass_bys = {}) {
+std::vector<PassBy> pass_bys_of(const Env& e, const TypeGraph& g, TypeRef t, std::vector<PassBy> pass_bys = {}) {
   preorder(g, t, [&](TypeRef t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf:
@@ -87,7 +86,7 @@ pass_bys_of(const Env& e, const Graph<TypeRef, TypeTag, TypeID>& g, TypeRef t, s
   return pass_bys;
 }
 
-std::vector<bool> borrows_of(const Graph<TypeRef, TypeTag, TypeID>& g, const TypeRef& t) {
+std::vector<bool> borrows_of(const TypeGraph& g, const TypeRef& t) {
   std::vector<bool> borrows;
 
   preorder(g, t, [&](TypeRef t) {
@@ -105,7 +104,7 @@ std::vector<bool> borrows_of(const Graph<TypeRef, TypeTag, TypeID>& g, const Typ
   return borrows;
 }
 
-int output_count_of(const Graph<TypeRef, TypeTag, TypeID>& g, TypeRef t) {
+int output_count_of(const TypeGraph& g, TypeRef t) {
   int count = 0;
   preorder(g, t, [&](TypeRef t) {
     switch(g.get<TypeTag>(t)) {

@@ -19,7 +19,7 @@ std::vector<ContextualError> check_fully_resolved(const Env&, const TypedFunctio
 
 inline FunctionType<TypeID> type_of(const TypedFunction& f) { return {f.pattern.type, f.expr.type}; }
 
-TypeRef unify(Graph<TypeRef, TypeTag, TypeID>&, TypeRef, TypeRef, bool recurse);
+TypeRef unify(TypeGraph&, TypeRef, TypeRef, bool recurse);
 
 ContextualResult2<Types> apply_language_rules(const Env&, const AST&, Types);
 

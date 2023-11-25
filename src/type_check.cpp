@@ -193,12 +193,12 @@ Type<TypeID> propagated_type(Propagation p, bool wrap, Type<TypeID> t) {
     p);
 }
 
-TypeRef propagated_type(Graph<TypeRef, TypeTag, TypeID>& g, Propagation p, bool wrap, TypeRef t, TypeRef floating) {
+TypeRef propagated_type(TypeGraph& g, Propagation p, bool wrap, TypeRef t, TypeRef floating) {
   return std::visit(
     Overloaded{[&](DirectProp) { return t; },
                [&](TupleProp p) {
                  if(wrap) {
-                   const TypeRef type = g.add_node(TypeTag::Tuple, {});
+                   const TypeRef type = g.add_node(TypeTag::Tuple, {}, {});
                    for(int i = 0; i < p.size; i++) {
                      g.add_fanout_to_last_node(i == p.idx ? t : floating);
                    }
@@ -207,12 +207,12 @@ TypeRef propagated_type(Graph<TypeRef, TypeTag, TypeID>& g, Propagation p, bool 
                    return g.fanout(t)[p.idx];
                  }
                },
-               [&](BorrowProp) { return wrap ? g.add_node(std::array{t}, TypeTag::Borrow, {}) : g.fanout(t)[0]; },
+               [&](BorrowProp) { return wrap ? g.add_node(std::array{t}, TypeTag::Borrow, {}, {}) : g.fanout(t)[0]; },
                [&](FnInputProp) {
-                 return wrap ? g.add_node(std::array{t, floating}, TypeTag::Fn, {}) : g.fanout(t)[0];
+                 return wrap ? g.add_node(std::array{t, floating}, TypeTag::Fn, {}, {}) : g.fanout(t)[0];
                },
                [&](FnOutputProp) {
-                 return wrap ? g.add_node(std::array{floating, t}, TypeTag::Fn, {}) : g.fanout(t)[1];
+                 return wrap ? g.add_node(std::array{floating, t}, TypeTag::Fn, {}, {}) : g.fanout(t)[1];
                }},
     p);
 }
@@ -757,7 +757,7 @@ std::pair<Types, std::vector<TypeCheckError2>> constraint_propagation(
     }
   }
 
-  const TypeRef floating = types.graph.add_node(TypeTag::Floating, TypeID{});
+  const TypeRef floating = types.graph.add_node(TypeTag::Floating, {}, TypeID{});
 
   std::fill(types.ast_types.begin(), types.ast_types.end(), floating);
   std::vector<TypeRef> conflicting_types(ast.size(), TypeRef::Invalid());
@@ -1031,17 +1031,13 @@ ContextualResult<T> apply_language_rules(const Env& env, T t) {
   return value_or_errors(std::move(t), std::move(errors));
 }
 
-TypeRef language_rule(const AST& ast,
-                      Graph<TypeRef, TypeTag, TypeID>& g,
-                      ASTID id,
-                      TypeRef floating,
-                      TypeRef borrow,
-                      TypeRef fn,
-                      TypeRef unit) {
+TypeRef
+language_rule(const AST& ast, TypeGraph& g, ASTID id, TypeRef floating, TypeRef borrow, TypeRef fn, TypeRef unit) {
 
   switch(ast.forest[id]) {
   case ASTTag::ExprLiteral: {
     return g.add_node(TypeTag::Leaf,
+                      {},
                       std::visit([](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); },
                                  lookup_literal(ast, id)));
   }
@@ -1050,7 +1046,7 @@ TypeRef language_rule(const AST& ast,
 
   case ASTTag::PatternTuple:
   case ASTTag::ExprTuple: {
-    const TypeRef tuple = g.add_node(TypeTag::Tuple, TypeID{});
+    const TypeRef tuple = g.add_node(TypeTag::Tuple, {}, TypeID{});
     for(ASTID _ : ast.forest.child_ids(id)) {
       g.add_fanout_to_last_node(floating);
     }
@@ -1081,7 +1077,7 @@ std::vector<const TypedExpr*> undeclared_bindings(const TypedFunction& f) {
 
 std::optional<Type<TypeID>> unify_types(const Type<TypeID>& a, const Type<TypeID>& b) { return Unifier{}.unify(a, b); }
 
-TypeRef unify(Graph<TypeRef, TypeTag, TypeID>& g, TypeRef x, TypeRef y, bool recurse) {
+TypeRef unify(TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
   const TypeTag xt = g.get<TypeTag>(x);
   const TypeTag yt = g.get<TypeTag>(y);
 
@@ -1103,7 +1099,7 @@ TypeRef unify(Graph<TypeRef, TypeTag, TypeID>& g, TypeRef x, TypeRef y, bool rec
     i32 y_it = 0;
 
     std::vector<TypeRef> results;
-    const TypeRef floating = recurse ? TypeRef::Invalid() : g.add_node(TypeTag::Floating, TypeID::Invalid());
+    const TypeRef floating = recurse ? TypeRef::Invalid() : g.add_node(TypeTag::Floating, {}, TypeID::Invalid());
 
     for(; x_it != x_count && y_it != y_count; ++y_it, ++x_it) {
       const TypeRef c = recurse ? unify(g, g.fanout(x)[x_it], g.fanout(y)[y_it], true) : floating;
@@ -1115,7 +1111,7 @@ TypeRef unify(Graph<TypeRef, TypeTag, TypeID>& g, TypeRef x, TypeRef y, bool rec
     }
 
     if(x_it == x_count && y_it == y_count) {
-      const TypeRef id = g.add_node(xt, g.get<TypeID>(x));
+      const TypeRef id = g.add_node(xt, {}, g.get<TypeID>(x));
       for(TypeRef t : results) g.add_fanout_to_last_node(t);
       return id;
     } else {
@@ -1125,14 +1121,14 @@ TypeRef unify(Graph<TypeRef, TypeTag, TypeID>& g, TypeRef x, TypeRef y, bool rec
 }
 
 ContextualResult2<Types> apply_language_rules(const Env& e, const AST& ast, Types types) {
-  const TypeRef floating = types.graph.add_node(TypeTag::Floating, TypeID{});
-  const TypeRef boolean = types.graph.add_node(TypeTag::Leaf, type_id(knot::Type<bool>{}));
-  const TypeRef unit = types.graph.add_node(TypeTag::Tuple, TypeID{});
+  const TypeRef floating = types.graph.add_node(TypeTag::Floating, {}, TypeID{});
+  const TypeRef boolean = types.graph.add_node(TypeTag::Leaf, {}, type_id(knot::Type<bool>{}));
+  const TypeRef unit = types.graph.add_node(TypeTag::Tuple, {}, TypeID{});
 
-  const TypeRef borrow = types.graph.add_node(TypeTag::Borrow, TypeID{});
+  const TypeRef borrow = types.graph.add_node(TypeTag::Borrow, {}, TypeID{});
   types.graph.add_fanout_to_last_node(floating);
 
-  const TypeRef fn = types.graph.add_node(TypeTag::Fn, TypeID{});
+  const TypeRef fn = types.graph.add_node(TypeTag::Fn, {}, TypeID{});
   types.graph.add_fanout_to_last_node(floating);
   types.graph.add_fanout_to_last_node(floating);
 
