@@ -569,21 +569,20 @@ cluster_adjacent(const std::vector<std::vector<ASTPropagation>>& propagations, s
   return groups;
 }
 
-ContextualError2 generate_error(
-  const SrcMap& sm, const Env& e, const std::vector<SrcRef>& refs, const Types& types, const TypeCheckError2& error) {
-  const TypeRef type = types.ast_types[error.id.get()];
-  const SrcRef ref = refs[error.id.get()];
+ContextualError2
+generate_error(const SrcMap& sm, const Env& e, const AST& ast, const TypeGraph& tg, const TypeCheckError2& error) {
+  const TypeRef type = ast.types[error.id.get()];
+  const SrcRef ref = ast.srcs[error.id.get()];
   return std::visit(
     Overloaded{
       [&](const MismatchedType2& m) {
-        return ContextualError2{ref,
-                                fmt::format("expected {}, given {}",
-                                            pretty_print(e, types.graph, type),
-                                            pretty_print(e, types.graph, m.conflicting_type))};
+        return ContextualError2{
+          ref,
+          fmt::format("expected {}, given {}", pretty_print(e, tg, type), pretty_print(e, tg, m.conflicting_type))};
       },
       [&](const UnableToDeduce&) {
         return ContextualError2{
-          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(e, types.graph, type))};
+          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(e, tg, type))};
       },
       [&](const ReturnBorrow&) {
         return ContextualError2{ref, "cannot return a borrowed value"};
@@ -605,7 +604,7 @@ std::vector<ContextualError2>
 generate_errors(const SrcMap& sm,
                 const Env& e,
                 const AST& ast,
-                const Types& types,
+                const TypeGraph& tg,
                 std::vector<std::vector<TypeCheckError2>> error_clusters) {
   // Find most *relevant* error per cluster
   return sorted(
@@ -614,12 +613,12 @@ generate_errors(const SrcMap& sm,
       [&](const std::vector<TypeCheckError2>& group) {
         const auto projection = [&](const TypeCheckError2& error) {
           const auto type_complexity = [&](auto self, TypeRef t) -> i32 {
-            return knot::accumulate(types.graph.fanout(t), 1, [&](TypeRef fanout) { return self(self, fanout); });
+            return knot::accumulate(tg.fanout(t), 1, [&](TypeRef fanout) { return self(self, fanout); });
           };
 
           const SrcRef ref = ast.srcs[error.id.get()];
           const int complexity =
-            type_complexity(type_complexity, types.ast_types[error.id.get()]) +
+            type_complexity(type_complexity, ast.types[error.id.get()]) +
             std::visit(
               Overloaded{[&](const MismatchedType2& m) { return type_complexity(type_complexity, m.conflicting_type); },
                          [](const auto&) { return 0; }},
@@ -635,7 +634,7 @@ generate_errors(const SrcMap& sm,
         };
 
         return generate_error(
-          sm, e, ast.srcs, types, *std::min_element(group.begin(), group.end(), [&](const auto& lhs, const auto& rhs) {
+          sm, e, ast, tg, *std::min_element(group.begin(), group.end(), [&](const auto& lhs, const auto& rhs) {
             return projection(lhs) < projection(rhs);
           }));
       }),
@@ -742,43 +741,44 @@ std::pair<Map<Variable, Type<TypeID>>, std::vector<TypeCheckError>> constraint_p
           })};
 }
 
-std::pair<Types, std::vector<TypeCheckError2>> constraint_propagation(
+std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constraint_propagation(
   const Env& e,
   const std::vector<std::vector<ASTPropagation>>& propagations,
   const std::vector<ASTID> undeclared_bindings,
-  const Forest<ASTTag, ASTID>& ast,
-  Types types,
+  const Forest<ASTTag, ASTID>& forest,
+  TypeGraph tg,
+  std::vector<TypeRef> types,
   bool debug = false) {
   std::deque<std::pair<ASTID, TypeRef>> to_visit;
 
-  for(ASTID id : ast.ids()) {
-    if(types.graph.get<TypeTag>(types.ast_types[id.get()]) != TypeTag::Floating) {
-      to_visit.emplace_back(id, types.ast_types[id.get()]);
+  for(ASTID id : forest.ids()) {
+    if(tg.get<TypeTag>(types[id.get()]) != TypeTag::Floating) {
+      to_visit.emplace_back(id, types[id.get()]);
     }
   }
 
-  const TypeRef floating = types.graph.add_node(TypeTag::Floating, {}, TypeID{});
+  const TypeRef floating = tg.add_node(TypeTag::Floating, {}, TypeID{});
 
-  std::fill(types.ast_types.begin(), types.ast_types.end(), floating);
-  std::vector<TypeRef> conflicting_types(ast.size(), TypeRef::Invalid());
+  std::fill(types.begin(), types.end(), floating);
+  std::vector<TypeRef> conflicting_types(forest.size(), TypeRef::Invalid());
 
   while(!to_visit.empty()) {
     const auto [id, type] = std::move(to_visit.front());
     to_visit.pop_front();
 
-    const TypeRef original_type = types.ast_types[id.get()];
+    const TypeRef original_type = types[id.get()];
 
     if(debug) {
       fmt::print("Processing {} {}\n   propagated {}\n   existing   {}\n",
                  id.get(),
-                 knot::debug(ast[id]),
-                 pretty_print(e, types.graph, type),
-                 pretty_print(e, types.graph, original_type));
+                 knot::debug(forest[id]),
+                 pretty_print(e, tg, type),
+                 pretty_print(e, tg, original_type));
     }
 
     // Apply propagated type
-    if(const TypeRef unified = unify(types.graph, original_type, type, true); unified.is_valid()) {
-      types.ast_types[id.get()] = unified;
+    if(const TypeRef unified = unify(tg, original_type, type, true); unified.is_valid()) {
+      types[id.get()] = unified;
     } else {
       conflicting_types[id.get()] = type;
     }
@@ -786,16 +786,15 @@ std::pair<Types, std::vector<TypeCheckError2>> constraint_propagation(
     // TODO: Attempt overload resolution
 
     if(debug) {
-      fmt::print("   final      {}\n", pretty_print(e, types.graph, types.ast_types[id.get()]));
+      fmt::print("   final      {}\n", pretty_print(e, tg, types[id.get()]));
     }
 
-    if(!compare_dags(types.graph, original_type, types.ast_types[id.get()])) {
+    if(!compare_dags(tg, original_type, types[id.get()])) {
       for(const auto [dst, wrap, propagation] : propagations[id.get()]) {
-        const TypeRef ptype = propagated_type(types.graph, propagation, wrap, types.ast_types[id.get()], floating);
+        const TypeRef ptype = propagated_type(tg, propagation, wrap, types[id.get()], floating);
 
         if(debug) {
-          fmt::print(
-            " propagating {} -> {} {}\n", pretty_print(e, types.graph, ptype), dst.get(), knot::debug(ast[dst]));
+          fmt::print(" propagating {} -> {} {}\n", pretty_print(e, tg, ptype), dst.get(), knot::debug(forest[dst]));
         }
 
         to_visit.emplace_back(dst, ptype);
@@ -805,21 +804,18 @@ std::pair<Types, std::vector<TypeCheckError2>> constraint_propagation(
 
   if(debug) {
     fmt::print("Final types\n");
-    for(ASTID id : ast.ids()) {
-      fmt::print("    {:<4} {:<25} = {}",
-                 id.get(),
-                 knot::debug(ast[id]),
-                 pretty_print(e, types.graph, types.ast_types[id.get()]));
+    for(ASTID id : forest.ids()) {
+      fmt::print("    {:<4} {:<25} = {}", id.get(), knot::debug(forest[id]), pretty_print(e, tg, types[id.get()]));
 
       if(conflicting_types[id.get()].is_valid()) {
-        fmt::print(" (conflicting {})", pretty_print(e, types.graph, conflicting_types[id.get()]));
+        fmt::print(" (conflicting {})", pretty_print(e, tg, conflicting_types[id.get()]));
       }
 
       fmt::print("\n");
     }
   }
 
-  return {std::move(types), transform_filter_to_vec(ast.ids(), [&](ASTID id) {
+  return {std::move(tg), std::move(types), transform_filter_to_vec(forest.ids(), [&](ASTID id) {
             const TypeRef t = conflicting_types[id.get()];
             return t.is_valid() ? std::optional(TypeCheckError2{MismatchedType2{t}, id}) : std::nullopt;
           })};
@@ -899,19 +895,18 @@ std::vector<TypeCheckError> find_binding_usage_errors(
   return errors;
 }
 
-void find_returned_borrows(
-  const Forest<ASTTag, ASTID>& forest, const Types& types, std::vector<TypeCheckError2>& errors, ASTID id) {
+void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<TypeCheckError2>& errors, ASTID id) {
   const auto has_borrow = [&](auto self, TypeRef t) -> bool {
-    const TypeTag tag = types.graph.get<TypeTag>(t);
+    const TypeTag tag = tg.get<TypeTag>(t);
     return tag == TypeTag::Borrow ||
-           (tag == TypeTag::Tuple && any_of(types.graph.fanout(t), [&](TypeRef c) { return self(self, c); }));
+           (tag == TypeTag::Tuple && any_of(tg.fanout(t), [&](TypeRef c) { return self(self, c); }));
   };
 
-  const TypeRef type = types.ast_types[id.get()];
-  if(types.graph.get<TypeTag>(type) == TypeTag::Borrow) {
+  const TypeRef type = ast.types[id.get()];
+  if(tg.get<TypeTag>(type) == TypeTag::Borrow) {
     errors.push_back({ReturnBorrow{}, id});
   } else {
-    switch(forest[id]) {
+    switch(ast.forest[id]) {
     case ASTTag::ExprCall:
     case ASTTag::ExprIdent:
       if(has_borrow(has_borrow, type)) {
@@ -919,16 +914,16 @@ void find_returned_borrows(
       }
       break;
     case ASTTag::ExprTuple:
-      for(ASTID id : forest.child_ids(id)) {
-        find_returned_borrows(forest, types, errors, id);
+      for(ASTID id : ast.forest.child_ids(id)) {
+        find_returned_borrows(ast, tg, errors, id);
       }
       break;
     case ASTTag::ExprSelect:
     case ASTTag::ExprWith: {
       // Skip first child for both With (assignment) and Select (condition)
-      auto [_, rest] = forest.child_ids(id).match();
+      auto [_, rest] = ast.forest.child_ids(id).match();
       for(ASTID id : rest) {
-        find_returned_borrows(forest, types, errors, id);
+        find_returned_borrows(ast, tg, errors, id);
       }
 
       break;
@@ -938,12 +933,12 @@ void find_returned_borrows(
   }
 }
 
-std::vector<TypeCheckError2> find_returned_borrows(const Forest<ASTTag, ASTID>& forest, const Types& types) {
+std::vector<TypeCheckError2> find_returned_borrows(const AST& ast, const TypeGraph& tg) {
   std::vector<TypeCheckError2> errors;
 
-  for(ASTID id : forest.ids()) {
-    if(forest[id] == ASTTag::Fn) {
-      find_returned_borrows(forest, types, errors, *++forest.child_ids(id).begin());
+  for(ASTID id : ast.forest.ids()) {
+    if(ast.forest[id] == ASTTag::Fn) {
+      find_returned_borrows(ast, tg, errors, ast.forest.child_ids(id).get<1>());
     }
   }
 
@@ -951,11 +946,11 @@ std::vector<TypeCheckError2> find_returned_borrows(const Forest<ASTTag, ASTID>& 
 }
 
 std::vector<TypeCheckError2> find_binding_usage_errors(
-  const SrcMap& sm, const Env& e, const AST& ast, const Types& types, const Graph<ASTID>& ident_graph) {
+  const SrcMap& sm, const Env& e, const AST& ast, const TypeGraph& tg, const Graph<ASTID>& ident_graph) {
   const auto has_non_copy_type = [&](auto self, TypeRef t) -> bool {
-    switch(types.graph.get<TypeTag>(t)) {
-    case TypeTag::Leaf: return e.copy_types.find(types.graph.get<TypeID>(t)) == e.copy_types.end();
-    case TypeTag::Tuple: return any_of(types.graph.fanout(t), [=](TypeRef t) { return self(self, t); });
+    switch(tg.get<TypeTag>(t)) {
+    case TypeTag::Leaf: return e.copy_types.find(tg.get<TypeID>(t)) == e.copy_types.end();
+    case TypeTag::Tuple: return any_of(tg.fanout(t), [=](TypeRef t) { return self(self, t); });
     case TypeTag::Floating: return false;
     case TypeTag::Borrow: return false;
     case TypeTag::Fn: return false;
@@ -968,13 +963,13 @@ std::vector<TypeCheckError2> find_binding_usage_errors(
   };
 
   return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {
-    const TypeRef t = types.ast_types[id.get()];
+    const TypeRef t = ast.types[id.get()];
     if(ast.forest[id] != ASTTag::PatternIdent) {
       return std::nullopt;
     } else if(sv(sm, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
       return TypeCheckError2{UnusedBinding{}, id};
     } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
-              has_non_copy_type(has_non_copy_type, types.ast_types[id.get()])) {
+              has_non_copy_type(has_non_copy_type, ast.types[id.get()])) {
       return TypeCheckError2{OverusedBinding{ident_graph.num_fanout(id)}, id};
     } else {
       return std::nullopt;
@@ -1120,35 +1115,33 @@ TypeRef unify(TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
   }
 }
 
-ContextualResult2<Types> apply_language_rules(const Env& e, const AST& ast, Types types) {
-  const TypeRef floating = types.graph.add_node(TypeTag::Floating, {}, TypeID{});
-  const TypeRef boolean = types.graph.add_node(TypeTag::Leaf, {}, type_id(knot::Type<bool>{}));
-  const TypeRef unit = types.graph.add_node(TypeTag::Tuple, {}, TypeID{});
+ContextualResult2<std::pair<AST, TypeGraph>> apply_language_rules(const Env& e, AST ast, TypeGraph tg) {
+  const TypeRef floating = tg.add_node(TypeTag::Floating, {}, TypeID{});
+  const TypeRef boolean = tg.add_node(TypeTag::Leaf, {}, type_id(knot::Type<bool>{}));
+  const TypeRef unit = tg.add_node(TypeTag::Tuple, {}, TypeID{});
 
-  const TypeRef borrow = types.graph.add_node(TypeTag::Borrow, {}, TypeID{});
-  types.graph.add_fanout_to_last_node(floating);
+  const TypeRef borrow = tg.add_node(TypeTag::Borrow, {}, TypeID{});
+  tg.add_fanout_to_last_node(floating);
 
-  const TypeRef fn = types.graph.add_node(TypeTag::Fn, {}, TypeID{});
-  types.graph.add_fanout_to_last_node(floating);
-  types.graph.add_fanout_to_last_node(floating);
+  const TypeRef fn = tg.add_node(TypeTag::Fn, {}, TypeID{});
+  tg.add_fanout_to_last_node(floating);
+  tg.add_fanout_to_last_node(floating);
 
   std::vector<ContextualError2> errors;
 
   const auto apply_type = [&](ASTID id, TypeRef t) {
-    const TypeRef unified =
-      types.ast_types[id.get()].is_valid() ? unify(types.graph, types.ast_types[id.get()], t, true) : t;
+    const TypeRef unified = ast.types[id.get()].is_valid() ? unify(tg, ast.types[id.get()], t, true) : t;
     if(unified == TypeRef::Invalid()) {
-      errors.push_back({ast.srcs[id.get()],
-                        fmt::format("expected {}, given {}",
-                                    pretty_print(e, types.graph, t),
-                                    pretty_print(e, types.graph, types.ast_types[id.get()]))});
+      errors.push_back(
+        {ast.srcs[id.get()],
+         fmt::format("expected {}, given {}", pretty_print(e, tg, t), pretty_print(e, tg, ast.types[id.get()]))});
     } else {
-      types.ast_types[id.get()] = unified;
+      ast.types[id.get()] = unified;
     }
   };
 
   for(const ASTID id : ast.forest.ids()) {
-    apply_type(id, language_rule(ast, types.graph, id, floating, borrow, fn, unit));
+    apply_type(id, language_rule(ast, tg, id, floating, borrow, fn, unit));
 
     const auto parent = ast.forest.parent(id);
     if(parent && ast.forest[*parent] == ASTTag::ExprCall && ast.forest.first_child(*parent) == id) {
@@ -1158,7 +1151,7 @@ ContextualResult2<Types> apply_language_rules(const Env& e, const AST& ast, Type
     }
   }
 
-  return value_or_errors(std::move(types), std::move(errors));
+  return value_or_errors(std::pair(std::move(ast), std::move(tg)), std::move(errors));
 }
 
 ContextualResult<TypedFunction>
@@ -1229,26 +1222,26 @@ std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunct
   return generate_errors(e, propagations, std::move(errors));
 }
 
-ContextualResult2<Types>
+ContextualResult2<std::pair<AST, TypeGraph>>
 type_check(const SrcMap& sm,
            const Env& e,
            const Graph<ASTID>& ident_graph,
            const std::vector<ASTID>& undeclared_bindings,
-           const AST& ast,
-           Types types,
+           AST ast,
+           TypeGraph tg,
            bool debug) {
-  return apply_language_rules(e, ast, std::move(types)).and_then([&](Types types) {
+  return apply_language_rules(e, std::move(ast), std::move(tg)).and_then(applied([&](AST ast, TypeGraph tg) {
     const std::vector<std::vector<ASTPropagation>> propagations = calculate_propagations(ident_graph, ast.forest);
 
     std::vector<TypeCheckError2> cp_errors;
-    std::tie(types, cp_errors) =
-      constraint_propagation(e, propagations, undeclared_bindings, ast.forest, std::move(types), debug);
+    std::tie(tg, ast.types, cp_errors) = constraint_propagation(
+      e, propagations, undeclared_bindings, ast.forest, std::move(tg), std::move(ast.types), debug);
 
-    const auto find_invalid_borrows = [](const Forest<ASTTag, ASTID>& forest, const Types& types) {
-      return transform_filter_to_vec(forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {
-        const TypeRef type = types.ast_types[id.get()];
-        if(types.graph.get<TypeTag>(type) == TypeTag::Borrow) {
-          switch(types.graph.get<TypeTag>(types.graph.fanout(type)[0])) {
+    const auto find_invalid_borrows = [](const AST& ast, const TypeGraph& tg) {
+      return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {
+        const TypeRef type = ast.types[id.get()];
+        if(tg.get<TypeTag>(type) == TypeTag::Borrow) {
+          switch(tg.get<TypeTag>(tg.fanout(type)[0])) {
           case TypeTag::Tuple: return std::optional(TypeCheckError2{InvalidBorrow{"tuple"}, id});
           case TypeTag::Fn: return std::optional(TypeCheckError2{InvalidBorrow{"function"}, id});
           case TypeTag::Borrow: return std::optional(TypeCheckError2{InvalidBorrow{"borrow"}, id});
@@ -1264,15 +1257,15 @@ type_check(const SrcMap& sm,
       sm,
       e,
       ast,
-      types,
+      tg,
       cluster_adjacent(propagations,
                        flatten(std::move(cp_errors),
-                               find_invalid_borrows(ast.forest, types),
-                               find_returned_borrows(ast.forest, types),
-                               find_binding_usage_errors(sm, e, ast, types, ident_graph))));
+                               find_invalid_borrows(ast, tg),
+                               find_returned_borrows(ast, tg),
+                               find_binding_usage_errors(sm, e, ast, tg, ident_graph))));
 
-    return value_or_errors(std::move(types), std::move(errors));
-  });
+    return value_or_errors(std::pair(std::move(ast), std::move(tg)), std::move(errors));
+  }));
 }
 
 } // namespace ooze

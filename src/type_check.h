@@ -21,15 +21,15 @@ inline FunctionType<TypeID> type_of(const TypedFunction& f) { return {f.pattern.
 
 TypeRef unify(TypeGraph&, TypeRef, TypeRef, bool recurse);
 
-ContextualResult2<Types> apply_language_rules(const Env&, const AST&, Types);
+ContextualResult2<std::pair<AST, TypeGraph>> apply_language_rules(const Env&, AST, TypeGraph);
 
-ContextualResult2<Types>
+ContextualResult2<std::pair<AST, TypeGraph>>
 type_check(const SrcMap&,
            const Env&,
            const Graph<ASTID>& ident_graph,
            const std::vector<ASTID>& undeclared_bindings,
-           const AST&,
-           Types,
+           AST,
+           TypeGraph,
            bool debug = false);
 
 } // namespace ooze

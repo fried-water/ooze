@@ -56,8 +56,8 @@ void test_inferred_inputs(const Env& e,
 void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp) {
   const SrcMap sm = {{"", std::string(src)}};
   const auto [g, tags, srcs, types] =
-    check_result(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const Types& types) {
-      return type_name_resolution(sm, e, types.graph);
+    check_result(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST&, TypeGraph tg) {
+      return type_name_resolution(sm, e, std::move(tg));
     })))
       .decompose();
 
@@ -71,8 +71,8 @@ void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp)
 void test_nr_error(const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
   const SrcMap sm = {{"", std::string(src)}};
   const auto errors =
-    check_error(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const Types& types) {
-      return type_name_resolution(sm, e, types.graph);
+    check_error(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST&, TypeGraph tg) {
+      return type_name_resolution(sm, e, std::move(tg));
     })));
 
   if(expected_errors != errors) {

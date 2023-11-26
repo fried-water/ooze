@@ -21,11 +21,17 @@ TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 
 ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
 
+inline auto type_name_resolution(const SrcMap& sm, const Env& e, AST ast, TypeGraph tg) {
+  return type_name_resolution(sm, e, std::move(tg)).map([&](TypeGraph tg) {
+    return std::tuple(std::move(ast), std::move(tg));
+  });
+}
+
 inline auto
-type_name_resolution(const SrcMap& sm, const Env& e, ContextualResult2<std::tuple<AST, Types>> parse_result) {
-  return std::move(parse_result).and_then(applied([&](AST ast, Types types) {
-    return type_name_resolution(sm, e, std::move(types.graph)).map([&](auto type_graph) {
-      return std::tuple(std::move(ast), Types{std::move(types.graph), std::move(types.ast_types)});
+type_name_resolution(const SrcMap& sm, const Env& e, ContextualResult2<std::tuple<AST, TypeGraph>> parse_result) {
+  return std::move(parse_result).and_then(applied([&](AST ast, TypeGraph tg) {
+    return type_name_resolution(sm, e, std::move(tg)).map([&](TypeGraph tg) {
+      return std::tuple(std::move(ast), std::move(tg));
     });
   }));
 }

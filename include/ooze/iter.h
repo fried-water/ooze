@@ -84,6 +84,13 @@ public:
     return take(std::make_index_sequence<N>());
   }
 
+  template <size_t N>
+  value_type get() const {
+    Iter it = begin();
+    std::advance(it, N);
+    return *it;
+  }
+
   auto match() const {
     assert(!empty());
     auto it = begin();

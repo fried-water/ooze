@@ -58,18 +58,10 @@ using ASTID = StrongID<struct ASTSpace>;
 struct AST {
   Forest<ASTTag, ASTID> forest;
   std::vector<SrcRef> srcs;
+  std::vector<TypeRef> types;
   std::vector<std::pair<ASTID, Literal>> literals;
 
   KNOT_COMPAREABLE(AST);
-};
-
-using TypeGraph = Graph<TypeRef, TypeTag, SrcRef, TypeID>;
-
-struct Types {
-  TypeGraph graph;
-  std::vector<TypeRef> ast_types;
-
-  KNOT_COMPAREABLE(Types);
 };
 
 inline const Literal& lookup_literal(const AST& ast, ASTID id) {

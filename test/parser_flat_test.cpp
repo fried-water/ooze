@@ -7,17 +7,17 @@ namespace ooze {
 namespace {
 
 #define check_pass(_EXP_AST, _EXP_TYPES, _ACT)                                                                         \
-  [](const AST& exp_ast, const Types& exp_types, ContextualResult2<std::tuple<AST, Types>> result) {                   \
-    const auto& [ast, types] = check_result(result);                                                                   \
+  [](const AST& exp_ast, const TypeGraph& exp_tg, ContextualResult2<std::tuple<AST, TypeGraph>> result) {              \
+    const auto& [ast, tg] = check_result(result);                                                                      \
     if(exp_ast != ast) {                                                                                               \
       fmt::print("Actual:   {}\n", knot::debug(ast));                                                                  \
       fmt::print("Expected: {}\n", knot::debug(exp_ast));                                                              \
       BOOST_CHECK(exp_ast == ast);                                                                                     \
     }                                                                                                                  \
-    if(exp_types != types) {                                                                                           \
-      fmt::print("Actual:   {}\n", knot::debug(types));                                                                \
-      fmt::print("Expected: {}\n", knot::debug(exp_types));                                                            \
-      BOOST_CHECK(exp_types == types);                                                                                 \
+    if(exp_tg != tg) {                                                                                                 \
+      fmt::print("Actual:   {}\n", knot::debug(tg));                                                                   \
+      fmt::print("Expected: {}\n", knot::debug(exp_tg));                                                               \
+      BOOST_CHECK(exp_tg == tg);                                                                                       \
     }                                                                                                                  \
   }(_EXP_AST, _EXP_TYPES, _ACT)
 
@@ -53,10 +53,7 @@ Forest<ASTTag, ASTID> ast_forest(std::vector<std::vector<ASTTag>> vs) {
   return f;
 }
 
-Types make_types(std::vector<TypeTag> tags,
-                 std::vector<SrcRef> slices,
-                 std::vector<std::vector<i32>> edges = {},
-                 std::vector<TypeRef> ast_ids = {}) {
+TypeGraph make_tg(std::vector<TypeTag> tags, std::vector<SrcRef> slices, std::vector<std::vector<i32>> edges = {}) {
   Graph<TypeRef> g;
 
   if(edges.empty()) {
@@ -73,11 +70,10 @@ Types make_types(std::vector<TypeTag> tags,
 
   const size_t size = tags.size();
 
-  return {std::move(g).append_column(std::move(tags), std::move(slices), std::vector<TypeID>(size)),
-          std::move(ast_ids)};
+  return std::move(g).append_column(std::move(tags), std::move(slices), std::vector<TypeID>(size));
 }
 
-Types types(size_t s) { return {{}, std::vector<TypeRef>(s)}; }
+std::vector<TypeRef> types(size_t s) { return std::vector<TypeRef>(s); }
 
 } // namespace
 
@@ -85,163 +81,166 @@ BOOST_AUTO_TEST_SUITE(parser2)
 
 BOOST_AUTO_TEST_CASE(pattern_ident) {
   const std::string_view src = "x";
-  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {src})};
-  check_pass(ast, types(1), parse_pattern2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {src}), types(1)};
+  check_pass(ast, {}, parse_pattern2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(pattern_wildcard) {
   const std::string_view src = "_";
-  const AST ast = {ast_forest({{ASTTag::PatternWildCard}}), slices(src, {src})};
-  check_pass(ast, types(1), parse_pattern2({}, {}, {}, "_"));
+  const AST ast = {ast_forest({{ASTTag::PatternWildCard}}), slices(src, {src}), types(1)};
+  check_pass(ast, {}, parse_pattern2({}, {}, {}, "_"));
 }
 
 BOOST_AUTO_TEST_CASE(pattern_tuple) {
   const std::string_view src = "()";
-  const AST ast = {ast_forest({{ASTTag::PatternTuple}}), slices(src, {src})};
-  check_pass(ast, types(1), parse_pattern2({}, {}, {}, "()"));
+  const AST ast = {ast_forest({{ASTTag::PatternTuple}}), slices(src, {src}), types(1)};
+  check_pass(ast, {}, parse_pattern2({}, {}, {}, "()"));
 }
 
 BOOST_AUTO_TEST_CASE(pattern_tuple1) {
   const std::string_view src = "(x)";
-  const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", src})};
-  check_pass(ast, types(2), parse_pattern2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", src}), types(2)};
+  check_pass(ast, {}, parse_pattern2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(pattern_tuple2) {
   const std::string_view src = "(x, _)";
   const AST ast = {
     ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}, {ASTTag::PatternTuple, ASTTag::PatternWildCard}}),
-    slices(src, {"x", "_", src})};
-  check_pass(ast, types(3), parse_pattern2({}, {}, {}, src));
+    slices(src, {"x", "_", src}),
+    types(3)};
+  check_pass(ast, {}, parse_pattern2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(pattern_tuple_nested) {
   const std::string_view src = "(())";
-  const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternTuple}}), slices(src, {"()", src})};
-  check_pass(ast, types(2), parse_pattern2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternTuple}}), slices(src, {"()", src}), types(2)};
+  check_pass(ast, {}, parse_pattern2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_ident) {
   const std::string_view src = "A";
-  const Types types = make_types({TypeTag::Leaf}, slices(src, {src}));
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Leaf}, slices(src, {src}));
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_floating) {
   const std::string_view src = "_";
-  const Types types = make_types({TypeTag::Floating}, slices(src, {src}));
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Floating}, slices(src, {src}));
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_borrowed) {
   const std::string_view src = "&A";
-  const Types types = make_types({TypeTag::Leaf, TypeTag::Borrow}, slices(src, {"A", src}), {{}, {0}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Borrow}, slices(src, {"A", src}), {{}, {0}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_borrowed_floating) {
   const std::string_view src = "&_";
-  const Types types = make_types({TypeTag::Floating, TypeTag::Borrow}, slices(src, {"_", src}), {{}, {0}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Floating, TypeTag::Borrow}, slices(src, {"_", src}), {{}, {0}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple) {
   const std::string_view src = "()";
-  const Types types = make_types({TypeTag::Tuple}, slices(src, {src}));
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Tuple}, slices(src, {src}));
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple1) {
   const std::string_view src = "(A)";
-  const Types types = make_types({TypeTag::Leaf, TypeTag::Tuple}, slices(src, {"A", src}), {{}, {0}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple}, slices(src, {"A", src}), {{}, {0}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple2) {
   const std::string_view src = "(A, _)";
-  const Types types =
-    make_types({TypeTag::Leaf, TypeTag::Floating, TypeTag::Tuple}, slices(src, {"A", "_", src}), {{}, {}, {0, 1}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg =
+    make_tg({TypeTag::Leaf, TypeTag::Floating, TypeTag::Tuple}, slices(src, {"A", "_", src}), {{}, {}, {0, 1}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple_nested) {
   const std::string_view src = "(())";
-  const Types types = make_types({TypeTag::Tuple, TypeTag::Tuple}, slices(src, {"()", src}), {{}, {0}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Tuple, TypeTag::Tuple}, slices(src, {"()", src}), {{}, {0}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_fn) {
   const std::string_view src = "fn() -> A";
-  const Types types =
-    make_types({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, slices(src, {"()", "A", src}), {{}, {}, {0, 1}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg =
+    make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, slices(src, {"()", "A", src}), {{}, {}, {0, 1}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(type_fn_arg) {
   const std::string_view src = "fn(A) -> B";
-  const Types types = make_types({TypeTag::Leaf, TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn},
-                                 slices(src, {"A", "(A)", "B", src}),
-                                 {{}, {0}, {}, {1, 2}});
-  check_pass({}, types, parse_type2({}, {}, {}, src));
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn},
+                               slices(src, {"A", "(A)", "B", src}),
+                               {{}, {0}, {}, {1, 2}});
+  check_pass({}, tg, parse_type2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_literal) {
   const std::string_view src = "1";
-  const AST ast = {ast_forest({{ASTTag::ExprLiteral}}), slices(src, {"1"}), {{ASTID{0}, 1}}};
-  check_pass(ast, types(1), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprLiteral}}), slices(src, {"1"}), types(1), {{ASTID{0}, 1}}};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_ident) {
   const std::string_view src = "x";
-  const AST ast = {ast_forest({{ASTTag::ExprIdent}}), slices(src, {src})};
-  check_pass(ast, types(1), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprIdent}}), slices(src, {src}), types(1)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_tuple) {
   const std::string_view src = "()";
-  const AST ast = {ast_forest({{ASTTag::ExprTuple}}), slices(src, {src})};
-  check_pass(ast, types(1), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprTuple}}), slices(src, {src}), types(1)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_tuple1) {
   const std::string_view src = "(a)";
-  const AST ast = {ast_forest({{ASTTag::ExprTuple, ASTTag::ExprIdent}}), slices(src, {"a", src})};
-  check_pass(ast, types(2), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprTuple, ASTTag::ExprIdent}}), slices(src, {"a", src}), types(2)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_tuple2) {
   const std::string_view src = "(a, b)";
   auto f = ast_forest({{ASTTag::ExprTuple, ASTTag::ExprIdent}});
   f.append_child(ASTID{0}, ASTTag::ExprIdent);
-  const AST ast = {std::move(f), slices(src, {"a", "b", src})};
-  check_pass(ast, types(3), parse_expr2({}, {}, {}, src));
+  const AST ast = {std::move(f), slices(src, {"a", "b", src}), types(3)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_tuple_nested) {
   const std::string_view src = "(())";
-  const AST ast = {ast_forest({{ASTTag::ExprTuple, ASTTag::ExprTuple}}), slices(src, {"()", src})};
-  check_pass(ast, types(2), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprTuple, ASTTag::ExprTuple}}), slices(src, {"()", src}), types(2)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_borrow) {
   const std::string_view src = "&x";
-  const AST ast = {ast_forest({{ASTTag::ExprBorrow, ASTTag::ExprIdent}}), slices(src, {"x", src})};
-  check_pass(ast, types(2), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprBorrow, ASTTag::ExprIdent}}), slices(src, {"x", src}), types(2)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call) {
   const std::string_view src = "f()";
   const AST ast = {ast_forest({{ASTTag::ExprCall, ASTTag::ExprIdent}, {ASTTag::ExprCall, ASTTag::ExprTuple}}),
-                   slices(src, {"f", "()", src})};
-  check_pass(ast, types(3), parse_expr2({}, {}, {}, src));
+                   slices(src, {"f", "()", src}),
+                   types(3)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_arg) {
   const std::string_view src = "f(a)";
   const AST ast = {
     ast_forest({{ASTTag::ExprCall, ASTTag::ExprIdent}, {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprIdent}}),
-    slices(src, {"f", "a", "(a)", src})};
-  check_pass(ast, types(4), parse_expr2({}, {}, {}, src));
+    slices(src, {"f", "a", "(a)", src}),
+    types(4)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_call) {
@@ -249,17 +248,19 @@ BOOST_AUTO_TEST_CASE(expr_call_call) {
   const AST ast = {ast_forest({{ASTTag::ExprCall, ASTTag::ExprCall, ASTTag::ExprIdent},
                                {ASTTag::ExprCall, ASTTag::ExprCall, ASTTag::ExprTuple},
                                {ASTTag::ExprCall, ASTTag::ExprTuple}}),
-                   as_invalid_refs({{0, 1}, {1, 3}, {3, 5}, {0, 3}, {0, 5}})}; // TODO make post order
+                   as_invalid_refs({{0, 1}, {1, 3}, {3, 5}, {0, 3}, {0, 5}}),
+                   types(5)}; // TODO make post order
 
-  check_pass(ast, types(5), parse_expr2({}, {}, {}, src));
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_ufcs) {
   const std::string_view src = "x.f()";
   const AST ast = {
     ast_forest({{ASTTag::ExprCall, ASTTag::ExprIdent}, {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprIdent}}),
-    slices(src, {"x", "f", "()", src})};
-  check_pass(ast, types(4), parse_expr2({}, {}, {}, src));
+    slices(src, {"x", "f", "()", src}),
+    types(4)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_ufcs_literal) {
@@ -267,9 +268,10 @@ BOOST_AUTO_TEST_CASE(expr_call_ufcs_literal) {
   const AST ast = {
     ast_forest({{ASTTag::ExprCall, ASTTag::ExprIdent}, {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprLiteral}}),
     slices(src, {"1", "f", "()", src}),
+    types(4),
     {{ASTID{0}, 1}},
   };
-  check_pass(ast, types(4), parse_expr2({}, {}, {}, src));
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_ufcs_call) {
@@ -277,8 +279,9 @@ BOOST_AUTO_TEST_CASE(expr_call_ufcs_call) {
   const AST ast = {ast_forest({{ASTTag::ExprCall, ASTTag::ExprIdent},
                                {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprCall, ASTTag::ExprIdent},
                                {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprCall, ASTTag::ExprTuple}}),
-                   as_invalid_refs({{0, 1}, {1, 3}, {0, 3}, {4, 5}, {5, 7}, {0, 7}})};
-  check_pass(ast, types(6), parse_expr2({}, {}, {}, src));
+                   as_invalid_refs({{0, 1}, {1, 3}, {0, 3}, {4, 5}, {5, 7}, {0, 7}}),
+                   types(6)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_ufcs_arg) {
@@ -288,9 +291,10 @@ BOOST_AUTO_TEST_CASE(expr_call_ufcs_arg) {
                 {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprIdent},
                 {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprLiteral}}),
     slices(src, {"x", "f", "1", "(1)", src}),
+    types(5),
     {{ASTID{2}, 1}},
   };
-  check_pass(ast, types(5), parse_expr2({}, {}, {}, src));
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_call_ufcs_chain) {
@@ -299,8 +303,9 @@ BOOST_AUTO_TEST_CASE(expr_call_ufcs_chain) {
     ast_forest({{ASTTag::ExprCall, ASTTag::ExprIdent},
                 {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprCall, ASTTag::ExprIdent},
                 {ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprIdent}}),
-    as_invalid_refs({{0, 1}, {2, 3}, {3, 5}, {0, 5}, {6, 7}, {7, 9}, {0, 9}})};
-  check_pass(ast, types(7), parse_expr2({}, {}, {}, src));
+    as_invalid_refs({{0, 1}, {2, 3}, {3, 5}, {0, 5}, {6, 7}, {7, 9}, {0, 9}}),
+    types(7)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_select) {
@@ -308,64 +313,66 @@ BOOST_AUTO_TEST_CASE(expr_select) {
   auto f = ast_forest({{ASTTag::ExprSelect, ASTTag::ExprIdent}});
   f.append_child(ASTID{0}, ASTTag::ExprIdent);
   f.append_child(ASTID{0}, ASTTag::ExprIdent);
-  const AST ast = {std::move(f), slices(src, {"x", "y", "z", src})};
-  check_pass(ast, types(4), parse_expr2({}, {}, {}, src));
+  const AST ast = {std::move(f), slices(src, {"x", "y", "z", src}), types(4)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_no_type) {
   const std::string_view src = "x";
-  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"})};
-  check_pass(ast, types(1), parse_binding2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), types(1)};
+  check_pass(ast, {}, parse_binding2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_ident) {
   const std::string_view src = "x: T";
-  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"})};
-  const Types types = make_types({TypeTag::Leaf}, slices(src, {"T"}), {}, {TypeRef{0}});
-  check_pass(ast, types, parse_binding2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), {TypeRef{0}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf}, slices(src, {"T"}));
+  check_pass(ast, tg, parse_binding2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_floating) {
   const std::string_view src = "x: _";
-  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"})};
-  const Types types = make_types({TypeTag::Floating}, slices(src, {"_"}), {}, {TypeRef{0}});
-  check_pass(ast, types, parse_binding2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), {TypeRef{0}}};
+  const TypeGraph tg = make_tg({TypeTag::Floating}, slices(src, {"_"}), {});
+  check_pass(ast, tg, parse_binding2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_tuple) {
   const std::string_view src = "(): ()";
-  const AST ast = {ast_forest({{ASTTag::PatternTuple}}), as_invalid_refs({{0, 2}})};
-  const Types types = make_types({TypeTag::Tuple}, as_invalid_refs({{4, 6}}), {}, {TypeRef{0}});
-  check_pass(ast, types, parse_binding2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::PatternTuple}}), as_invalid_refs({{0, 2}}), {TypeRef{0}}};
+  const TypeGraph tg = make_tg({TypeTag::Tuple}, as_invalid_refs({{4, 6}}));
+  check_pass(ast, tg, parse_binding2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_tuple_arg) {
   const std::string_view src = "(x): (T)";
-  const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", "(x)"})};
-  const Types types =
-    make_types({TypeTag::Leaf, TypeTag::Tuple}, slices(src, {"T", "(T)"}), {{}, {0}}, {TypeRef{-1}, TypeRef{1}});
-  check_pass(ast, types, parse_binding2({}, {}, {}, src));
+  const AST ast = {
+    ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", "(x)"}), {TypeRef{-1}, TypeRef{1}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple}, slices(src, {"T", "(T)"}), {{}, {0}});
+  check_pass(ast, tg, parse_binding2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(assignment) {
   const std::string_view src = "let x: T = y";
   const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent}, {ASTTag::Assignment, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", "let x: T = y"})};
-  const Types types = make_types({TypeTag::Leaf}, slices(src, {"T"}), {}, {TypeRef{0}, TypeRef{-1}, TypeRef{-1}});
-  check_pass(ast, types, parse_assignment2({}, {}, {}, src));
+                   slices(src, {"x", "y", "let x: T = y"}),
+                   {TypeRef{0}, TypeRef{-1}, TypeRef{-1}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf}, slices(src, {"T"}));
+  check_pass(ast, tg, parse_assignment2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(assignment_no_type) {
   const std::string_view src = "let x = y";
   const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent}, {ASTTag::Assignment, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", src})};
-  check_pass(ast, types(3), parse_assignment2({}, {}, {}, src));
+                   slices(src, {"x", "y", src}),
+                   types(3)};
+  check_pass(ast, {}, parse_assignment2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_scope) {
   const std::string_view src = "{ x }";
-  const AST ast = {ast_forest({{ASTTag::ExprIdent}}), slices(src, {"x"})};
-  check_pass(ast, types(1), parse_expr2({}, {}, {}, src));
+  const AST ast = {ast_forest({{ASTTag::ExprIdent}}), slices(src, {"x"}), types(1)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_scope_assign) {
@@ -373,8 +380,9 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign) {
   const AST ast = {ast_forest({{ASTTag::ExprWith, ASTTag::Assignment, ASTTag::PatternIdent},
                                {ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                                {ASTTag::ExprWith, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", "let x = y", "z", "let x = y; z"})};
-  check_pass(ast, types(5), parse_expr2({}, {}, {}, src));
+                   slices(src, {"x", "y", "let x = y", "z", "let x = y; z"}),
+                   types(5)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_scope_assign_type) {
@@ -382,10 +390,10 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign_type) {
   const AST ast = {ast_forest({{ASTTag::ExprWith, ASTTag::Assignment, ASTTag::PatternIdent},
                                {ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                                {ASTTag::ExprWith, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", "let x: T = y", "z", "let x: T = y; z"})};
-  const Types types = make_types(
-    {TypeTag::Leaf}, slices(src, {"T"}), {}, {TypeRef{0}, TypeRef{-1}, TypeRef{-1}, TypeRef{-1}, TypeRef{-1}});
-  check_pass(ast, types, parse_expr2({}, {}, {}, src));
+                   slices(src, {"x", "y", "let x: T = y", "z", "let x: T = y; z"}),
+                   {TypeRef{0}, TypeRef{-1}, TypeRef{-1}, TypeRef{-1}, TypeRef{-1}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf}, slices(src, {"T"}), {});
+  check_pass(ast, tg, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(expr_scope_assign2) {
@@ -396,41 +404,38 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign2) {
                 {ASTTag::ExprWith, ASTTag::ExprWith, ASTTag::Assignment, ASTTag::PatternIdent},
                 {ASTTag::ExprWith, ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                 {ASTTag::ExprWith, ASTTag::ExprWith, ASTTag::ExprIdent}}),
-    slices(src, {"v", "w", "let v = w", "x", "y", "let x = y", "z", "let x = y; z", "let v = w; let x = y; z"})};
-  check_pass(ast, types(9), parse_expr2({}, {}, {}, src));
+    slices(src, {"v", "w", "let v = w", "x", "y", "let x = y", "z", "let x = y; z", "let v = w; let x = y; z"}),
+    types(9)};
+  check_pass(ast, {}, parse_expr2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
   const std::string_view src = "() -> T = x";
   const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
-                   slices(src, {"()", "x", "() -> T = x"})};
-  const Types types = make_types({TypeTag::Leaf}, slices(src, {"T"}), {}, {TypeRef{-1}, TypeRef{0}, TypeRef{-1}});
-  check_pass(ast, types, parse_function2({}, {}, {}, src));
+                   slices(src, {"()", "x", "() -> T = x"}),
+                   {TypeRef{-1}, TypeRef{0}, TypeRef{-1}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf}, slices(src, {"T"}), {});
+  check_pass(ast, tg, parse_function2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(fn_one_arg) {
   const std::string_view src = "(x: T1) -> T2 = y";
   const AST ast = {
     ast_forest({{ASTTag::Fn, ASTTag::PatternTuple, ASTTag::PatternIdent}, {ASTTag::Fn, ASTTag::ExprIdent}}),
-    slices(src, {"x", "(x: T1)", "y", "(x: T1) -> T2 = y"})};
-  const Types types =
-    make_types({TypeTag::Leaf, TypeTag::Leaf},
-               slices(src, {"T1", "T2"}),
-               {{}, {}},
-               {TypeRef{0}, TypeRef{-1}, TypeRef{1}, TypeRef{-1}});
-  check_pass(ast, types, parse_function2({}, {}, {}, src));
+    slices(src, {"x", "(x: T1)", "y", "(x: T1) -> T2 = y"}),
+    {TypeRef{0}, TypeRef{-1}, TypeRef{1}, TypeRef{-1}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, slices(src, {"T1", "T2"}), {{}, {}});
+  check_pass(ast, tg, parse_function2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(fn_return_fn) {
   const std::string_view src = "() -> fn() -> T = x";
   const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
-                   as_invalid_refs({{0, 2}, {18, 19}, {0, 19}})};
-  const Types types =
-    make_types({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn},
-               as_invalid_refs({{8, 10}, {14, 15}, {6, 15}}),
-               {{}, {}, {0, 1}},
-               {TypeRef{-1}, TypeRef{2}, TypeRef{-1}});
-  check_pass(ast, types, parse_function2({}, {}, {}, src));
+                   as_invalid_refs({{0, 2}, {18, 19}, {0, 19}}),
+                   {TypeRef{-1}, TypeRef{2}, TypeRef{-1}}};
+  const TypeGraph tg = make_tg(
+    {TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, as_invalid_refs({{8, 10}, {14, 15}, {6, 15}}), {{}, {}, {0, 1}});
+  check_pass(ast, tg, parse_function2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(ast_empty) { check_pass({}, {}, parse2({}, {}, {}, "")); }
@@ -440,10 +445,10 @@ BOOST_AUTO_TEST_CASE(ast_fn) {
   const AST ast = {ast_forest({{ASTTag::RootFn, ASTTag::PatternIdent},
                                {ASTTag::RootFn, ASTTag::Fn, ASTTag::PatternTuple},
                                {ASTTag::RootFn, ASTTag::Fn, ASTTag::ExprIdent}}),
-                   as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}})};
-  const Types types = make_types(
-    {TypeTag::Leaf}, slices(src, {"T"}), {}, {TypeRef{-1}, TypeRef{-1}, TypeRef{0}, TypeRef{-1}, TypeRef{-1}});
-  check_pass(ast, types, parse2({}, {}, {}, src));
+                   as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}}),
+                   {TypeRef{-1}, TypeRef{-1}, TypeRef{0}, TypeRef{-1}, TypeRef{-1}}};
+  const TypeGraph tg = make_tg({TypeTag::Leaf}, slices(src, {"T"}), {});
+  check_pass(ast, tg, parse2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
@@ -459,12 +464,7 @@ BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
   f.merge_path(f2, std::array{ASTTag::Fn, ASTTag::ExprIdent});
   const AST ast = {
     std::move(f),
-    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}, {19, 20}, {20, 22}, {30, 31}, {20, 31}, {16, 31}})};
-
-  const Types types = make_types(
-    {TypeTag::Leaf, TypeTag::Leaf},
-    as_invalid_refs({{10, 11}, {26, 27}}),
-    {{}, {}},
+    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}, {19, 20}, {20, 22}, {30, 31}, {20, 31}, {16, 31}}),
     {TypeRef{-1},
      TypeRef{-1},
      TypeRef{0},
@@ -474,26 +474,28 @@ BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
      TypeRef{-1},
      TypeRef{1},
      TypeRef{-1},
-     TypeRef{-1}});
-  check_pass(ast, types, parse2({}, {}, {}, src));
+     TypeRef{-1}}};
+
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, as_invalid_refs({{10, 11}, {26, 27}}), {{}, {}});
+  check_pass(ast, tg, parse2({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(parse_consecutive) {
   AST ast;
-  Types types;
-  std::tie(ast, types) = check_result(parse2({}, {}, SrcID{0}, "fn f() -> T = x"));
-  std::tie(ast, types) = check_result(parse2(std::move(ast), std::move(types), SrcID{0}, "fn g() -> T = y"));
+  TypeGraph tg;
+  std::tie(ast, tg) = check_result(parse2({}, {}, SrcID{0}, "fn f() -> T = x"));
+  std::tie(ast, tg) = check_result(parse2(std::move(ast), std::move(tg), SrcID{0}, "fn g() -> T = y"));
 
-  auto [exp_ast, exp_types] = check_result(parse2({}, {}, SrcID{0}, "fn f() -> T = x fn g() -> T = y"));
+  auto [exp_ast, exp_tg] = check_result(parse2({}, {}, SrcID{0}, "fn f() -> T = x fn g() -> T = y"));
 
   ast.srcs = {};
   exp_ast.srcs = {};
 
-  types.graph.set(TypeRef{1}, SrcRef{});
-  exp_types.graph.set(TypeRef{1}, SrcRef{});
+  tg.set(TypeRef{1}, SrcRef{});
+  exp_tg.set(TypeRef{1}, SrcRef{});
 
   BOOST_CHECK(exp_ast == ast);
-  BOOST_CHECK(exp_types == types);
+  BOOST_CHECK(exp_tg == tg);
 }
 
 BOOST_AUTO_TEST_CASE(no_fn) { check_single_error({{{}, {0, 1}}, "expected 'fn'"}, parse2({}, {}, {}, "f")); }

@@ -11,6 +11,6 @@ namespace ooze {
 FunctionGraph create_graph(const Env&, const CheckedFunction&);
 
 FunctionGraph create_graph(
-  const Env&, const AST&, const Types&, const Map<ASTID, EnvFunctionRef>&, const Graph<ASTID>& ident_graph, ASTID);
+  const Env&, const AST&, const TypeGraph&, const Map<ASTID, EnvFunctionRef>&, const Graph<ASTID>& ident_graph, ASTID);
 
 } // namespace ooze

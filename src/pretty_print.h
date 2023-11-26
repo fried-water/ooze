@@ -30,7 +30,7 @@ std::string pretty_print(const Env&, const CheckedFunction&);
 std::string pretty_print(const Env&, const CheckedAssignment&);
 std::string pretty_print(const Env&, const CheckedExpr&);
 
-std::string pretty_print(const SrcMap&, const Env&, const AST&, const Types&, std::optional<ASTID> = {});
+std::string pretty_print(const SrcMap&, const Env&, const AST&, const TypeGraph&, std::optional<ASTID> = {});
 
 std::string pretty_print(const Env&, const TypeGraph&, TypeRef);
 

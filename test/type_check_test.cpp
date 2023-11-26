@@ -18,36 +18,37 @@ Graph<TypeRef, TypeTag, TypeID> remove_refs(TypeGraph full_graph) {
   return std::move(g).append_column(std::move(tags), std::move(ids));
 };
 
+auto type_checking(const Env& e, std::string_view src, bool debug = false) {
+  const SrcMap sm = {{"src", std::string(src)}};
+  return parse_function2({}, {}, SrcID{0}, src)
+    .and_then(
+      applied([&](AST ast, TypeGraph tg) { return type_name_resolution(sm, e, std::move(ast), std::move(tg)); }))
+    .map(applied([&](AST ast, TypeGraph tg) {
+      auto [ident_graph, undeclared_bindings] = calculate_ident_graph(sm, ast);
+      return std::tuple(std::move(ast), std::move(tg), std::move(ident_graph), std::move(undeclared_bindings));
+    }))
+    .and_then(applied([&](AST ast, TypeGraph tg, auto ident_graph, auto undeclared_bindings) {
+      return type_check(sm, e, ident_graph, undeclared_bindings, std::move(ast), std::move(tg), debug);
+    }));
+}
+
 void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
-  const SrcMap sm = {{"src", std::string(src)}, {"exp", std::string(exp)}};
+  auto [act_ast, act_tg] = check_result(type_checking(e, src, debug));
+  auto [exp_ast, exp_tg] = check_result(type_checking(e, exp));
 
-  auto [act_ast, act_parse_types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{0}, src)));
-  auto [exp_ast, exp_parse_types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{1}, exp)));
+  BOOST_REQUIRE(act_ast.forest == exp_ast.forest);
 
-  BOOST_REQUIRE(exp_ast.forest == act_ast.forest);
-
-  const auto& [act_ident_graph, undeclared_bindings] = calculate_ident_graph(sm, act_ast);
-  const Types act_types =
-    check_result(type_check(sm, e, act_ident_graph, undeclared_bindings, act_ast, std::move(act_parse_types), debug));
-
-  const auto& [exp_ident_graph, exp_undeclared_bindings] = calculate_ident_graph(sm, exp_ast);
-  const Types exp_types = check_result(
-    type_check(sm, e, exp_ident_graph, exp_undeclared_bindings, exp_ast, std::move(exp_parse_types), debug));
-
-  const auto exp_g = remove_refs(exp_types.graph);
-  const auto act_g = remove_refs(act_types.graph);
+  const auto exp_tg_no_refs = remove_refs(exp_tg);
+  const auto act_tg_no_refs = remove_refs(act_tg);
 
   for(ASTID id : exp_ast.forest.ids()) {
-    const TypeRef exp_type = exp_types.ast_types[id.get()];
-    const TypeRef act_type = act_types.ast_types[id.get()];
+    const TypeRef exp_type = exp_ast.types[id.get()];
+    const TypeRef act_type = act_ast.types[id.get()];
 
-    const bool same_types = compare_dags(exp_g, act_g, exp_type, act_type);
+    const bool same_types = compare_dags(exp_tg_no_refs, act_tg_no_refs, exp_type, act_type);
 
     if(!same_types) {
-      fmt::print("{:<3} E: {} A: {}\n",
-                 id.get(),
-                 pretty_print(e, exp_types.graph, exp_type),
-                 pretty_print(e, act_types.graph, act_type));
+      fmt::print("{:<3} E: {} A: {}\n", id.get(), pretty_print(e, exp_tg, exp_type), pretty_print(e, act_tg, act_type));
     }
 
     BOOST_CHECK(same_types);
@@ -56,11 +57,7 @@ void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debu
 
 void test_tc_error(
   const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors, bool debug = false) {
-  const SrcMap sm = {{"src", std::string(src)}};
-  auto [act_ast, act_types] = check_result(type_name_resolution(sm, e, parse_function2({}, {}, SrcID{0}, src)));
-  const auto& [ident_graph, undeclared_bindings] = calculate_ident_graph(sm, act_ast);
-  const auto errors =
-    check_error(type_check(sm, e, ident_graph, undeclared_bindings, act_ast, std::move(act_types), debug));
+  const auto errors = check_error(type_checking(e, src, debug));
   if(expected_errors != errors) {
     fmt::print("E {}\n", knot::debug(expected_errors));
     fmt::print("A {}\n", knot::debug(errors));
@@ -70,7 +67,9 @@ void test_tc_error(
 
 auto type_graph_of(const Env& e, std::string_view src) {
   const SrcMap sm = {{"src", std::string(src)}};
-  return std::get<1>(check_result(type_name_resolution(sm, e, parse_type2({}, {}, SrcID{0}, src)))).graph;
+  return std::get<1>(check_result(parse_type2({}, {}, SrcID{0}, src).and_then(applied([&](AST ast, TypeGraph tg) {
+    return type_name_resolution(sm, e, std::move(ast), std::move(tg));
+  }))));
 };
 
 void test_unify(std::string_view exp, std::string_view x, std::string_view y, bool recurse = true) {
@@ -109,15 +108,16 @@ void test_unify_error(std::string_view x, std::string_view y, bool recurse = tru
 
 void test_alr_pass(std::string_view src,
                    std::vector<std::string> exp,
-                   ContextualResult2<std::tuple<AST, Types>> parse_result) {
+                   ContextualResult2<std::tuple<AST, TypeGraph>> parse_result) {
   const Env e = create_primative_env();
-  const SrcMap sm = {{"src", std::string(src)}};
-  auto [ast, types] = check_result(type_name_resolution(sm, e, std::move(parse_result)));
-  const auto language_types = check_result(apply_language_rules(e, ast, std::move(types)));
+  auto [ast, tg] = check_result(type_name_resolution({{"src", std::string(src)}}, e, std::move(parse_result))
+                                  .and_then(applied([&](AST ast, TypeGraph tg) {
+                                    return apply_language_rules(e, std::move(ast), std::move(tg));
+                                  })));
 
-  BOOST_REQUIRE_EQUAL(exp.size(), language_types.ast_types.size());
+  BOOST_REQUIRE_EQUAL(exp.size(), ast.types.size());
   for(int i = 0; i < exp.size(); i++) {
-    BOOST_CHECK_EQUAL(exp[i], pretty_print(e, language_types.graph, language_types.ast_types[i]));
+    BOOST_CHECK_EQUAL(exp[i], pretty_print(e, tg, ast.types[i]));
   }
 }
 
@@ -137,7 +137,7 @@ void test_alr_expr_error(std::string_view src, std::vector<ContextualError2> exp
   const Env e = create_primative_env();
   const SrcMap sm = {{"src", std::string(src)}};
   auto [ast, types] = check_result(type_name_resolution(sm, e, parse_expr2({}, {}, SrcID{0}, src)));
-  const auto act = check_error(apply_language_rules(e, ast, std::move(types)));
+  const auto act = check_error(apply_language_rules(e, std::move(ast), std::move(types)));
   BOOST_CHECK(exp == act);
 }
 
