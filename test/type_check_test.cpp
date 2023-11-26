@@ -109,7 +109,7 @@ void test_unify_error(std::string_view x, std::string_view y, bool recurse = tru
 
 void test_alr_pass(std::string_view src,
                    std::vector<std::string> exp,
-                   ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_result) {
+                   ContextualResult2<std::tuple<AST, Types>> parse_result) {
   const Env e = create_primative_env();
   const SrcMap sm = {{"src", std::string(src)}};
   auto [ast, types] = check_result(type_name_resolution(sm, e, std::move(parse_result)));

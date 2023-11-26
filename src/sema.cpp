@@ -192,22 +192,20 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
-ContextualResult2<std::vector<TypeID>>
-type_name_resolution(const SrcMap& sm, const Env& e, const Graph<TypeRef, TypeTag, SrcRef>& type_graph) {
-  std::vector<TypeID> ids(type_graph.num_nodes(), TypeID::Invalid());
+ContextualResult2<TypeGraph> type_name_resolution(const SrcMap& sm, const Env& e, TypeGraph g) {
   std::vector<ContextualError2> errors;
 
-  for(TypeRef t : type_graph.nodes()) {
-    if(type_graph.get<TypeTag>(t) == TypeTag::Leaf) {
-      if(const auto it = e.type_ids.find(std::string(sv(sm, type_graph.get<SrcRef>(t)))); it != e.type_ids.end()) {
-        ids[t.get()] = it->second;
+  for(TypeRef t : g.nodes()) {
+    if(g.get<TypeTag>(t) == TypeTag::Leaf && g.get<TypeID>(t) == TypeID{}) {
+      if(const auto it = e.type_ids.find(std::string(sv(sm, g.get<SrcRef>(t)))); it != e.type_ids.end()) {
+        g.set<TypeID>(t, it->second);
       } else {
-        errors.push_back(ContextualError2{type_graph.get<SrcRef>(t), "undefined type"});
+        errors.push_back(ContextualError2{g.get<SrcRef>(t), "undefined type"});
       }
     }
   }
 
-  return value_or_errors(std::move(ids), std::move(errors));
+  return value_or_errors(std::move(g), std::move(errors));
 }
 
 std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap& sm, const AST& ast) {

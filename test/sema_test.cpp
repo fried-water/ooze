@@ -55,24 +55,23 @@ void test_inferred_inputs(const Env& e,
 
 void test_nr(const Env& e, std::string_view src, const std::vector<TypeID>& exp) {
   const SrcMap sm = {{"", std::string(src)}};
-  const auto result =
-    parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const UnresolvedTypes& types) {
+  const auto [g, tags, srcs, types] =
+    check_result(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const Types& types) {
       return type_name_resolution(sm, e, types.graph);
-    }));
+    })))
+      .decompose();
 
-  BOOST_REQUIRE(result.has_value());
-
-  if(exp != result.value()) {
+  if(exp != types) {
     fmt::print("E {}\n", knot::debug(exp));
-    fmt::print("A {}\n", knot::debug(result.value()));
-    BOOST_CHECK(exp == result.value());
+    fmt::print("A {}\n", knot::debug(types));
+    BOOST_CHECK(exp == types);
   }
 }
 
 void test_nr_error(const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
   const SrcMap sm = {{"", std::string(src)}};
-  const auto errors = check_error(
-    parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const UnresolvedTypes& types) {
+  const auto errors =
+    check_error(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST& ast, const Types& types) {
       return type_name_resolution(sm, e, types.graph);
     })));
 

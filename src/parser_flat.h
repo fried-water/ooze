@@ -5,15 +5,15 @@
 
 namespace ooze {
 
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_expr2(AST, UnresolvedTypes, SrcID, std::string_view);
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_repl2(AST, UnresolvedTypes, SrcID, std::string_view);
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_function2(AST, UnresolvedTypes, SrcID, std::string_view);
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse2(AST, UnresolvedTypes, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_expr2(AST, Types, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_repl2(AST, Types, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_function2(AST, Types, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse2(AST, Types, SrcID, std::string_view);
 
 // Exposed for unit testing
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_binding2(AST, UnresolvedTypes, SrcID, std::string_view);
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_assignment2(AST, UnresolvedTypes, SrcID, std::string_view);
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_type2(AST, UnresolvedTypes, SrcID, std::string_view);
-ContextualResult2<std::tuple<AST, UnresolvedTypes>> parse_pattern2(AST, UnresolvedTypes, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_binding2(AST, Types, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_assignment2(AST, Types, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_type2(AST, Types, SrcID, std::string_view);
+ContextualResult2<std::tuple<AST, Types>> parse_pattern2(AST, Types, SrcID, std::string_view);
 
 } // namespace ooze
