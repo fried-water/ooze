@@ -32,6 +32,7 @@ enum class ASTTag {
 
   Assignment,
   Fn,
+  NativeFn,
   RootFn
 };
 
@@ -50,6 +51,7 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprIdent",
      "Assignment",
      "Fn",
+     "NativeFn",
      "RootFn"});
 }
 

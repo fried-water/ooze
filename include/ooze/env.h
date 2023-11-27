@@ -2,8 +2,10 @@
 
 #include "ooze/any_function.h"
 #include "ooze/ast.h"
+#include "ooze/ast_flat.h"
 #include "ooze/async_fn.h"
 #include "ooze/function_graph.h"
+#include "ooze/src_map.h"
 #include "ooze/traits.h"
 #include "ooze/type.h"
 
@@ -37,16 +39,54 @@ FunctionType<TypeID> function_type_of(knot::Type<F> f) {
   }
 }
 
+inline SrcRef append_src(std::string& src, std::string_view name) {
+  const auto ref = SrcRef{SrcID{0}, {i32(src.size()), i32(src.size() + name.size())}};
+  src.insert(src.end(), name.begin(), name.end());
+  return ref;
+}
+
 struct Env {
   std::unordered_map<TypeID, std::string> type_names;
   std::unordered_map<std::string, TypeID> type_ids;
   std::unordered_map<std::string, std::vector<EnvFunction>> functions;
   std::unordered_set<TypeID> copy_types;
 
+  SrcMap sm = {{"<env>", {}}};
+
+  AST ast;
+  TypeGraph tg;
+  TypeCache type_cache;
+
+  std::unordered_map<ASTID, AsyncFn> native_functions;
+
+  std::unordered_map<std::string, TypeRef> flat_types;
+  std::unordered_map<std::string, std::vector<ASTID>> flat_functions;
+
   template <typename F>
-  void add_function(const std::string& name, F&& f) {
+  ASTID add_function(std::string_view name, F&& f) {
     FunctionType<TypeID> type = function_type_of(decay(knot::Type<F>{}));
-    functions[name].push_back({std::move(type), create_async_function(std::forward<F>(f))});
+    functions[std::string(name)].push_back({std::move(type), create_async_function(std::forward<F>(f))});
+
+    const auto ref = append_src(sm[0].src, name);
+
+    const TypeRef fn_type = add_fn(tg, type_cache.native, ref, decay(knot::Type<F>{}));
+
+    const ASTID ident = ast.forest.append_root(ASTTag::PatternIdent);
+    const ASTID fn = ast.forest.append_root(ASTTag::NativeFn);
+    const ASTID root_fn = ast.forest.append_root_post_order(ASTTag::RootFn, std::array{ident, fn});
+
+    ast.srcs.push_back(ref);
+    ast.srcs.push_back(ref);
+    ast.srcs.push_back(ref);
+
+    ast.types.push_back(fn_type);
+    ast.types.push_back(fn_type);
+    ast.types.push_back(TypeRef::Invalid());
+
+    native_functions.emplace(fn, create_async_function(std::forward<F>(f)));
+    flat_functions[std::string(name)].push_back(fn);
+
+    return root_fn;
   }
 
   void add_graph(const std::string& name, FunctionType<TypeID> t, FunctionGraph f) {
@@ -54,11 +94,8 @@ struct Env {
   }
 
   template <typename T>
-  void add_type(const std::string& name, std::optional<bool> copy_override = {}) {
+  TypeRef add_type(std::string_view name, std::optional<bool> copy_override = {}) {
     const TypeID type = type_id(knot::Type<T>{});
-
-    type_ids.emplace(name, type);
-    type_names.emplace(type, name);
 
     constexpr bool is_default_copy =
       std::is_copy_constructible_v<T> && std::is_trivially_destructible_v<T> && sizeof(T) <= 64;
@@ -74,6 +111,16 @@ struct Env {
     if constexpr(std::is_copy_constructible_v<T>) {
       add_function("clone", [](const T& t) { return t; });
     }
+
+    type_ids.emplace(std::string(name), type);
+    type_names.emplace(type, std::string(name));
+
+    const TypeRef ref = add_or_get_type(tg, type_cache.native, knot::Type<T>{});
+    tg.set<SrcRef>(ref, append_src(sm[0].src, name));
+
+    flat_types.emplace(std::string(name), ref);
+
+    return ref;
   }
 };
 

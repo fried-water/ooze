@@ -20,6 +20,8 @@ namespace {
 Env create_primative_env() {
   Env env;
 
+  env.type_cache = create_type_cache(env.tg);
+
   add_tieable_type<bool>(env, "bool");
 
   add_tieable_type<i8>(env, "i8");

@@ -462,6 +462,9 @@ add_expr(const Env& e,
       return {std::move(ctx), std::move(terms)};
     }
   }
+  case ASTTag::NativeFn:
+    // TODO
+    return {};
   }
   return {};
 }

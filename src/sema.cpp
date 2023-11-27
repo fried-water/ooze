@@ -117,6 +117,7 @@ struct FunctionConverter {
 
 struct IdentGraphCtx {
   std::vector<std::vector<ASTID>> fanouts;
+  std::vector<std::pair<std::string_view, ASTID>> globals;
   std::vector<ASTID> unbound_exprs;
   std::vector<std::pair<std::string_view, ASTID>> stack;
 };
@@ -137,25 +138,36 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const
     const std::string_view ident = sv(sm, ast.srcs[id.get()]);
     const auto it = std::find_if(
       ctx.stack.rbegin(), ctx.stack.rend(), applied([=](std::string_view v, ASTID) { return v == ident; }));
-    if(it == ctx.stack.rend()) {
-      ctx.unbound_exprs.push_back(id);
-    } else {
+    if(it != ctx.stack.rend()) {
       const auto [sv, pattern_id] = *it;
       ctx.fanouts[id.get()].push_back(pattern_id);
       ctx.fanouts[pattern_id.get()].push_back(id);
+    } else {
+      for(const auto& [name, pattern_id] : ctx.globals) {
+        if(ident == name) {
+          ctx.fanouts[id.get()].push_back(pattern_id);
+          ctx.fanouts[pattern_id.get()].push_back(id);
+        }
+      }
+      if(ctx.fanouts[id.get()].empty()) {
+        ctx.unbound_exprs.push_back(id);
+      }
     }
     break;
   }
-  case ASTTag::RootFn:
   case ASTTag::Assignment: {
-    const ASTID pattern = *ast.forest.first_child(id);
-    const ASTID expr = *ast.forest.next_sibling(pattern);
+    const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
 
     // Parse expr before pattern
     calculate_ident_graph(ctx, expr, sm, ast);
     calculate_ident_graph(ctx, pattern, sm, ast);
     break;
   }
+  case ASTTag::RootFn:
+    // Skip identifier of root fns, already added up front
+    calculate_ident_graph(ctx, ast.forest.child_ids(id).get<1>(), sm, ast);
+    break;
+  case ASTTag::NativeFn:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternTuple:
   case ASTTag::ExprLiteral:
@@ -192,12 +204,12 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
-ContextualResult2<TypeGraph> type_name_resolution(const SrcMap& sm, const Env& e, TypeGraph tg) {
+ContextualResult2<TypeGraph> type_name_resolution(const Env& e, TypeGraph tg) {
   std::vector<ContextualError2> errors;
 
   for(TypeRef t : tg.nodes()) {
     if(tg.get<TypeTag>(t) == TypeTag::Leaf && tg.get<TypeID>(t) == TypeID{}) {
-      if(const auto it = e.type_ids.find(std::string(sv(sm, tg.get<SrcRef>(t)))); it != e.type_ids.end()) {
+      if(const auto it = e.type_ids.find(std::string(sv(e.sm, tg.get<SrcRef>(t)))); it != e.type_ids.end()) {
         tg.set<TypeID>(t, it->second);
       } else {
         errors.push_back(ContextualError2{tg.get<SrcRef>(t), "undefined type"});
@@ -209,7 +221,13 @@ ContextualResult2<TypeGraph> type_name_resolution(const SrcMap& sm, const Env& e
 }
 
 std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap& sm, const AST& ast) {
-  IdentGraphCtx ctx = {std::vector<std::vector<ASTID>>(ast.forest.size())};
+  IdentGraphCtx ctx = {
+    std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
+      return ast.forest[id] == ASTTag::RootFn
+               ? std::optional(std::pair(
+                   sv(sm, ast.srcs[ast.forest.child_ids(id).get<0>().get()]), ast.forest.child_ids(id).get<0>()))
+               : std::nullopt;
+    })};
 
   for(ASTID root : ast.forest.root_ids()) {
     calculate_ident_graph(ctx, root, sm, ast);
