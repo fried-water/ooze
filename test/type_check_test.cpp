@@ -32,7 +32,8 @@ auto run_tc(Parser p, Env e, std::string_view src, bool debug = false) {
       return std::tuple(std::move(ast), std::move(tg), std::move(ident_graph), std::move(undeclared_bindings));
     }))
     .and_then(applied([&](AST ast, TypeGraph tg, auto ident_graph, auto undeclared_bindings) {
-      return type_check(e, ident_graph, undeclared_bindings, std::move(ast), std::move(tg), debug);
+      return type_check(
+        e.sm, e.type_cache, e.copy_types, ident_graph, undeclared_bindings, std::move(ast), std::move(tg), debug);
     }));
 }
 
@@ -128,7 +129,9 @@ auto run_alr(Parser p, const Env& e) {
         return std::tuple(std::move(ast), std::move(tg));
       });
     }))
-    .and_then(applied([&](AST ast, TypeGraph tg) { return apply_language_rules(e, std::move(ast), std::move(tg)); }));
+    .and_then(applied([&](AST ast, TypeGraph tg) {
+      return apply_language_rules(e.sm, e.type_cache, std::move(ast), std::move(tg));
+    }));
 }
 
 template <typename Parser>
