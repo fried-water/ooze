@@ -62,18 +62,18 @@ TypeRef add_fn(
 }
 
 inline TypeCache create_type_cache(TypeGraph& g) {
-  TypeCache c;
+  TypeCache tc;
 
-  c.floating = g.add_node(TypeTag::Floating, {}, TypeID{});
-  c.borrow_floating = g.add_node(std::array{c.floating}, TypeTag::Borrow, {}, TypeID{});
-  c.fn_floating = g.add_node(std::array{c.floating}, TypeTag::Fn, {}, TypeID{});
-  c.unit = g.add_node(TypeTag::Tuple, {}, TypeID{});
-  c.boolean = g.add_node(TypeTag::Leaf, {}, type_id(knot::Type<bool>{}));
+  tc.floating = g.add_node(TypeTag::Floating, {}, TypeID{});
+  tc.borrow_floating = g.add_node(std::array{tc.floating}, TypeTag::Borrow, {}, TypeID{});
+  tc.fn_floating = g.add_node(std::array{tc.floating, tc.floating}, TypeTag::Fn, {}, TypeID{});
+  tc.unit = g.add_node(TypeTag::Tuple, {}, TypeID{});
+  tc.boolean = g.add_node(TypeTag::Leaf, {}, type_id(knot::Type<bool>{}));
 
-  c.native.emplace(type_id(knot::Type<bool>{}),
-                   std::pair(c.boolean, g.add_node(std::array{c.boolean}, TypeTag::Borrow, {}, TypeID{})));
+  tc.native.emplace(type_id(knot::Type<bool>{}),
+                    std::pair(tc.boolean, g.add_node(std::array{tc.boolean}, TypeTag::Borrow, {}, TypeID{})));
 
-  return c;
+  return tc;
 }
 
 } // namespace ooze

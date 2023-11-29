@@ -204,68 +204,72 @@ void print_literal(std::ostream& os, const Literal& l) {
     l);
 }
 
-void pretty_print(std::ostream& os, const Env& e, const TypeGraph& g, TypeRef t) {
+void pretty_print(std::ostream& os, const SrcMap& sm, const TypeGraph& g, TypeRef t) {
   const auto children = g.fanout(t);
 
   switch(g.get<TypeTag>(t)) {
   case TypeTag::Leaf: {
-    const auto it = e.type_names.find(g.get<TypeID>(t));
-    os << (it != e.type_names.end() ? it->second : fmt::format("type 0x{:x}", g.get<TypeID>(t).id));
+    if(const std::string_view s = sv(sm, g.get<SrcRef>(t)); s.empty()) {
+      os << fmt::format("type 0x{:x}", g.get<TypeID>(t).id);
+    } else {
+      os << s;
+    }
     return;
   }
   case TypeTag::Floating: os << "_"; return;
   case TypeTag::Borrow:
     assert(children.size() == 1);
-    pretty_print(os << "&", e, g, children.front());
+    pretty_print(os << "&", sm, g, children.front());
     return;
   case TypeTag::Fn:
     assert(children.size() == 2);
-    pretty_print(os << (g.get<TypeTag>(children[0]) == TypeTag::Tuple ? "fn" : "fn "), e, g, children[0]);
-    pretty_print(os << " -> ", e, g, children[1]);
+    pretty_print(os << (g.get<TypeTag>(children[0]) == TypeTag::Tuple ? "fn" : "fn "), sm, g, children[0]);
+    pretty_print(os << " -> ", sm, g, children[1]);
     return;
   case TypeTag::Tuple:
     os << '(';
     if(!children.empty()) {
-      pretty_print(os, e, g, children.front());
-      std::for_each(children.begin() + 1, children.end(), [&](TypeRef ele) { pretty_print(os << ", ", e, g, ele); });
+      pretty_print(os, sm, g, children.front());
+      std::for_each(children.begin() + 1, children.end(), [&](TypeRef ele) { pretty_print(os << ", ", sm, g, ele); });
     }
     os << ')';
     return;
   }
 }
 
-void pretty_print(std::ostream& os, const Env& e, const AST& ast, const TypeGraph& tg, ASTID id, int indentation = 0) {
+void pretty_print(
+  std::ostream& os, const SrcMap& sm, const AST& ast, const TypeGraph& tg, ASTID id, int indentation = 0) {
   const auto print_binding = [&](std::ostream& os, ASTID pattern_id) {
-    pretty_print(os, e, ast, tg, pattern_id, indentation);
+    pretty_print(os, sm, ast, tg, pattern_id, indentation);
     if(TypeRef t = ast.types[pattern_id.get()]; t.is_valid() && tg.get<TypeTag>(t) != TypeTag::Floating) {
-      pretty_print(os << ": ", e, tg, t);
+      pretty_print(os << ": ", sm, tg, t);
     }
   };
 
   switch(ast.forest[id]) {
   case ASTTag::PatternWildCard: os << "_"; return;
   case ASTTag::PatternIdent:
-  case ASTTag::ExprIdent: os << sv(e.sm, ast.srcs[id.get()]); return;
+  case ASTTag::ExprIdent: os << sv(sm, ast.srcs[id.get()]); return;
   case ASTTag::ExprLiteral: print_literal(os, lookup_literal(ast, id)); return;
   case ASTTag::ExprCall: {
     const auto [callee, arg] = ast.forest.child_ids(id).take<2>();
-    pretty_print(os, e, ast, tg, callee, indentation);
-    pretty_print(os, e, ast, tg, arg, indentation);
+    pretty_print(os, sm, ast, tg, callee, indentation);
+    pretty_print(os, sm, ast, tg, arg, indentation);
     return;
   }
-  case ASTTag::ExprBorrow: pretty_print(os << "&", e, ast, tg, *ast.forest.first_child(id), indentation); return;
+  case ASTTag::ExprBorrow: pretty_print(os << "&", sm, ast, tg, *ast.forest.first_child(id), indentation); return;
   case ASTTag::ExprSelect: {
     const auto [cond, if_expr, else_expr] = ast.forest.child_ids(id).take<3>();
-    pretty_print(os << "select ", e, ast, tg, cond, indentation);
-    pretty_print(os << " { ", e, ast, tg, if_expr, indentation);
-    pretty_print(os << " } else { ", e, ast, tg, else_expr, indentation);
+    pretty_print(os << "select ", sm, ast, tg, cond, indentation);
+    pretty_print(os << " { ", sm, ast, tg, if_expr, indentation);
+    pretty_print(os << " } else { ", sm, ast, tg, else_expr, indentation);
     os << " }";
     return;
   }
   case ASTTag::Assignment: {
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
     print_binding(os << "let ", pattern);
-    pretty_print(os << " = ", e, ast, tg, expr, indentation);
+    pretty_print(os << " = ", sm, ast, tg, expr, indentation);
     return;
   }
   case ASTTag::ExprWith:
@@ -273,12 +277,12 @@ void pretty_print(std::ostream& os, const Env& e, const AST& ast, const TypeGrap
     while(ast.forest[id] == ASTTag::ExprWith) {
       const auto [assignment, expr] = ast.forest.child_ids(id).take<2>();
       for(int i = 0; i < indentation + 1; i++) os << "  ";
-      pretty_print(os, e, ast, tg, assignment, indentation + 1);
+      pretty_print(os, sm, ast, tg, assignment, indentation + 1);
       os << ";\n";
       id = expr;
     }
     for(int i = 0; i < indentation + 1; i++) os << "  ";
-    pretty_print(os, e, ast, tg, id, indentation + 1);
+    pretty_print(os, sm, ast, tg, id, indentation + 1);
     os << "\n";
     for(int i = 0; i < indentation; i++) os << "  ";
     os << "}";
@@ -296,7 +300,7 @@ void pretty_print(std::ostream& os, const Env& e, const AST& ast, const TypeGrap
     os << ')';
 
     if(const TypeRef t = ast.types[expr.get()]; t.is_valid()) {
-      pretty_print(os << " -> ", e, tg, t);
+      pretty_print(os << " -> ", sm, tg, t);
     } else {
       os << " -> _";
     }
@@ -305,14 +309,14 @@ void pretty_print(std::ostream& os, const Env& e, const AST& ast, const TypeGrap
       os << " =";
     }
 
-    pretty_print(os << " ", e, ast, tg, expr, indentation);
+    pretty_print(os << " ", sm, ast, tg, expr, indentation);
 
     return;
   }
   case ASTTag::RootFn: {
     const auto [ident, fn] = ast.forest.child_ids(id).take<2>();
-    pretty_print(os << "fn ", e, ast, tg, ident, indentation);
-    pretty_print(os, e, ast, tg, fn, indentation);
+    pretty_print(os << "fn ", sm, ast, tg, ident, indentation);
+    pretty_print(os, sm, ast, tg, fn, indentation);
     return;
   }
   case ASTTag::PatternTuple:
@@ -320,18 +324,18 @@ void pretty_print(std::ostream& os, const Env& e, const AST& ast, const TypeGrap
     os << '(';
     if(!ast.forest.is_leaf(id)) {
       const auto [first, rest] = ast.forest.child_ids(id).match();
-      pretty_print(os, e, ast, tg, first, indentation);
+      pretty_print(os, sm, ast, tg, first, indentation);
       for(ASTID c : rest) {
-        pretty_print(os << ", ", e, ast, tg, c, indentation);
+        pretty_print(os << ", ", sm, ast, tg, c, indentation);
       }
     }
     os << ')';
     return;
   case ASTTag::NativeFn: {
     const auto type_children = tg.fanout(ast.types[id.get()]);
-    pretty_print(os, e, tg, type_children[0]);
-    pretty_print(os << " -> ", e, tg, type_children[1]);
-    os << " = <native fn>";
+    pretty_print(os, sm, tg, type_children[0]);
+    pretty_print(os << " -> ", sm, tg, type_children[1]);
+    os << " = <native_fn>";
     return;
   }
   }
@@ -375,13 +379,13 @@ std::string pretty_print(const Env& e, const CheckedFunction& f) { return Printe
 std::string pretty_print(const Env& e, const CheckedAssignment& asgn) { return Printer{&e}(asgn); }
 std::string pretty_print(const Env& e, const CheckedExpr& expr) { return Printer{&e}(expr); }
 
-std::string pretty_print(const Env& e, const AST& ast, const TypeGraph& tg, std::optional<ASTID> id) {
+std::string pretty_print(const SrcMap& sm, const AST& ast, const TypeGraph& tg, std::optional<ASTID> id) {
   std::ostringstream os;
   if(id) {
-    pretty_print(os, e, ast, tg, *id);
+    pretty_print(os, sm, ast, tg, *id);
   } else {
     for(ASTID root : ast.forest.root_ids()) {
-      pretty_print(os, e, ast, tg, root);
+      pretty_print(os, sm, ast, tg, root);
       if(ast.forest.next_sibling(root)) {
         os << "\n\n";
       }
@@ -390,9 +394,9 @@ std::string pretty_print(const Env& e, const AST& ast, const TypeGraph& tg, std:
   return std::move(os).str();
 }
 
-std::string pretty_print(const Env& e, const TypeGraph& g, TypeRef t) {
+std::string pretty_print(const SrcMap& sm, const TypeGraph& g, TypeRef t) {
   std::ostringstream os;
-  pretty_print(os, e, g, t);
+  pretty_print(os, sm, g, t);
   return std::move(os).str();
 }
 

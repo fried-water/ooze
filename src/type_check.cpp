@@ -580,11 +580,12 @@ ContextualError2 generate_error(const Env& e, const AST& ast, const TypeGraph& t
       [&](const MismatchedType2& m) {
         return ContextualError2{
           ref,
-          fmt::format("expected {}, given {}", pretty_print(e, tg, type), pretty_print(e, tg, m.conflicting_type))};
+          fmt::format(
+            "expected {}, given {}", pretty_print(e.sm, tg, type), pretty_print(e.sm, tg, m.conflicting_type))};
       },
       [&](const UnableToDeduce&) {
         return ContextualError2{
-          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(e, tg, type))};
+          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(e.sm, tg, type))};
       },
       [&](const ReturnBorrow&) {
         return ContextualError2{ref, "cannot return a borrowed value"};
@@ -767,9 +768,7 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
     }
   }
 
-  const TypeRef floating = tg.add_node(TypeTag::Floating, {}, TypeID{});
-
-  std::fill(types.begin(), types.end(), floating);
+  std::fill(types.begin(), types.end(), e.type_cache.floating);
   std::vector<TypeRef> conflicting_types(forest.size(), TypeRef::Invalid());
 
   while(!to_visit.empty()) {
@@ -783,12 +782,12 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
       fmt::print("Processing {} {}\n   propagated {}\n   existing   {}\n",
                  id.get(),
                  knot::debug(forest[id]),
-                 pretty_print(e, tg, type),
-                 pretty_print(e, tg, original_type));
+                 pretty_print(e.sm, tg, type),
+                 pretty_print(e.sm, tg, original_type));
     }
 
     // Apply propagated type
-    if(const TypeRef unified = unify(tg, original_type, type, true); unified.is_valid()) {
+    if(const TypeRef unified = unify(e.type_cache, tg, original_type, type, true); unified.is_valid()) {
       types[id.get()] = unified;
     } else {
       conflicting_types[id.get()] = type;
@@ -800,7 +799,7 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
       TypeRef overload_type;
 
       for(ASTID overload : ident_graph.fanout(id)) {
-        if(auto type = unify(tg, types[id.get()], types[overload.get()], true); type.is_valid()) {
+        if(auto type = unify(e.type_cache, tg, types[id.get()], types[overload.get()], true); type.is_valid()) {
           overload_type = type;
           num_matches++;
           if(num_matches > 1) {
@@ -815,19 +814,20 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
     }
 
     if(debug) {
-      fmt::print("   final      {}\n", pretty_print(e, tg, types[id.get()]));
+      fmt::print("   final      {}\n", pretty_print(e.sm, tg, types[id.get()]));
     }
 
     if(!compare_dags(tg, original_type, types[id.get()])) {
       for(const auto [dst, wrap, propagation] : propagations[id.get()]) {
-        to_visit.emplace_back(dst, propagated_type(tg, propagation, wrap, types[id.get()], floating));
+        to_visit.emplace_back(dst, propagated_type(tg, propagation, wrap, types[id.get()], e.type_cache.floating));
       }
     }
 
     // First time a conflict happens propagate it, produces better error messages
     if(!was_conflicting && conflicting_types[id.get()].is_valid()) {
       for(const auto [dst, wrap, propagation] : propagations[id.get()]) {
-        to_visit.emplace_back(dst, propagated_type(tg, propagation, wrap, conflicting_types[id.get()], floating));
+        to_visit.emplace_back(
+          dst, propagated_type(tg, propagation, wrap, conflicting_types[id.get()], e.type_cache.floating));
       }
     }
   }
@@ -835,10 +835,10 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
   if(debug) {
     fmt::print("Final types\n");
     for(ASTID id : forest.ids()) {
-      fmt::print("    {:<4} {:<25} = {}", id.get(), knot::debug(forest[id]), pretty_print(e, tg, types[id.get()]));
+      fmt::print("    {:<4} {:<25} = {}", id.get(), knot::debug(forest[id]), pretty_print(e.sm, tg, types[id.get()]));
 
       if(conflicting_types[id.get()].is_valid()) {
-        fmt::print(" (conflicting {})", pretty_print(e, tg, conflicting_types[id.get()]));
+        fmt::print(" (conflicting {})", pretty_print(e.sm, tg, conflicting_types[id.get()]));
       }
 
       fmt::print("\n");
@@ -1061,40 +1061,38 @@ ContextualResult<T> apply_language_rules(const Env& env, T t) {
   return value_or_errors(std::move(t), std::move(errors));
 }
 
-TypeRef
-language_rule(const AST& ast, TypeGraph& g, ASTID id, TypeRef floating, TypeRef borrow, TypeRef fn, TypeRef unit) {
+TypeRef language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID id) {
 
   switch(ast.forest[id]) {
   case ASTTag::ExprLiteral: {
-    return g.add_node(TypeTag::Leaf,
-                      {},
-                      std::visit([](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); },
-                                 lookup_literal(ast, id)));
+    const TypeID tid = std::visit(
+      [](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, lookup_literal(ast, id));
+    return tc.native.at(tid).first;
   }
 
-  case ASTTag::ExprBorrow: return borrow;
+  case ASTTag::ExprBorrow: return tc.borrow_floating;
 
   case ASTTag::PatternTuple:
   case ASTTag::ExprTuple: {
     const TypeRef tuple = g.add_node(TypeTag::Tuple, {}, TypeID{});
     for(ASTID _ : ast.forest.child_ids(id)) {
-      g.add_fanout_to_last_node(floating);
+      g.add_fanout_to_last_node(tc.floating);
     }
     return tuple;
   }
 
   case ASTTag::NativeFn:
-  case ASTTag::Fn: return fn;
+  case ASTTag::Fn: return tc.fn_floating;
 
   case ASTTag::RootFn:
-  case ASTTag::Assignment: return unit;
+  case ASTTag::Assignment: return tc.unit;
 
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternIdent:
   case ASTTag::ExprWith:
-  case ASTTag::ExprIdent: return floating;
+  case ASTTag::ExprIdent: return tc.floating;
   }
 
   return TypeRef::Invalid();
@@ -1108,7 +1106,7 @@ std::vector<const TypedExpr*> undeclared_bindings(const TypedFunction& f) {
 
 std::optional<Type<TypeID>> unify_types(const Type<TypeID>& a, const Type<TypeID>& b) { return Unifier{}.unify(a, b); }
 
-TypeRef unify(TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
+TypeRef unify(const TypeCache& tc, TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
   const TypeTag xt = g.get<TypeTag>(x);
   const TypeTag yt = g.get<TypeTag>(y);
 
@@ -1130,10 +1128,10 @@ TypeRef unify(TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
     i32 y_it = 0;
 
     std::vector<TypeRef> results;
-    const TypeRef floating = recurse ? TypeRef::Invalid() : g.add_node(TypeTag::Floating, {}, TypeID::Invalid());
+    const TypeRef floating = recurse ? TypeRef::Invalid() : tc.floating;
 
     for(; x_it != x_count && y_it != y_count; ++y_it, ++x_it) {
-      const TypeRef c = recurse ? unify(g, g.fanout(x)[x_it], g.fanout(y)[y_it], true) : floating;
+      const TypeRef c = recurse ? unify(tc, g, g.fanout(x)[x_it], g.fanout(y)[y_it], true) : floating;
       if(c != TypeRef::Invalid()) {
         results.push_back(c);
       } else {
@@ -1142,7 +1140,7 @@ TypeRef unify(TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
     }
 
     if(x_it == x_count && y_it == y_count) {
-      const TypeRef id = g.add_node(xt, {}, g.get<TypeID>(x));
+      const TypeRef id = g.add_node(xt, {}, {});
       for(TypeRef t : results) g.add_fanout_to_last_node(t);
       return id;
     } else {
@@ -1152,38 +1150,27 @@ TypeRef unify(TypeGraph& g, TypeRef x, TypeRef y, bool recurse) {
 }
 
 ContextualResult2<std::pair<AST, TypeGraph>> apply_language_rules(const Env& e, AST ast, TypeGraph tg) {
-  const TypeRef floating = tg.add_node(TypeTag::Floating, {}, TypeID{});
-  const TypeRef boolean = tg.add_node(TypeTag::Leaf, {}, type_id(knot::Type<bool>{}));
-  const TypeRef unit = tg.add_node(TypeTag::Tuple, {}, TypeID{});
-
-  const TypeRef borrow = tg.add_node(TypeTag::Borrow, {}, TypeID{});
-  tg.add_fanout_to_last_node(floating);
-
-  const TypeRef fn = tg.add_node(TypeTag::Fn, {}, TypeID{});
-  tg.add_fanout_to_last_node(floating);
-  tg.add_fanout_to_last_node(floating);
-
   std::vector<ContextualError2> errors;
 
   const auto apply_type = [&](ASTID id, TypeRef t) {
-    const TypeRef unified = ast.types[id.get()].is_valid() ? unify(tg, ast.types[id.get()], t, true) : t;
+    const TypeRef unified = ast.types[id.get()].is_valid() ? unify(e.type_cache, tg, ast.types[id.get()], t, true) : t;
     if(unified == TypeRef::Invalid()) {
       errors.push_back(
         {ast.srcs[id.get()],
-         fmt::format("expected {}, given {}", pretty_print(e, tg, t), pretty_print(e, tg, ast.types[id.get()]))});
+         fmt::format("expected {}, given {}", pretty_print(e.sm, tg, t), pretty_print(e.sm, tg, ast.types[id.get()]))});
     } else {
       ast.types[id.get()] = unified;
     }
   };
 
   for(const ASTID id : ast.forest.ids()) {
-    apply_type(id, language_rule(ast, tg, id, floating, borrow, fn, unit));
+    apply_type(id, language_rule(e.type_cache, ast, tg, id));
 
     const auto parent = ast.forest.parent(id);
     if(parent && ast.forest[*parent] == ASTTag::ExprCall && ast.forest.first_child(*parent) == id) {
-      apply_type(id, fn);
+      apply_type(id, e.type_cache.fn_floating);
     } else if(parent && ast.forest[*parent] == ASTTag::ExprSelect && ast.forest.first_child(*parent) == id) {
-      apply_type(id, boolean);
+      apply_type(id, e.type_cache.boolean);
     }
   }
 

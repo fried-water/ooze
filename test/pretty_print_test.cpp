@@ -12,42 +12,42 @@ void test(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
   const auto [ast, tg] = check_result(type_name_resolution(e, parse2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e, ast, tg));
+  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 void test_pattern(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
   const auto [ast, tg] = check_result(type_name_resolution(e, parse_pattern2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e, ast, tg));
+  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 void test_type(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
   const auto [ast, tg] = check_result(type_name_resolution(e, parse_type2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e, tg, TypeRef(tg.num_nodes() - 1)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, tg, TypeRef(tg.num_nodes() - 1)));
 }
 
 void test_expr(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
   const auto [ast, tg] = check_result(type_name_resolution(e, parse_expr2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e, ast, tg));
+  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 void test_assign(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
   const auto [ast, tg] = check_result(type_name_resolution(e, parse_assignment2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e, ast, tg));
+  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 void test_fn(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
   const auto [ast, tg] = check_result(type_name_resolution(e, parse_function2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e, ast, tg));
+  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 } // namespace
@@ -87,7 +87,9 @@ BOOST_AUTO_TEST_CASE(native_fn) {
   Env e;
   e.add_type<i32>("i32");
   e.add_function("f", [](i32) { return 1; });
-  BOOST_CHECK_EQUAL("fn f(i32) -> i32 = <native_fn>", pretty_print(e, e.ast, e.tg));
+
+  BOOST_CHECK_EQUAL("fn f(i32) -> i32 = <native_fn>",
+                    pretty_print(e.sm, e.ast, e.tg, e.ast.forest.root_ids().get<1>()));
 }
 
 BOOST_AUTO_TEST_CASE(expr) {
