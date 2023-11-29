@@ -204,12 +204,13 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
-ContextualResult2<TypeGraph> type_name_resolution(const Env& e, TypeGraph tg) {
+ContextualResult2<TypeGraph>
+type_name_resolution(const SrcMap& sm, const std::unordered_map<std::string, TypeID>& types, TypeGraph tg) {
   std::vector<ContextualError2> errors;
 
   for(TypeRef t : tg.nodes()) {
     if(tg.get<TypeTag>(t) == TypeTag::Leaf && tg.get<TypeID>(t) == TypeID{}) {
-      if(const auto it = e.type_ids.find(std::string(sv(e.sm, tg.get<SrcRef>(t)))); it != e.type_ids.end()) {
+      if(const auto it = types.find(std::string(sv(sm, tg.get<SrcRef>(t)))); it != types.end()) {
         tg.set<TypeID>(t, it->second);
       } else {
         errors.push_back(ContextualError2{tg.get<SrcRef>(t), "undefined type"});

@@ -57,7 +57,7 @@ void test_nr(Env e, std::string_view src, const std::vector<TypeID>& exp) {
   e.sm.push_back({"", std::string(src)});
   const auto [g, tags, srcs, types] =
     check_result(parse_function2({}, {}, SrcID{1}, src).and_then(applied([&](const AST&, TypeGraph tg) {
-      return type_name_resolution(e, std::move(tg));
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
     })))
       .decompose();
 
@@ -71,8 +71,8 @@ void test_nr(Env e, std::string_view src, const std::vector<TypeID>& exp) {
 void test_nr_error(Env e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
   e.sm.push_back({"", std::string(src)});
   const auto errors =
-    check_error(parse_function2({}, {}, SrcID{0}, src).and_then(applied([&](const AST&, TypeGraph tg) {
-      return type_name_resolution(e, std::move(tg));
+    check_error(parse_function2({}, std::move(e.tg), SrcID{0}, src).and_then(applied([&](const AST&, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
     })));
 
   if(expected_errors != errors) {

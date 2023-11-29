@@ -8,46 +8,29 @@ namespace ooze {
 
 namespace {
 
-void test(std::string_view exp, std::string_view src) {
+template <typename Parser>
+void test(Parser p, std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] = check_result(type_name_resolution(e, parse2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
-}
 
-void test_pattern(std::string_view exp, std::string_view src) {
-  Env e = create_primative_env();
-  e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] = check_result(type_name_resolution(e, parse_pattern2({}, {}, SrcID{1}, src)));
+  const auto [ast, tg] =
+    check_result(p({}, std::move(e.tg), SrcID{1}, src).and_then(applied([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    })));
+
   BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 void test_type(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] = check_result(type_name_resolution(e, parse_type2({}, {}, SrcID{1}, src)));
+  const TypeGraph tg =
+    check_result(parse_type2({}, std::move(e.tg), SrcID{1}, src).and_then(applied([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
+    })));
   BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, tg, TypeRef(tg.num_nodes() - 1)));
-}
-
-void test_expr(std::string_view exp, std::string_view src) {
-  Env e = create_primative_env();
-  e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] = check_result(type_name_resolution(e, parse_expr2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
-}
-
-void test_assign(std::string_view exp, std::string_view src) {
-  Env e = create_primative_env();
-  e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] = check_result(type_name_resolution(e, parse_assignment2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
-}
-
-void test_fn(std::string_view exp, std::string_view src) {
-  Env e = create_primative_env();
-  e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] = check_result(type_name_resolution(e, parse_function2({}, {}, SrcID{1}, src)));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
 
 } // namespace
@@ -55,9 +38,9 @@ void test_fn(std::string_view exp, std::string_view src) {
 BOOST_AUTO_TEST_SUITE(pp)
 
 BOOST_AUTO_TEST_CASE(pattern) {
-  test_pattern("abc", "abc");
-  test_pattern("_", "_");
-  test_pattern("(abc, _)", "(abc, _)");
+  test(parse_pattern2, "abc", "abc");
+  test(parse_pattern2, "_", "_");
+  test(parse_pattern2, "(abc, _)", "(abc, _)");
 }
 
 BOOST_AUTO_TEST_CASE(compound_type) {
@@ -85,6 +68,7 @@ BOOST_AUTO_TEST_CASE(unnamed_type) {
 
 BOOST_AUTO_TEST_CASE(native_fn) {
   Env e;
+  e.type_cache = create_type_cache(e.tg);
   e.add_type<i32>("i32");
   e.add_function("f", [](i32) { return 1; });
 
@@ -93,47 +77,47 @@ BOOST_AUTO_TEST_CASE(native_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(expr) {
-  test_expr("1", "1");
-  test_expr("1i16", "1i16");
-  test_expr("1.0f", "1.0f");
-  test_expr("1.0", "1.0");
-  test_expr("\"abc\"", "\"abc\"");
-  test_expr("abc", "abc");
-  test_expr("&abc", "&abc");
+  test(parse_expr2, "1", "1");
+  test(parse_expr2, "1i16", "1i16");
+  test(parse_expr2, "1.0f", "1.0f");
+  test(parse_expr2, "1.0", "1.0");
+  test(parse_expr2, "\"abc\"", "\"abc\"");
+  test(parse_expr2, "abc", "abc");
+  test(parse_expr2, "&abc", "&abc");
 
-  test_expr("(1, abc)", "(1, abc)");
+  test(parse_expr2, "(1, abc)", "(1, abc)");
 
-  test_expr("select x { y } else { z }", "select x { y } else { z }");
+  test(parse_expr2, "select x { y } else { z }", "select x { y } else { z }");
 
-  test_expr("f(1)", "f(1)");
+  test(parse_expr2, "f(1)", "f(1)");
 }
 
 BOOST_AUTO_TEST_CASE(assignment) {
-  test_assign("let x = y", "let x = y");
-  test_assign("let x = y", "let x : _ = y");
-  test_assign("let x: i32 = y", "let x: i32 = y");
-  test_assign("let (x, y): (i32, _) = (1, 2)", "let (x, y): (i32, _) = (1, 2)");
+  test(parse_assignment2, "let x = y", "let x = y");
+  test(parse_assignment2, "let x = y", "let x : _ = y");
+  test(parse_assignment2, "let x: i32 = y", "let x: i32 = y");
+  test(parse_assignment2, "let (x, y): (i32, _) = (1, 2)", "let (x, y): (i32, _) = (1, 2)");
 }
 
 BOOST_AUTO_TEST_CASE(scope) {
-  test_expr("abc", "{ abc }");
+  test(parse_expr2, "abc", "{ abc }");
 
-  test_expr("{\n  let x = y;\n  x\n}", "{ let x = y; x }");
-  test_expr("{\n  let x = y;\n  let y = z;\n  y\n}", "{ let x = y; let y = z; y }");
-  test_expr("{\n  let x = {\n    let y = z;\n    y\n  };\n  x\n}", "{ let x = { let y = z; y }; x }");
+  test(parse_expr2, "{\n  let x = y;\n  x\n}", "{ let x = y; x }");
+  test(parse_expr2, "{\n  let x = y;\n  let y = z;\n  y\n}", "{ let x = y; let y = z; y }");
+  test(parse_expr2, "{\n  let x = {\n    let y = z;\n    y\n  };\n  x\n}", "{ let x = { let y = z; y }; x }");
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
-  test_fn("() -> i32 = x", "() -> i32 = x");
-  test_fn("(x) -> i32 = x", "(x) -> i32 = x");
-  test_fn("(x: i32) -> i32 = x", "(x: i32) -> i32 = x");
-  test_fn("(x: i32, _) -> i32 = x", "(x: i32, _) -> i32 = x");
-  test_fn("() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
+  test(parse_function2, "() -> i32 = x", "() -> i32 = x");
+  test(parse_function2, "(x) -> i32 = x", "(x) -> i32 = x");
+  test(parse_function2, "(x: i32) -> i32 = x", "(x: i32) -> i32 = x");
+  test(parse_function2, "(x: i32, _) -> i32 = x", "(x: i32, _) -> i32 = x");
+  test(parse_function2, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
 }
 
 BOOST_AUTO_TEST_CASE(ast) {
-  test("fn f() -> i32 = x", "fn f() -> i32 = x");
-  test("fn f() -> i32 = x\n\nfn g() -> i32 = x", "fn f() -> i32 = x fn g() -> i32 = x");
+  test(parse2, "fn f() -> i32 = x", "fn f() -> i32 = x");
+  test(parse2, "fn f() -> i32 = x\n\nfn g() -> i32 = x", "fn f() -> i32 = x fn g() -> i32 = x");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
