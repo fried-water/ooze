@@ -21,9 +21,9 @@ inline FunctionType<TypeID> type_of(const TypedFunction& f) { return {f.pattern.
 
 TypeRef unify(const TypeCache&, TypeGraph&, TypeRef, TypeRef, bool recurse);
 
-ContextualResult2<std::pair<AST, TypeGraph>> apply_language_rules(const SrcMap&, const TypeCache&, AST, TypeGraph);
+ContextualResult2<void, AST, TypeGraph> apply_language_rules(const SrcMap&, const TypeCache&, AST, TypeGraph);
 
-ContextualResult2<std::pair<AST, TypeGraph>> type_check(
+ContextualResult2<void, AST, TypeGraph> type_check(
   const SrcMap&,
   const TypeCache&,
   const std::unordered_set<TypeID>& copy_types,

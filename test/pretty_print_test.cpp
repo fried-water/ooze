@@ -13,12 +13,11 @@ void test(Parser p, std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
 
-  const auto [ast, tg] =
-    check_result(p({}, std::move(e.tg), SrcID{1}, src).and_then(applied([&](AST ast, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
-    })));
+  const auto [ast, tg] = check_result(p({}, std::move(e.tg), SrcID{1}, src).and_then([&](AST ast, TypeGraph tg) {
+    return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+      return std::tuple(std::move(ast), std::move(tg));
+    });
+  }));
 
   BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
 }
@@ -26,10 +25,12 @@ void test(Parser p, std::string_view exp, std::string_view src) {
 void test_type(std::string_view exp, std::string_view src) {
   Env e = create_primative_env();
   e.sm.push_back({"", std::string(src)});
-  const TypeGraph tg =
-    check_result(parse_type2({}, std::move(e.tg), SrcID{1}, src).and_then(applied([&](AST ast, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
-    })));
+  const auto [ast, tg] =
+    check_result(parse_type2({}, std::move(e.tg), SrcID{1}, src).and_then([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    }));
   BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, tg, TypeRef(tg.num_nodes() - 1)));
 }
 

@@ -50,9 +50,16 @@ auto make_vector(Ts&&... ts) {
 
 inline auto err(std::string msg) { return Failure{std::vector<std::string>{std::move(msg)}}; }
 
-template <typename T, typename E>
-Result<T, std::vector<E>> value_or_errors(T t, std::vector<E> errors) {
-  return errors.empty() ? Result<T, std::vector<E>>{std::move(t)} : Failure{std::move(errors)};
+template <typename T, typename E, typename... Ts>
+Result<T, std::vector<E>, Ts...> value_or_errors(T t, std::vector<E> errors, Ts... ts) {
+  return errors.empty() ? success<std::vector<E>>(std::move(t), std::move(ts)...)
+                        : fail<T>(std::move(errors), std::move(ts)...);
+}
+
+template <typename E, typename... Ts>
+Result<void, std::vector<E>, Ts...> void_or_errors(std::vector<E> errors, Ts... ts) {
+  return errors.empty() ? success<std::vector<E>>(std::tuple(), std::move(ts)...)
+                        : fail<void>(std::move(errors), std::move(ts)...);
 }
 
 template <typename T, typename E>

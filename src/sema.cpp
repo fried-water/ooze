@@ -204,7 +204,7 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
   return type_name_resolution<Type<TypeID>>(e, t);
 }
 
-ContextualResult2<TypeGraph>
+ContextualResult2<void, TypeGraph>
 type_name_resolution(const SrcMap& sm, const std::unordered_map<std::string, TypeID>& types, TypeGraph tg) {
   std::vector<ContextualError2> errors;
 
@@ -218,7 +218,7 @@ type_name_resolution(const SrcMap& sm, const std::unordered_map<std::string, Typ
     }
   }
 
-  return value_or_errors(std::move(tg), std::move(errors));
+  return void_or_errors(std::move(errors), std::move(tg));
 }
 
 std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap& sm, const AST& ast) {

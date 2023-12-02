@@ -260,8 +260,7 @@ auto function() {
 auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::RootFn})); }
 
 template <typename Parser>
-ContextualResult2<std::tuple<AST, TypeGraph>>
-parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
   State state = {std::move(ast), std::move(tg), src_id, src};
@@ -270,40 +269,42 @@ parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {
   assert(value || error);
 
   if(value && size(parse_slice) == tokens.size() && lex_end == src.size()) {
-    return std::tuple(std::move(state.ast), std::move(state.tg));
+    return {std::move(state.ast), std::move(state.tg)};
   } else {
-    return Failure{std::vector<ContextualError2>{
-      {(error && error->second.pos < tokens.size())
-         ? SrcRef{src_id, tokens[error->second.pos].ref}
-         : SrcRef{src_id, Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1}},
-       error ? fmt::format("expected {}", error->first) : fmt::format("unknown token")}}};
+    return {Failure{std::vector<ContextualError2>{
+              {(error && error->second.pos < tokens.size())
+                 ? SrcRef{src_id, tokens[error->second.pos].ref}
+                 : SrcRef{src_id, Slice{lex_end, lex_end == src.size() ? lex_end : lex_end + 1}},
+               error ? fmt::format("expected {}", error->first) : fmt::format("unknown token")}}},
+            std::move(state.ast),
+            std::move(state.tg)};
   }
 }
 
 } // namespace
 
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_expr2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_expr2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(expr, std::move(ast), std::move(tg), id, src);
 }
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_repl2(AST ast, TypeGraph tg, SrcID id, std::string_view src);
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_function2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_repl2(AST ast, TypeGraph tg, SrcID id, std::string_view src);
+ContextualResult2<void, AST, TypeGraph> parse_function2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(function(), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult2<std::tuple<AST, TypeGraph>> parse2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(root(), std::move(ast), std::move(tg), id, src);
 }
 
 // Exposed for unit testing
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_binding2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_binding2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(binding(), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_assignment2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_assignment2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(assignment(), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_type2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_type2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(type, std::move(ast), std::move(tg), id, src);
 }
-ContextualResult2<std::tuple<AST, TypeGraph>> parse_pattern2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+ContextualResult2<void, AST, TypeGraph> parse_pattern2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(pattern, std::move(ast), std::move(tg), id, src);
 }
 

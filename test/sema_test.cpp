@@ -55,11 +55,13 @@ void test_inferred_inputs(const Env& e,
 
 void test_nr(Env e, std::string_view src, const std::vector<TypeID>& exp) {
   e.sm.push_back({"", std::string(src)});
-  const auto [g, tags, srcs, types] =
-    check_result(parse_function2({}, {}, SrcID{1}, src).and_then(applied([&](const AST&, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
-    })))
-      .decompose();
+  std::tie(e.ast, e.tg) = check_result(parse_function2({}, {}, SrcID{1}, src).and_then([&](AST ast, TypeGraph tg) {
+    return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+      return std::tuple(std::move(ast), std::move(tg));
+    });
+  }));
+
+  const auto [g, tags, srcs, types] = std::move(e.tg).decompose();
 
   if(exp != types) {
     fmt::print("E {}\n", knot::debug(exp));
@@ -71,9 +73,11 @@ void test_nr(Env e, std::string_view src, const std::vector<TypeID>& exp) {
 void test_nr_error(Env e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
   e.sm.push_back({"", std::string(src)});
   const auto errors =
-    check_error(parse_function2({}, std::move(e.tg), SrcID{0}, src).and_then(applied([&](const AST&, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
-    })));
+    check_error(parse_function2({}, std::move(e.tg), SrcID{0}, src).and_then([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    }));
 
   if(expected_errors != errors) {
     fmt::print("E {}\n", knot::debug(expected_errors));

@@ -1152,7 +1152,7 @@ TypeRef unify(const TypeCache& tc, TypeGraph& g, TypeRef x, TypeRef y, bool recu
   }
 }
 
-ContextualResult2<std::pair<AST, TypeGraph>>
+ContextualResult2<void, AST, TypeGraph>
 apply_language_rules(const SrcMap& sm, const TypeCache& tc, AST ast, TypeGraph tg) {
   std::vector<ContextualError2> errors;
 
@@ -1178,7 +1178,7 @@ apply_language_rules(const SrcMap& sm, const TypeCache& tc, AST ast, TypeGraph t
     }
   }
 
-  return value_or_errors(std::pair(std::move(ast), std::move(tg)), std::move(errors));
+  return void_or_errors(std::move(errors), std::move(ast), std::move(tg));
 }
 
 ContextualResult<TypedFunction>
@@ -1249,7 +1249,7 @@ std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunct
   return generate_errors(e, propagations, std::move(errors));
 }
 
-ContextualResult2<std::pair<AST, TypeGraph>> type_check(
+ContextualResult2<void, AST, TypeGraph> type_check(
   const SrcMap& sm,
   const TypeCache& tc,
   const std::unordered_set<TypeID>& copy_types,
@@ -1258,7 +1258,7 @@ ContextualResult2<std::pair<AST, TypeGraph>> type_check(
   AST ast,
   TypeGraph tg,
   bool debug) {
-  return apply_language_rules(sm, tc, std::move(ast), std::move(tg)).and_then(applied([&](AST ast, TypeGraph tg) {
+  return apply_language_rules(sm, tc, std::move(ast), std::move(tg)).and_then([&](AST ast, TypeGraph tg) {
     const std::vector<std::vector<ASTPropagation>> propagations = calculate_propagations(ident_graph, ast.forest);
 
     std::vector<TypeCheckError2> cp_errors;
@@ -1291,8 +1291,8 @@ ContextualResult2<std::pair<AST, TypeGraph>> type_check(
                                find_returned_borrows(ast, tg),
                                find_binding_usage_errors(sm, copy_types, ast, tg, ident_graph))));
 
-    return value_or_errors(std::pair(std::move(ast), std::move(tg)), std::move(errors));
-  }));
+    return void_or_errors(std::move(errors), std::move(ast), std::move(tg));
+  });
 }
 
 } // namespace ooze

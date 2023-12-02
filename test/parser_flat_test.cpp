@@ -7,8 +7,10 @@ namespace ooze {
 namespace {
 
 #define check_pass(_EXP_AST, _EXP_TYPES, _ACT)                                                                         \
-  [](const AST& exp_ast, const TypeGraph& exp_tg, ContextualResult2<std::tuple<AST, TypeGraph>> result) {              \
-    const auto& [ast, tg] = check_result(result);                                                                      \
+  [](const AST& exp_ast, const TypeGraph& exp_tg, ContextualResult2<void, AST, TypeGraph> result) {                    \
+    BOOST_REQUIRE(result.has_value());                                                                                 \
+                                                                                                                       \
+    const auto& [ast, tg] = result.state();                                                                            \
     if(exp_ast != ast) {                                                                                               \
       fmt::print("Actual:   {}\n", knot::debug(ast));                                                                  \
       fmt::print("Expected: {}\n", knot::debug(exp_ast));                                                              \
@@ -21,8 +23,8 @@ namespace {
     }                                                                                                                  \
   }(_EXP_AST, _EXP_TYPES, _ACT)
 
-template <typename T>
-void check_single_error(ContextualError2 expected, ContextualResult2<T> result) {
+template <typename T, typename... Ts>
+void check_single_error(ContextualError2 expected, ContextualResult2<T, Ts...> result) {
   const std::vector<ContextualError2> err = check_error(std::move(result));
   BOOST_REQUIRE(err.size() == 1);
 

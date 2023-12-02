@@ -17,7 +17,7 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<Named
 TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
 
-ContextualResult2<TypeGraph>
+ContextualResult2<void, TypeGraph>
 type_name_resolution(const SrcMap&, const std::unordered_map<std::string, TypeID>&, TypeGraph);
 
 std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap&, const AST&);

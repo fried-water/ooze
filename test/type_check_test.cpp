@@ -22,19 +22,21 @@ template <typename Parser>
 auto run_tc(Parser p, Env e, std::string_view src, bool debug = false) {
   e.sm.push_back({"src", std::string(src)});
   return p(std::move(e.ast), std::move(e.tg), SrcID{1}, src)
-    .and_then(applied([&](AST ast, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map([&](TypeGraph tg) {
+    .and_then([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
         return std::tuple(std::move(ast), std::move(tg));
       });
-    }))
-    .map(applied([&](AST ast, TypeGraph tg) {
+    })
+    .map([&](AST ast, TypeGraph tg) {
       auto [ident_graph, undeclared_bindings] = calculate_ident_graph(e.sm, ast);
-      return std::tuple(std::move(ast), std::move(tg), std::move(ident_graph), std::move(undeclared_bindings));
-    }))
-    .and_then(applied([&](AST ast, TypeGraph tg, auto ident_graph, auto undeclared_bindings) {
+      return std::tuple(
+        std::tuple(std::move(ident_graph), std::move(undeclared_bindings)), std::move(ast), std::move(tg));
+    })
+    .and_then([&](auto tuple, AST ast, TypeGraph tg) {
+      const auto& [ident_graph, undeclared_bindings] = tuple;
       return type_check(
         e.sm, e.type_cache, e.copy_types, ident_graph, undeclared_bindings, std::move(ast), std::move(tg), debug);
-    }));
+    });
 }
 
 template <typename R>
@@ -81,9 +83,11 @@ void test_tc_error(
 }
 
 auto type_graph_of(const Env& e, SrcID src, TypeGraph tg) {
-  return check_result(
-    parse_type2({}, std::move(tg), src, e.sm[src.get()].src).and_then(applied([&](AST ast, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg));
+  return std::get<1>(
+    check_result(parse_type2({}, std::move(tg), src, e.sm[src.get()].src).and_then([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
     })));
 };
 
@@ -124,14 +128,14 @@ void test_unify_error(std::string_view x, std::string_view y, bool recurse = tru
 template <typename Parser>
 auto run_alr(Parser p, const Env& e) {
   return p(std::move(e.ast), std::move(e.tg), SrcID{1}, e.sm.back().src)
-    .and_then(applied([&](AST ast, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map([&](TypeGraph tg) {
+    .and_then([&](AST ast, TypeGraph tg) {
+      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
         return std::tuple(std::move(ast), std::move(tg));
       });
-    }))
-    .and_then(applied([&](AST ast, TypeGraph tg) {
+    })
+    .and_then([&](AST ast, TypeGraph tg) {
       return apply_language_rules(e.sm, e.type_cache, std::move(ast), std::move(tg));
-    }));
+    });
 }
 
 template <typename Parser>
