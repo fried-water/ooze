@@ -270,6 +270,10 @@ public:
   constexpr std::tuple<Ts...>& state() & { return _state; }
   constexpr const std::tuple<Ts...>& state() const& { return _state; }
 
+  constexpr std::tuple<Ts...>&& value_and_state() && { return std::move(_state); }
+  constexpr std::tuple<Ts...>& value_and_state() & { return _state; }
+  constexpr const std::tuple<Ts...>& value_and_state() const& { return _state; }
+
   constexpr bool has_value() const { return !_error.has_value(); }
   constexpr operator bool() const { return has_value(); }
 

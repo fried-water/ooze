@@ -234,7 +234,7 @@ BOOST_AUTO_TEST_CASE(ooze_out_of_order, *boost::unit_test::disabled()) {
 
   Env e = create_primative_env();
 
-  check_void_result(parse_script(e, script));
+  check_result(parse_script(e, script));
 }
 
 BOOST_AUTO_TEST_CASE(generic) {
@@ -333,14 +333,14 @@ BOOST_AUTO_TEST_CASE(expr_or_error) {
 
 BOOST_AUTO_TEST_CASE(to_string) {
   auto executor = make_task_executor();
-  BOOST_CHECK_EQUAL("1", check_result(run_to_string(executor, create_primative_env(), {}, "1")));
+  BOOST_CHECK_EQUAL("1", check_result_value(run_to_string(executor, create_primative_env(), {}, "1")));
 }
 
 BOOST_AUTO_TEST_CASE(to_string_fn) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
-  BOOST_CHECK_EQUAL("abc", check_result(run_to_string(executor, std::move(e), {}, "f()")));
+  BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), {}, "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {

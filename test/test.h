@@ -13,19 +13,16 @@
 
 #define check_result(expr)                                                                                             \
   [](auto r) {                                                                                                         \
-    if(!r.has_value()) {                                                                                               \
-      fmt::print("Error: {}\n", knot::debug(r.error()));                                                               \
-    }                                                                                                                  \
+    if(!r.has_value()) fmt::print("Error: {}\n", knot::debug(r.error()));                                              \
     BOOST_REQUIRE(r.has_value());                                                                                      \
-    return std::move(*r);                                                                                              \
+    return unwrap_1tuple(std::move(r).value_and_state());                                                              \
   }(expr)
 
-#define check_void_result(expr)                                                                                        \
+#define check_result_value(expr)                                                                                       \
   [](auto r) {                                                                                                         \
-    if(!r.has_value()) {                                                                                               \
-      fmt::print("Error: {}\n", knot::debug(r.error()));                                                               \
-    }                                                                                                                  \
+    if(!r.has_value()) fmt::print("Error: {}\n", knot::debug(r.error()));                                              \
     BOOST_REQUIRE(r.has_value());                                                                                      \
+    return std::move(*r);                                                                                              \
   }(expr)
 
 #define check_error(expr)                                                                                              \

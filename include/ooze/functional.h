@@ -50,6 +50,15 @@ auto applied(F f) {
   return [f = std::move(f)](auto&& t) { return std::apply(f, std::forward<decltype(t)>(t)); };
 }
 
+template <typename... Ts>
+auto unwrap_1tuple(std::tuple<Ts...> tuple) {
+  if constexpr(sizeof...(Ts) == 1) {
+    return std::get<0>(std::move(tuple));
+  } else {
+    return tuple;
+  }
+}
+
 template <typename F>
 auto visited(F f) {
   return [f = std::move(f)](auto&& t, auto&&... ts) {
