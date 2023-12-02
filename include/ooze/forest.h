@@ -58,6 +58,10 @@ class Forest {
     ID operator()(const Forest& f, ID id) const { return f._connectivity[as_integral(id)].next_sibling; };
   };
 
+  struct AncestorIDs {
+    ID operator()(const Forest& f, ID id) const { return f._connectivity[as_integral(id)].parent; };
+  };
+
   struct PreOrderIDs {
     ID operator()(const Forest& f, ID id) const {
       const ID child = f._connectivity[as_integral(id)].first_child;
@@ -103,16 +107,19 @@ class Forest {
 public:
   using AllIDIter = Iter<AllIDs, IDIterTraits>;
   using SiblingIDIter = Iter<SiblingIDs, IDIterTraits>;
+  using AncestorIDIter = Iter<SiblingIDs, IDIterTraits>;
   using PreOrderIDIter = Iter<PreOrderIDs, IDIterTraits>;
   using PostOrderIDIter = Iter<PostOrderIDs, IDIterTraits>;
 
   using AllIter = Iter<AllIDs, ValueIterTraits<false>>;
   using SiblingIter = Iter<SiblingIDs, ValueIterTraits<false>>;
+  using AncestorIter = Iter<SiblingIDs, ValueIterTraits<false>>;
   using PreOrderIter = Iter<PreOrderIDs, ValueIterTraits<false>>;
   using PostOrderIter = Iter<PostOrderIDs, ValueIterTraits<false>>;
 
   using AllConstIter = Iter<AllIDs, ValueIterTraits<true>>;
   using SiblingConstIter = Iter<SiblingIDs, ValueIterTraits<true>>;
+  using AncestorConstIter = Iter<SiblingIDs, ValueIterTraits<true>>;
   using PreOrderConstIter = Iter<PreOrderIDs, ValueIterTraits<true>>;
   using PostOrderConstIter = Iter<PostOrderIDs, ValueIterTraits<true>>;
 
@@ -143,7 +150,7 @@ public:
   size_t size() const { return _values.size(); }
 
   size_t num_children(ID id) const { return child_ids(id).size(); }
-  ID num_roots() const { return ID(root_ids().size()); }
+  size_t num_roots() const { return root_ids().size(); }
 
   bool is_root(ID id) const { return _connectivity[as_integral(id)].parent == INVALID; }
   bool is_leaf(ID id) const { return _connectivity[as_integral(id)].first_child == INVALID; }
@@ -152,6 +159,16 @@ public:
   std::optional<ID> parent(ID id) const { return opt(_connectivity[as_integral(id)].parent); }
   std::optional<ID> next_sibling(ID id) const { return opt(_connectivity[as_integral(id)].next_sibling); }
   std::optional<ID> first_child(ID id) const { return opt(_connectivity[as_integral(id)].first_child); }
+
+  ID root(ID id) const {
+    ID parent = _connectivity[as_integral(id)].parent;
+    while(parent != INVALID) {
+      id = parent;
+      parent = _connectivity[as_integral(id)].parent;
+    }
+
+    return id;
+  }
 
   ID first_leaf(ID id) const {
     while(_connectivity[as_integral(id)].first_child != INVALID) {
@@ -270,6 +287,18 @@ public:
   auto root_ids() const { return child_ids(ABOVE_ROOTS); }
   auto roots() { return children(ABOVE_ROOTS); }
   auto roots() const { return children(ABOVE_ROOTS); }
+
+  auto ancestor_ids(ID id, bool include_self = false) const {
+    return IterRange(AncestorIDIter(this, include_self ? id : _connectivity[as_integral(id)].parent), AncestorIDIter());
+  }
+
+  auto ancestors(ID id, bool include_self = false) {
+    return IterRange(AncestorIter(this, include_self ? id : _connectivity[as_integral(id)].parent), AncestorIter());
+  }
+
+  auto ancestors(ID id, bool include_self = false) const {
+    return IterRange(AncestorIter(this, include_self ? id : _connectivity[as_integral(id)].parent), AncestorIter());
+  }
 
   auto pre_order_ids(ID id = ABOVE_ROOTS) const {
     return IterRange(PreOrderIDIter(this, id == ABOVE_ROOTS ? _first_root : id),
