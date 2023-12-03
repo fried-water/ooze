@@ -32,8 +32,7 @@ auto run_tc(Parser p, Env e, std::string_view src, bool debug = false) {
       return std::tuple(
         std::tuple(std::move(ident_graph), std::move(undeclared_bindings)), std::move(ast), std::move(tg));
     })
-    .and_then([&](auto tuple, AST ast, TypeGraph tg) {
-      const auto& [ident_graph, undeclared_bindings] = tuple;
+    .and_then([&](auto ident_graph, auto undeclared_bindings, AST ast, TypeGraph tg) {
       return type_check(
         e.sm, e.type_cache, e.copy_types, ident_graph, undeclared_bindings, std::move(ast), std::move(tg), debug);
     });

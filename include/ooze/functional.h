@@ -67,6 +67,23 @@ auto visited(F f) {
   };
 }
 
+struct TupleWrap {
+  template <typename T>
+  auto operator()(T t) const {
+    return std::tuple(std::move(t));
+  }
+
+  template <typename... Ts>
+  auto operator()(std::tuple<Ts...> t) const {
+    return t;
+  }
+};
+
+template <typename... Ts>
+auto flatten_tuple(Ts... ts) {
+  return std::tuple_cat(TupleWrap{}(std::move(ts))...);
+}
+
 template <typename... Ts>
 auto append_fn(Ts&&... ts) {
   return [t = std::forward_as_tuple(std::forward<Ts>(ts)...)](auto&&... ts) {
