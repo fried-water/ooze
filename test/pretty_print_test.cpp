@@ -59,12 +59,12 @@ BOOST_AUTO_TEST_CASE(compound_type) {
 }
 
 BOOST_AUTO_TEST_CASE(unnamed_type) {
-  TypeGraph g;
   const auto int_type = type_id(knot::Type<int>{});
 
-  const TypeRef id = g.add_node(TypeTag::Leaf, {}, int_type);
+  TypeGraph g;
+  const TypeRef id = g.add_node(TypeTag::Leaf, {SrcID{0}}, int_type);
 
-  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", type_id(knot::Type<int>{}).id), pretty_print({}, g, TypeRef(0)));
+  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", type_id(knot::Type<int>{}).id), pretty_print({{}}, g, id));
 }
 
 BOOST_AUTO_TEST_CASE(native_fn) {
