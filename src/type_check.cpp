@@ -748,7 +748,6 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
   const SrcMap& sm,
   const TypeCache& tc,
   const std::vector<std::vector<ASTPropagation>>& propagations,
-  const std::vector<ASTID> undeclared_bindings,
   const Forest<ASTTag, ASTID>& forest,
   const Graph<ASTID>& ident_graph,
   TypeGraph tg,
@@ -1249,21 +1248,20 @@ std::vector<ContextualError> check_fully_resolved(const Env& e, const TypedFunct
   return generate_errors(e, propagations, std::move(errors));
 }
 
-ContextualResult2<void, AST, TypeGraph> type_check(
-  const SrcMap& sm,
-  const TypeCache& tc,
-  const std::unordered_set<TypeID>& copy_types,
-  const Graph<ASTID>& ident_graph,
-  const std::vector<ASTID>& undeclared_bindings,
-  AST ast,
-  TypeGraph tg,
-  bool debug) {
+ContextualResult2<void, AST, TypeGraph>
+type_check(const SrcMap& sm,
+           const TypeCache& tc,
+           const std::unordered_set<TypeID>& copy_types,
+           const Graph<ASTID>& ident_graph,
+           AST ast,
+           TypeGraph tg,
+           bool debug) {
   return apply_language_rules(sm, tc, std::move(ast), std::move(tg)).and_then([&](AST ast, TypeGraph tg) {
     const std::vector<std::vector<ASTPropagation>> propagations = calculate_propagations(ident_graph, ast.forest);
 
     std::vector<TypeCheckError2> cp_errors;
-    std::tie(tg, ast.types, cp_errors) = constraint_propagation(
-      sm, tc, propagations, undeclared_bindings, ast.forest, ident_graph, std::move(tg), std::move(ast.types), debug);
+    std::tie(tg, ast.types, cp_errors) =
+      constraint_propagation(sm, tc, propagations, ast.forest, ident_graph, std::move(tg), std::move(ast.types), debug);
 
     const auto find_invalid_borrows = [](const AST& ast, const TypeGraph& tg) {
       return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {

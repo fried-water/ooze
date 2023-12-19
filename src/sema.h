@@ -20,6 +20,6 @@ ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFun
 ContextualResult2<void, TypeGraph>
 type_name_resolution(const SrcMap&, const std::unordered_map<std::string, TypeID>&, TypeGraph);
 
-std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap&, const AST&);
+Graph<ASTID> calculate_ident_graph(const SrcMap&, const AST&);
 
 } // namespace ooze

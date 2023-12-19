@@ -118,7 +118,6 @@ struct FunctionConverter {
 struct IdentGraphCtx {
   std::vector<std::vector<ASTID>> fanouts;
   std::vector<std::pair<std::string_view, ASTID>> globals;
-  std::vector<ASTID> unbound_exprs;
   std::vector<std::pair<std::string_view, ASTID>> stack;
 };
 
@@ -148,9 +147,6 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const
           ctx.fanouts[id.get()].push_back(pattern_id);
           ctx.fanouts[pattern_id.get()].push_back(id);
         }
-      }
-      if(ctx.fanouts[id.get()].empty()) {
-        ctx.unbound_exprs.push_back(id);
       }
     }
     break;
@@ -221,7 +217,7 @@ type_name_resolution(const SrcMap& sm, const std::unordered_map<std::string, Typ
   return void_or_errors(std::move(errors), std::move(tg));
 }
 
-std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap& sm, const AST& ast) {
+Graph<ASTID> calculate_ident_graph(const SrcMap& sm, const AST& ast) {
   IdentGraphCtx ctx = {
     std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
       return ast.forest[id] == ASTTag::RootFn
@@ -234,7 +230,7 @@ std::tuple<Graph<ASTID>, std::vector<ASTID>> calculate_ident_graph(const SrcMap&
     calculate_ident_graph(ctx, root, sm, ast);
   }
 
-  return std::tuple(Graph<ASTID>(ctx.fanouts), std::move(ctx.unbound_exprs));
+  return Graph<ASTID>(ctx.fanouts);
 }
 
 TypedPattern inferred_inputs(const TypedExpr& expr, Set<std::string> active) {
