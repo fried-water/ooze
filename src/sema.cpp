@@ -178,6 +178,56 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const
   };
 }
 
+ContextualResult2<CallGraphData, AST, TypeGraph>
+create_call_graph_data(const SrcMap& sm, const TypeCache& tc, const Graph<ASTID>& ident_graph, AST ast, TypeGraph tg) {
+  Map<ASTID, std::vector<ASTID>> fn_callers;
+  Map<ASTID, ASTID> overload_of;
+
+  auto fns = transform_to_vec(ast.forest.root_ids(), [&](ASTID id) { return *ast.forest.first_child(id); });
+
+  const auto unresolved_calls = unique(sorted(knot::accumulate(fns, std::vector<ASTID>{}, [&](auto acc, ASTID ident) {
+    return to_vec(ident_graph.fanout(ident), std::move(acc));
+  })));
+
+  std::vector<ContextualError2> errors;
+
+  for(ASTID ident : unresolved_calls) {
+    const ASTID fn = *ast.forest.first_child(ast.forest.root(ident));
+    if(auto [overload, type, matches] = overload_resolution(tc, tg, ident_graph, ast.types, ident); matches == 1) {
+      fn_callers[fn].push_back(overload);
+      overload_of.emplace(ident, overload);
+
+      if(const auto it = std::lower_bound(fns.begin(), fns.end(), overload); it != fns.end() && *it == overload) {
+        fns.erase(it);
+      }
+    } else if(matches == 0) {
+      errors.push_back(
+        {ast.srcs[fn.get()],
+         "no matching overload found",
+         transform_to_vec(
+           ident_graph.fanout(fn),
+           [&](ASTID id) { return fmt::format("  {}", pretty_print(sm, tg, ast.types[id.get()])); },
+           make_vector(fmt::format("deduced {} [{} candidate(s)]",
+                                   pretty_print(sm, tg, ast.types[fn.get()]),
+                                   ident_graph.fanout(fn).size())))});
+    } else {
+      errors.push_back(
+        {ast.srcs[fn.get()],
+         "function call is ambiguous",
+         transform_to_vec(
+           ident_graph.fanout(fn),
+           [&](ASTID id) { return fmt::format("  {}", pretty_print(sm, tg, ast.types[id.get()])); },
+           make_vector(
+             fmt::format("deduced {} [{} candidate(s)]", pretty_print(sm, tg, ast.types[fn.get()]), matches)))});
+    }
+  }
+
+  return value_or_errors(CallGraphData{std::move(fn_callers), std::move(overload_of), std::move(fns)},
+                         std::move(errors),
+                         std::move(ast),
+                         std::move(tg));
+}
+
 } // namespace
 
 ContextualResult<TypedFunction> type_name_resolution(const Env& e, const UnTypedFunction& f) {
@@ -291,6 +341,39 @@ ContextualResult<CheckedFunction> overload_resolution(const Env& env, const Type
   return errors.empty()
            ? ContextualResult<CheckedFunction>{knot::map<CheckedFunction>(f, FunctionConverter{all_overloads})}
            : Failure{std::move(errors)};
+}
+
+ContextualResult2<std::tuple<CallGraphData, Graph<ASTID>>, AST, TypeGraph>
+sema(const SrcMap& sm,
+     const TypeCache& tc,
+     const std::unordered_map<std::string, TypeID>& type_ids,
+     const std::unordered_set<TypeID>& copy_types,
+     AST ast,
+     TypeGraph tg) {
+  return type_name_resolution(sm, type_ids, std::move(tg))
+    .map_state([&](TypeGraph tg) { return std::tuple(std::move(ast), std::move(tg)); })
+    .and_then([&](AST ast, TypeGraph tg) { return apply_language_rules(sm, tc, std::move(ast), std::move(tg)); })
+    .map([&](AST ast, TypeGraph tg) {
+      auto ig = calculate_ident_graph(sm, ast);
+      auto propagations = calculate_propagations(ig, ast.forest);
+      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
+    })
+    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
+      return constraint_propagation(sm, tc, copy_types, ig, propagations, std::move(ast), std::move(tg))
+        .map([&](AST ast, TypeGraph tg) {
+          return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
+        });
+    }))
+    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
+      auto errors = check_fully_resolved(sm, propagations, ast, tg);
+      return value_or_errors(std::move(ig), std::move(errors), std::move(ast), std::move(tg));
+    }))
+    .and_then([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
+      return create_call_graph_data(sm, tc, ig, std::move(ast), std::move(tg))
+        .map([&ig](CallGraphData cg, AST ast, TypeGraph tg) {
+          return std::tuple(std::tuple(std::move(cg), std::move(ig)), std::move(ast), std::move(tg));
+        });
+    });
 }
 
 } // namespace ooze

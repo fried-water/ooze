@@ -123,6 +123,13 @@ void test_or_error(const Env& e, std::string_view f, const std::vector<Contextua
   BOOST_CHECK(expected_errors == result.error());
 }
 
+auto run_sema(Env e, std::string_view src) {
+  e.sm.push_back({"src", std::string(src)});
+  return parse2(std::move(e.ast), std::move(e.tg), SrcID{1}, src).and_then([&](AST ast, TypeGraph tg) {
+    return sema(e.sm, e.type_cache, e.type_ids, e.copy_types, std::move(ast), std::move(tg));
+  });
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(infer_empty) { test_inferred_inputs(Env{}, "()", "()", {{}}); }
@@ -487,6 +494,56 @@ BOOST_AUTO_TEST_CASE(ig_unused_global) {
   const Graph<ASTID> ident_graph = calculate_ident_graph(e.sm, ast);
 
   BOOST_CHECK(Graph<ASTID>(std::vector<std::vector<ASTID>>(ast.forest.size())) == ident_graph);
+}
+
+BOOST_AUTO_TEST_CASE(sema_unresolved_fn) {
+  const auto exp_errors =
+    std::vector<ContextualError2>{{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
+  BOOST_CHECK(exp_errors == check_error(run_sema(create_primative_env(), "fn f(x) -> _ = x")));
+}
+
+BOOST_AUTO_TEST_CASE(sema_cg) {
+  Env e;
+  e.type_cache = create_type_cache(e.tg);
+
+  e.add_type<i32>("i32");
+  e.add_type<f32>("f32");
+
+  constexpr std::string_view src =
+    "fn f(x: i32) -> i32 = x\n"
+    "fn f(x: f32) -> f32 = x\n"
+    "fn g(x: i32) -> i32 = f(x)\n"
+    "fn g(x: f32) -> f32 = f(x)\n"
+    "fn h(x: i32, y: f32) -> (i32, f32) = (g(x), g(y))\n";
+
+  const auto [cg, ig, ast_, tg] = flatten_tuple(check_result(run_sema(e, src)));
+  AST ast = std::move(ast_);
+
+  e.sm.push_back({"file", std::string(src)});
+
+  // clone(i32), clone(f32), f(i32), f(f32), g(i32), g(f32), h(i32, f32)
+  const std::vector<ASTID> fns =
+    transform_to_vec(ast.forest.root_ids(), [&](ASTID root) { return *ast.forest.first_child(root); });
+
+  BOOST_REQUIRE_EQUAL(7, fns.size());
+
+  // x, x, f, x, f, x, g, x, g, y
+  const std::vector<ASTID> idents = transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) {
+    return ast.forest[id] == ASTTag::ExprIdent ? std::optional(id) : std::nullopt;
+  });
+
+  BOOST_REQUIRE_EQUAL(10, idents.size());
+
+  const Map<ASTID, std::vector<ASTID>> exp_fn_callers = {
+    {fns[6], {fns[4], fns[5]}}, {fns[4], {fns[2]}}, {fns[5], {fns[3]}}};
+  BOOST_CHECK(exp_fn_callers == cg.fn_callers);
+
+  const Map<ASTID, ASTID> exp_overloads = {
+    {idents[2], fns[2]}, {idents[4], fns[3]}, {idents[6], fns[4]}, {idents[8], fns[5]}};
+  BOOST_CHECK(exp_overloads == cg.overload_of);
+
+  const std::vector<ASTID> exp_root_fns = {fns[0], fns[1], fns[6]};
+  BOOST_CHECK(exp_root_fns == cg.root_fns);
 }
 
 } // namespace ooze

@@ -27,13 +27,18 @@ auto run_tc(Parser p, Env e, std::string_view src, bool debug = false) {
         return std::tuple(std::move(ast), std::move(tg));
       });
     })
-    .map([&](AST ast, TypeGraph tg) {
-      Graph<ASTID> ident_graph = calculate_ident_graph(e.sm, ast);
-      return std::tuple(std::move(ident_graph), std::move(ast), std::move(tg));
+    .and_then([&](AST ast, TypeGraph tg) {
+      return apply_language_rules(e.sm, e.type_cache, std::move(ast), std::move(tg));
     })
-    .and_then([&](auto ident_graph, AST ast, TypeGraph tg) {
-      return type_check(e.sm, e.type_cache, e.copy_types, ident_graph, std::move(ast), std::move(tg), debug);
-    });
+    .map([&](AST ast, TypeGraph tg) {
+      auto ident_graph = calculate_ident_graph(e.sm, ast);
+      auto propagations = calculate_propagations(ident_graph, ast.forest);
+      return std::tuple(std::tuple(std::move(ident_graph), std::move(propagations)), std::move(ast), std::move(tg));
+    })
+    .and_then(flattened([&](auto ident_graph, auto propagations, AST ast, TypeGraph tg) {
+      return constraint_propagation(
+        e.sm, e.type_cache, e.copy_types, ident_graph, propagations, std::move(ast), std::move(tg), debug);
+    }));
 }
 
 template <typename R>
