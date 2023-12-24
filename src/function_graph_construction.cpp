@@ -68,11 +68,12 @@ int output_count_of(const Type<TypeID>& type) {
   return count;
 }
 
-std::vector<PassBy> pass_bys_of(const Env& e, const TypeGraph& g, TypeRef t, std::vector<PassBy> pass_bys = {}) {
+std::vector<PassBy> pass_bys_of(
+  const std::unordered_set<TypeID>& copy_types, const TypeGraph& g, TypeRef t, std::vector<PassBy> pass_bys = {}) {
   preorder(g, t, [&](TypeRef t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf:
-      pass_bys.push_back(e.copy_types.find(g.get<TypeID>(t)) != e.copy_types.end() ? PassBy::Copy : PassBy::Move);
+      pass_bys.push_back(copy_types.find(g.get<TypeID>(t)) != copy_types.end() ? PassBy::Copy : PassBy::Move);
       return false;
     case TypeTag::Fn: pass_bys.push_back(PassBy::Copy); return false;
     case TypeTag::Borrow: pass_bys.push_back(PassBy::Borrow); return false;
@@ -327,19 +328,21 @@ GraphContext2 append_bindings(
 }
 
 std::pair<GraphContext2, std::vector<Oterm>>
-add_expr(const Env&,
+add_expr(const std::unordered_set<TypeID>& copy_types,
          const AST&,
          const TypeGraph&,
-         const Map<ASTID, EnvFunctionRef>& fns,
+         const Map<ASTID, AsyncFn>& fns,
+         const Map<ASTID, ASTID>& overloads,
          const Graph<ASTID>& ident_graph,
          ASTID,
          GraphContext2);
 
 std::pair<GraphContext2, std::vector<Oterm>> add_select_expr(
-  const Env& e,
+  const std::unordered_set<TypeID>& copy_types,
   const AST& ast,
   const TypeGraph& tg,
-  const Map<ASTID, EnvFunctionRef>& fns,
+  const Map<ASTID, AsyncFn>& fns,
+  const Map<ASTID, ASTID>& overloads,
   const Graph<ASTID>& ident_graph,
   ASTID id,
   GraphContext2 ctx) {
@@ -349,18 +352,18 @@ std::pair<GraphContext2, std::vector<Oterm>> add_select_expr(
 
   const auto [cond_id, if_id, else_id] = ast.forest.child_ids(id).take<3>();
 
-  std::tie(ctx, cond_terms) = add_expr(e, ast, tg, fns, ident_graph, cond_id, std::move(ctx));
-  std::tie(ctx, if_terms) = add_expr(e, ast, tg, fns, ident_graph, if_id, std::move(ctx));
-  std::tie(ctx, else_terms) = add_expr(e, ast, tg, fns, ident_graph, else_id, std::move(ctx));
+  std::tie(ctx, cond_terms) = add_expr(copy_types, ast, tg, fns, overloads, ident_graph, cond_id, std::move(ctx));
+  std::tie(ctx, if_terms) = add_expr(copy_types, ast, tg, fns, overloads, ident_graph, if_id, std::move(ctx));
+  std::tie(ctx, else_terms) = add_expr(copy_types, ast, tg, fns, overloads, ident_graph, else_id, std::move(ctx));
 
   assert(cond_terms.size() == 1);
   assert(if_terms.size() == else_terms.size());
 
   std::vector<PassBy> pass_bys;
   pass_bys.reserve(cond_terms.size() + if_terms.size() + else_terms.size());
-  pass_bys = pass_bys_of(e, tg, ast.types[cond_id.get()], std::move(pass_bys));
-  pass_bys = pass_bys_of(e, tg, ast.types[if_id.get()], std::move(pass_bys));
-  pass_bys = pass_bys_of(e, tg, ast.types[else_id.get()], std::move(pass_bys));
+  pass_bys = pass_bys_of(copy_types, tg, ast.types[cond_id.get()], std::move(pass_bys));
+  pass_bys = pass_bys_of(copy_types, tg, ast.types[if_id.get()], std::move(pass_bys));
+  pass_bys = pass_bys_of(copy_types, tg, ast.types[else_id.get()], std::move(pass_bys));
 
   std::vector<Oterm> terms =
     ctx.cg.add(create_async_select(),
@@ -371,10 +374,11 @@ std::pair<GraphContext2, std::vector<Oterm>> add_select_expr(
 }
 
 std::pair<GraphContext2, std::vector<Oterm>> add_call_expr(
-  const Env& e,
+  const std::unordered_set<TypeID>& copy_types,
   const AST& ast,
   const TypeGraph& tg,
-  const Map<ASTID, EnvFunctionRef>& fns,
+  const Map<ASTID, AsyncFn>& fns,
+  const Map<ASTID, ASTID>& overloads,
   const Graph<ASTID>& ident_graph,
   ASTID id,
   GraphContext2 ctx) {
@@ -384,16 +388,16 @@ std::pair<GraphContext2, std::vector<Oterm>> add_call_expr(
   const auto [callee, arg] = ast.forest.child_ids(id).take<2>();
 
   // TODO optimize when arg is EnvFunctionRef, or have some function inline step?
-  std::tie(ctx, callee_terms) = add_expr(e, ast, tg, fns, ident_graph, callee, std::move(ctx));
-  std::tie(ctx, arg_terms) = add_expr(e, ast, tg, fns, ident_graph, arg, std::move(ctx));
+  std::tie(ctx, callee_terms) = add_expr(copy_types, ast, tg, fns, overloads, ident_graph, callee, std::move(ctx));
+  std::tie(ctx, arg_terms) = add_expr(copy_types, ast, tg, fns, overloads, ident_graph, arg, std::move(ctx));
 
   assert(callee_terms.size() == 1);
   arg_terms.insert(arg_terms.begin(), callee_terms.front());
 
   std::vector<PassBy> pass_bys;
   pass_bys.reserve(arg_terms.size());
-  pass_bys = pass_bys_of(e, tg, ast.types[callee.get()], std::move(pass_bys));
-  pass_bys = pass_bys_of(e, tg, ast.types[arg.get()], std::move(pass_bys));
+  pass_bys = pass_bys_of(copy_types, tg, ast.types[callee.get()], std::move(pass_bys));
+  pass_bys = pass_bys_of(copy_types, tg, ast.types[arg.get()], std::move(pass_bys));
 
   const int output_count = output_count_of(tg, ast.types[id.get()]);
   std::vector<Oterm> terms = ctx.cg.add(create_async_functional(output_count), arg_terms, pass_bys, output_count);
@@ -401,10 +405,11 @@ std::pair<GraphContext2, std::vector<Oterm>> add_call_expr(
 }
 
 std::pair<GraphContext2, std::vector<Oterm>>
-add_expr(const Env& e,
+add_expr(const std::unordered_set<TypeID>& copy_types,
          const AST& ast,
          const TypeGraph& tg,
-         const Map<ASTID, EnvFunctionRef>& fns,
+         const Map<ASTID, AsyncFn>& fns,
+         const Map<ASTID, ASTID>& overloads,
          const Graph<ASTID>& ident_graph,
          ASTID id,
          GraphContext2 ctx) {
@@ -414,6 +419,7 @@ add_expr(const Env& e,
   case ASTTag::PatternTuple:
   case ASTTag::Fn:
   case ASTTag::Assignment:
+  case ASTTag::NativeFn:
   case ASTTag::RootFn: assert(false); return {};
   case ASTTag::ExprLiteral: {
     std::vector<Oterm> terms = std::visit(
@@ -421,40 +427,29 @@ add_expr(const Env& e,
     return {std::move(ctx), std::move(terms)};
   }
   case ASTTag::ExprCall: assert(false);
-  case ASTTag::ExprSelect: return add_select_expr(e, ast, tg, fns, ident_graph, id, std::move(ctx));
-  case ASTTag::ExprBorrow: return add_expr(e, ast, tg, fns, ident_graph, *ast.forest.first_child(id), std::move(ctx));
+  case ASTTag::ExprSelect: return add_select_expr(copy_types, ast, tg, fns, overloads, ident_graph, id, std::move(ctx));
+  case ASTTag::ExprBorrow:
+    return add_expr(copy_types, ast, tg, fns, overloads, ident_graph, *ast.forest.first_child(id), std::move(ctx));
   case ASTTag::ExprWith: {
     const auto [assignment, expr] = ast.forest.child_ids(id).take<2>();
     const auto [pattern, assign_expr] = ast.forest.child_ids(assignment).take<2>();
 
-    auto [assign_ctx, assign_terms] = add_expr(e, ast, tg, fns, ident_graph, assign_expr, std::move(ctx));
+    auto [assign_ctx, assign_terms] =
+      add_expr(copy_types, ast, tg, fns, overloads, ident_graph, assign_expr, std::move(ctx));
     ctx = append_bindings(ast, tg, pattern, assign_terms, std::move(assign_ctx));
 
-    return add_expr(e, ast, tg, fns, ident_graph, expr, std::move(ctx));
+    return add_expr(copy_types, ast, tg, fns, overloads, ident_graph, expr, std::move(ctx));
   }
   case ASTTag::ExprTuple:
     return knot::accumulate(
       ast.forest.child_ids(id), std::pair(std::move(ctx), std::vector<Oterm>{}), [&](auto pair, ASTTag tuple_element) {
-        auto [ctx, terms] = add_expr(e, ast, tg, fns, ident_graph, tuple_element, std::move(pair.first));
+        auto [ctx, terms] =
+          add_expr(copy_types, ast, tg, fns, overloads, ident_graph, tuple_element, std::move(pair.first));
         return std::pair(std::move(ctx), to_vec(std::move(terms), std::move(pair.second)));
       });
   case ASTTag::ExprIdent: {
-    if(const auto fn_it = fns.find(id); fn_it != fns.end()) {
-      const EnvFunctionRef fn_ref = fn_it->second;
-      const EnvFunction& ef = e.functions.at(fn_ref.name)[fn_ref.overload_idx];
-
-      AsyncFn f = std::visit(
-        Overloaded{[&](const AsyncFn& f) { return f; },
-                   [](const FunctionGraph& f) { return create_async_graph(f); },
-                   [&](const TypedFunction&) {
-                     // TODO look up instantiation via ast type
-                     assert(false);
-                     return create_async_value(Any(0));
-                   }},
-        ef.f);
-
-      std::vector<Oterm> terms = ctx.cg.add(create_async_value(Any(std::move(f))), {}, {}, 1);
-
+    if(const auto it = overloads.find(id); it != overloads.end()) {
+      std::vector<Oterm> terms = ctx.cg.add(create_async_value(Any(fns.at(it->second))), {}, {}, 1);
       return {std::move(ctx), std::move(terms)};
     } else {
       assert(ident_graph.num_fanout(id) == 1);
@@ -462,9 +457,6 @@ add_expr(const Env& e,
       return {std::move(ctx), std::move(terms)};
     }
   }
-  case ASTTag::NativeFn:
-    // TODO
-    return {};
   }
   return {};
 }
@@ -477,10 +469,11 @@ FunctionGraph create_graph(const Env& e, const CheckedFunction& f) {
   return std::move(ctx.cg).finalize(output_terms, pass_bys_of(e, f.expr.type));
 }
 
-FunctionGraph create_graph(const Env& e,
+FunctionGraph create_graph(const std::unordered_set<TypeID>& copy_types,
                            const AST& ast,
                            const TypeGraph& tg,
-                           const Map<ASTID, EnvFunctionRef>& fns,
+                           const Map<ASTID, AsyncFn>& fns,
+                           const Map<ASTID, ASTID>& overloads,
                            const Graph<ASTID>& ident_graph,
                            ASTID fn_id) {
   assert(ast.forest[fn_id] == ASTTag::Fn);
@@ -489,8 +482,15 @@ FunctionGraph create_graph(const Env& e,
 
   auto [cg, terms] = make_graph(borrows_of(tg, ast.types[pattern.get()]));
   auto [ctx, output_terms] = add_expr(
-    e, ast, tg, fns, ident_graph, expr, append_bindings(ast, tg, pattern, terms, GraphContext2{std::move(cg)}));
-  return std::move(ctx.cg).finalize(output_terms, pass_bys_of(e, tg, ast.types[expr.get()]));
+    copy_types,
+    ast,
+    tg,
+    fns,
+    overloads,
+    ident_graph,
+    expr,
+    append_bindings(ast, tg, pattern, terms, GraphContext2{std::move(cg)}));
+  return std::move(ctx.cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[expr.get()]));
 }
 
 } // namespace ooze
