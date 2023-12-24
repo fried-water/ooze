@@ -346,7 +346,9 @@ StringResult<void, Env> parse_script(Env env, std::string_view script) {
           .and_then([&](TypedFunction f, Env env) { return add_function(std::move(env), name, std::move(f)); });
       });
     })
-    .map_error([&](auto errors) { return contextualize(script, std::move(errors)); });
+    .map_error([&](auto errors, Env env) {
+      return std::tuple(contextualize(script, std::move(errors)), std::move(env));
+    });
 }
 
 StringResult<Tree<Binding>, Env, Bindings>
@@ -369,7 +371,9 @@ run(ExecutorRef executor, Env env, Bindings bindings, std::string_view expr) {
           })
           .map([](Env env, Bindings b) { return std::tuple(Tree<Binding>{}, std::move(env), std::move(b)); });
       }}))
-    .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
+    .map_error([&](auto errors, auto&&... ts) {
+      return std::tuple(contextualize(expr, std::move(errors)), std::move(ts)...);
+    });
 }
 
 StringResult<std::string, Env, Bindings>
@@ -395,7 +399,9 @@ run_to_string(ExecutorRef executor, Env env, Bindings bindings, std::string_view
           });
       },
     }))
-    .map_error([&](auto errors) { return contextualize(expr, std::move(errors)); });
+    .map_error([&](auto errors, auto&&... ts) {
+      return std::tuple(contextualize(expr, std::move(errors)), std::move(ts)...);
+    });
 }
 
 int main(int argc, const char** argv, Env e) {
@@ -422,7 +428,8 @@ int main(int argc, const char** argv, Env e) {
           });
       } else {
         std::tie(env, bindings) = run_repl(executor, std::move(env), std::move(bindings));
-        return success<std::vector<std::string>>(std::vector<std::string>{}, std::move(env), std::move(bindings));
+        return success(
+          knot::Type<std::vector<std::string>>{}, std::vector<std::string>{}, std::move(env), std::move(bindings));
       }
     });
 

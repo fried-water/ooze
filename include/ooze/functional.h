@@ -31,7 +31,7 @@ struct Get {
 };
 
 template <typename F>
-auto tuple_wrap(F f) {
+auto tuple_wrapped(F f) {
   return [f = std::move(f)](auto&&... ts) {
     constexpr auto result = knot::invoke_result(knot::Type<F>{}, knot::TypeList<decltype(ts)...>{});
     if constexpr(knot::is_tuple_like(result)) {
@@ -80,8 +80,18 @@ struct TupleWrap {
 };
 
 template <typename... Ts>
-auto flatten_tuple(Ts... ts) {
+auto flatten_to_tuple(Ts... ts) {
   return std::tuple_cat(TupleWrap{}(std::move(ts))...);
+}
+
+template <typename F>
+auto flattened(F f) {
+  return [f = applied(std::move(f))](auto&&... ts) { return f(flatten_to_tuple(std::forward<decltype(ts)>(ts)...)); };
+}
+
+template <typename T>
+auto flatten_tuple(T tuple) {
+  return std::apply([](auto... ts) { return flatten_to_tuple(std::move(ts)...); }, std::move(tuple));
 }
 
 template <typename... Ts>

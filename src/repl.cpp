@@ -106,7 +106,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 }
 
 constexpr auto convert_errors = [](std::vector<std::string> errors, auto&&... ts) {
-  return success<std::vector<std::string>>(std::move(errors), std::forward<decltype(ts)>(ts)...);
+  return success(knot::Type<std::vector<std::string>>{}, std::move(errors), std::forward<decltype(ts)>(ts)...);
 };
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const EvalCmd& eval) {
