@@ -313,7 +313,8 @@ void pretty_print(
 
     return;
   }
-  case ASTTag::RootFn: {
+  case ASTTag::Global: {
+    // TODO check if function
     const auto [ident, fn] = ast.forest.child_ids(id).take<2>();
     pretty_print(os << "fn ", sm, ast, tg, ident, indentation);
     pretty_print(os, sm, ast, tg, fn, indentation);

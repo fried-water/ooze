@@ -33,7 +33,7 @@ enum class ASTTag {
   Assignment,
   Fn,
   NativeFn,
-  RootFn
+  Global
 };
 
 constexpr auto names(knot::Type<ASTTag>) {
@@ -52,7 +52,7 @@ constexpr auto names(knot::Type<ASTTag>) {
      "Assignment",
      "Fn",
      "NativeFn",
-     "RootFn"});
+     "Global"});
 }
 
 using ASTID = StrongID<struct ASTSpace>;

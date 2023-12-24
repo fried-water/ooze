@@ -257,7 +257,7 @@ auto function() {
                    });
 }
 
-auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::RootFn})); }
+auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::Global})); }
 
 template <typename Parser>
 ContextualResult2<void, AST, TypeGraph> parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {

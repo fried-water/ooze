@@ -420,7 +420,7 @@ add_expr(const std::unordered_set<TypeID>& copy_types,
   case ASTTag::Fn:
   case ASTTag::Assignment:
   case ASTTag::NativeFn:
-  case ASTTag::RootFn: assert(false); return {};
+  case ASTTag::Global: assert(false); return {};
   case ASTTag::ExprLiteral: {
     std::vector<Oterm> terms = std::visit(
       [&](const auto& v) { return ctx.cg.add(create_async_value(Any(v)), {}, {}, 1); }, lookup_literal(ast, id));

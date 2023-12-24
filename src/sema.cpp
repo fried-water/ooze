@@ -159,8 +159,8 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const
     calculate_ident_graph(ctx, pattern, sm, ast);
     break;
   }
-  case ASTTag::RootFn:
-    // Skip identifier of root fns, already added up front
+  case ASTTag::Global:
+    // Skip identifier of globals, already added up front
     calculate_ident_graph(ctx, ast.forest.child_ids(id).get<1>(), sm, ast);
     break;
   case ASTTag::NativeFn:
@@ -270,7 +270,7 @@ type_name_resolution(const SrcMap& sm, const std::unordered_map<std::string, Typ
 Graph<ASTID> calculate_ident_graph(const SrcMap& sm, const AST& ast) {
   IdentGraphCtx ctx = {
     std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
-      return ast.forest[id] == ASTTag::RootFn
+      return ast.forest[id] == ASTTag::Global
                ? std::optional(std::pair(
                    sv(sm, ast.srcs[ast.forest.child_ids(id).get<0>().get()]), ast.forest.child_ids(id).get<0>()))
                : std::nullopt;

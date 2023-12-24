@@ -898,7 +898,7 @@ std::vector<TypeCheckError2> find_binding_usage_errors(
 
   const auto is_global = [&](ASTID id) {
     const auto parent = ast.forest.parent(id);
-    return parent && ast.forest[*parent] == ASTTag::RootFn;
+    return parent && ast.forest[*parent] == ASTTag::Global;
   };
 
   return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {
@@ -990,7 +990,7 @@ TypeRef language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID i
   case ASTTag::NativeFn:
   case ASTTag::Fn: return tc.fn_floating;
 
-  case ASTTag::RootFn:
+  case ASTTag::Global:
   case ASTTag::Assignment: return tc.unit;
 
   case ASTTag::ExprCall:
@@ -1212,7 +1212,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       add_pair(id, expr, DirectProp{});
       break;
     }
-    case ASTTag::RootFn:
+    case ASTTag::Global:
     case ASTTag::Assignment: {
       const auto [pattern, expr] = forest.child_ids(id).take<2>();
       add_pair(pattern, expr, DirectProp{});
@@ -1226,7 +1226,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
     }
     case ASTTag::ExprIdent: {
       for(ASTID pattern : ident_graph.fanout(id)) {
-        if(forest[*forest.parent(pattern)] == ASTTag::RootFn) {
+        if(forest[*forest.parent(pattern)] == ASTTag::Global) {
           // Only propogate one way
           propagations[pattern.get()].push_back(
             {id, true, ident_graph.num_fanout(id) == 1 ? Propagation{DirectProp{}} : Propagation{FloatingProp{}}});

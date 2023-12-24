@@ -73,7 +73,7 @@ struct Env {
 
     const ASTID ident = ast.forest.append_root(ASTTag::PatternIdent);
     const ASTID fn = ast.forest.append_root(ASTTag::NativeFn);
-    const ASTID root_fn = ast.forest.append_root_post_order(ASTTag::RootFn, std::array{ident, fn});
+    const ASTID global = ast.forest.append_root_post_order(ASTTag::Global, std::array{ident, fn});
 
     ast.srcs.push_back(ref);
     ast.srcs.push_back(ref);
@@ -86,7 +86,7 @@ struct Env {
     native_functions.emplace(fn, create_async_function(std::forward<F>(f)));
     flat_functions[std::string(name)].push_back(fn);
 
-    return root_fn;
+    return global;
   }
 
   void add_graph(const std::string& name, FunctionType<TypeID> t, FunctionGraph f) {
