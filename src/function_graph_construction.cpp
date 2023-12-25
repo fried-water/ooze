@@ -419,7 +419,7 @@ add_expr(const std::unordered_set<TypeID>& copy_types,
   case ASTTag::PatternTuple:
   case ASTTag::Fn:
   case ASTTag::Assignment:
-  case ASTTag::NativeFn:
+  case ASTTag::EnvValue:
   case ASTTag::Global: assert(false); return {};
   case ASTTag::ExprLiteral: {
     std::vector<Oterm> terms = std::visit(

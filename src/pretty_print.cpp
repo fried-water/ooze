@@ -332,7 +332,8 @@ void pretty_print(
     }
     os << ')';
     return;
-  case ASTTag::NativeFn: {
+  case ASTTag::EnvValue: {
+    // TODO handle non functions
     const auto type_children = tg.fanout(ast.types[id.get()]);
     pretty_print(os, sm, tg, type_children[0]);
     pretty_print(os << " -> ", sm, tg, type_children[1]);

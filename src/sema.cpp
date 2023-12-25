@@ -163,7 +163,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const
     // Skip identifier of globals, already added up front
     calculate_ident_graph(ctx, ast.forest.child_ids(id).get<1>(), sm, ast);
     break;
-  case ASTTag::NativeFn:
+  case ASTTag::EnvValue:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternTuple:
   case ASTTag::ExprLiteral:

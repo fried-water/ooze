@@ -32,7 +32,7 @@ enum class ASTTag {
 
   Assignment,
   Fn,
-  NativeFn,
+  EnvValue,
   Global
 };
 
@@ -51,7 +51,7 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprIdent",
      "Assignment",
      "Fn",
-     "NativeFn",
+     "EnvValue",
      "Global"});
 }
 

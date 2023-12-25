@@ -987,7 +987,6 @@ TypeRef language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID i
     return tuple;
   }
 
-  case ASTTag::NativeFn:
   case ASTTag::Fn: return tc.fn_floating;
 
   case ASTTag::Global:
@@ -998,6 +997,7 @@ TypeRef language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID i
   case ASTTag::PatternWildCard:
   case ASTTag::PatternIdent:
   case ASTTag::ExprWith:
+  case ASTTag::EnvValue:
   case ASTTag::ExprIdent: return tc.floating;
   }
 
@@ -1235,7 +1235,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
         }
       }
     }
-    case ASTTag::NativeFn:
+    case ASTTag::EnvValue:
     case ASTTag::ExprLiteral:
     case ASTTag::PatternIdent:
     case ASTTag::PatternWildCard: break;

@@ -72,7 +72,7 @@ struct Env {
     const TypeRef fn_type = add_fn(tg, type_cache.native, ref, decay(knot::Type<F>{}));
 
     const ASTID ident = ast.forest.append_root(ASTTag::PatternIdent);
-    const ASTID fn = ast.forest.append_root(ASTTag::NativeFn);
+    const ASTID fn = ast.forest.append_root(ASTTag::EnvValue);
     const ASTID global = ast.forest.append_root_post_order(ASTTag::Global, std::array{ident, fn});
 
     ast.srcs.push_back(ref);
