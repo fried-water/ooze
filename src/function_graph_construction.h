@@ -14,8 +14,7 @@ FunctionGraph create_graph(const std::unordered_set<TypeID>& copy_types,
                            const AST&,
                            const TypeGraph&,
                            const Map<ASTID, AsyncFn>&,
-                           const Map<ASTID, ASTID>& overloads,
-                           const Graph<ASTID>&,
+                           const Map<ASTID, ASTID>& binding_of,
                            ASTID fn_id);
 
 } // namespace ooze

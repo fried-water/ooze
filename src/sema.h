@@ -24,11 +24,11 @@ Graph<ASTID> calculate_ident_graph(const SrcMap&, const AST&);
 
 struct CallGraphData {
   Map<ASTID, std::vector<ASTID>> fn_callers;
-  Map<ASTID, ASTID> overload_of;
+  Map<ASTID, ASTID> binding_of;
   std::vector<ASTID> root_fns;
 };
 
-ContextualResult2<std::tuple<CallGraphData, Graph<ASTID>>, AST, TypeGraph>
+ContextualResult2<CallGraphData, AST, TypeGraph>
 sema(const SrcMap&,
      const TypeCache&,
      const std::unordered_map<std::string, TypeID>&,

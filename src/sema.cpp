@@ -180,49 +180,59 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, const SrcMap& sm, const
 
 ContextualResult2<CallGraphData, AST, TypeGraph>
 create_call_graph_data(const SrcMap& sm, const TypeCache& tc, const Graph<ASTID>& ident_graph, AST ast, TypeGraph tg) {
-  Map<ASTID, std::vector<ASTID>> fn_callers;
-  Map<ASTID, ASTID> overload_of;
-
-  auto fns = transform_to_vec(ast.forest.root_ids(), [&](ASTID id) { return *ast.forest.first_child(id); });
-
-  const auto unresolved_calls = unique(sorted(knot::accumulate(fns, std::vector<ASTID>{}, [&](auto acc, ASTID ident) {
-    return to_vec(ident_graph.fanout(ident), std::move(acc));
-  })));
+  Map<ASTID, ASTID> binding_of;
 
   std::vector<ContextualError2> errors;
 
-  for(ASTID ident : unresolved_calls) {
-    const ASTID fn = *ast.forest.first_child(ast.forest.root(ident));
-    if(auto [overload, type, matches] = overload_resolution(tc, tg, ident_graph, ast.types, ident); matches == 1) {
-      fn_callers[fn].push_back(overload);
-      overload_of.emplace(ident, overload);
+  for(ASTID id : ast.forest.ids()) {
+    if(ast.forest[id] != ASTTag::ExprIdent) continue;
 
-      if(const auto it = std::lower_bound(fns.begin(), fns.end(), overload); it != fns.end() && *it == overload) {
-        fns.erase(it);
-      }
+    assert(ident_graph.num_fanout(id) > 0);
+
+    if(auto [overload, type, matches] = overload_resolution(tc, tg, ident_graph, ast.types, id); matches == 1) {
+      binding_of.emplace(id, overload);
     } else if(matches == 0) {
       errors.push_back(
-        {ast.srcs[fn.get()],
+        {ast.srcs[id.get()],
          "no matching overload found",
          transform_to_vec(
-           ident_graph.fanout(fn),
+           ident_graph.fanout(id),
            [&](ASTID id) { return fmt::format("  {}", pretty_print(sm, tg, ast.types[id.get()])); },
            make_vector(fmt::format("deduced {} [{} candidate(s)]",
-                                   pretty_print(sm, tg, ast.types[fn.get()]),
-                                   ident_graph.fanout(fn).size())))});
+                                   pretty_print(sm, tg, ast.types[id.get()]),
+                                   ident_graph.fanout(id).size())))});
     } else {
       errors.push_back(
-        {ast.srcs[fn.get()],
+        {ast.srcs[id.get()],
          "function call is ambiguous",
          transform_to_vec(
-           ident_graph.fanout(fn),
+           ident_graph.fanout(id),
            [&](ASTID id) { return fmt::format("  {}", pretty_print(sm, tg, ast.types[id.get()])); },
            make_vector(
-             fmt::format("deduced {} [{} candidate(s)]", pretty_print(sm, tg, ast.types[fn.get()]), matches)))});
+             fmt::format("deduced {} [{} candidate(s)]", pretty_print(sm, tg, ast.types[id.get()]), matches)))});
     }
   }
 
-  return value_or_errors(CallGraphData{std::move(fn_callers), std::move(overload_of), std::move(fns)},
+  Map<ASTID, std::vector<ASTID>> fn_callers;
+  Set<ASTID> used_globals;
+
+  for(const auto [id, overload] : binding_of) {
+    const ASTID root = ast.forest.root(id);
+    if(ast.forest[root] == ASTTag::Global && ast.forest[*ast.forest.parent(overload)] == ASTTag::Global) {
+      fn_callers[*ast.forest.first_child(root)].push_back(overload);
+      used_globals.insert(overload);
+    }
+  }
+
+  auto root_fns = transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
+    if(ast.forest[id] == ASTTag::Global) {
+      const ASTID fn = *ast.forest.first_child(id);
+      return used_globals.find(fn) == used_globals.end() ? std::optional(fn) : std::nullopt;
+    }
+    return std::optional<ASTID>();
+  });
+
+  return value_or_errors(CallGraphData{std::move(fn_callers), std::move(binding_of), std::move(root_fns)},
                          std::move(errors),
                          std::move(ast),
                          std::move(tg));
@@ -343,7 +353,7 @@ ContextualResult<CheckedFunction> overload_resolution(const Env& env, const Type
            : Failure{std::move(errors)};
 }
 
-ContextualResult2<std::tuple<CallGraphData, Graph<ASTID>>, AST, TypeGraph>
+ContextualResult2<CallGraphData, AST, TypeGraph>
 sema(const SrcMap& sm,
      const TypeCache& tc,
      const std::unordered_map<std::string, TypeID>& type_ids,
@@ -371,7 +381,7 @@ sema(const SrcMap& sm,
     .and_then([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
       return create_call_graph_data(sm, tc, ig, std::move(ast), std::move(tg))
         .map([&ig](CallGraphData cg, AST ast, TypeGraph tg) {
-          return std::tuple(std::tuple(std::move(cg), std::move(ig)), std::move(ast), std::move(tg));
+          return std::tuple(std::move(cg), std::move(ast), std::move(tg));
         });
     });
 }

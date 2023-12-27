@@ -516,7 +516,7 @@ BOOST_AUTO_TEST_CASE(sema_cg) {
     "fn g(x: f32) -> f32 = f(x)\n"
     "fn h(x: i32, y: f32) -> (i32, f32) = (g(x), g(y))\n";
 
-  const auto [cg, ig, ast_, tg] = flatten_tuple(check_result(run_sema(e, src)));
+  const auto [cg, ast_, tg] = check_result(run_sema(e, src));
   AST ast = std::move(ast_);
 
   e.sm.push_back({"file", std::string(src)});
@@ -534,13 +534,29 @@ BOOST_AUTO_TEST_CASE(sema_cg) {
 
   BOOST_REQUIRE_EQUAL(10, idents.size());
 
+  // clone, clone, f(), x, f(), x, g(), x, g(), x, h(), x, y
+  const std::vector<ASTID> patterns = transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) {
+    return ast.forest[id] == ASTTag::PatternIdent ? std::optional(id) : std::nullopt;
+  });
+
+  BOOST_REQUIRE_EQUAL(13, patterns.size());
+
   const Map<ASTID, std::vector<ASTID>> exp_fn_callers = {
     {fns[6], {fns[4], fns[5]}}, {fns[4], {fns[2]}}, {fns[5], {fns[3]}}};
   BOOST_CHECK(exp_fn_callers == cg.fn_callers);
 
   const Map<ASTID, ASTID> exp_overloads = {
-    {idents[2], fns[2]}, {idents[4], fns[3]}, {idents[6], fns[4]}, {idents[8], fns[5]}};
-  BOOST_CHECK(exp_overloads == cg.overload_of);
+    {idents[0], patterns[3]},
+    {idents[1], patterns[5]},
+    {idents[2], fns[2]},
+    {idents[3], patterns[7]},
+    {idents[4], fns[3]},
+    {idents[5], patterns[9]},
+    {idents[6], fns[4]},
+    {idents[7], patterns[11]},
+    {idents[8], fns[5]},
+    {idents[9], patterns[12]}};
+  BOOST_CHECK(exp_overloads == cg.binding_of);
 
   const std::vector<ASTID> exp_root_fns = {fns[0], fns[1], fns[6]};
   BOOST_CHECK(exp_root_fns == cg.root_fns);
