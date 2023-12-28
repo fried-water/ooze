@@ -100,6 +100,12 @@ std::vector<T> unique(std::vector<T> v) {
   return v;
 }
 
+template <typename T, typename P>
+std::vector<T> remove_if(std::vector<T> v, P pred) {
+  v.erase(std::remove_if(v.begin(), v.end(), pred), v.end());
+  return v;
+}
+
 template <typename Range, typename F>
 bool any_of(const Range& range, F f) {
   return std::any_of(range.begin(), range.end(), f);
@@ -113,6 +119,11 @@ bool all_of(const Range& range, F f) {
 template <typename Range, typename F>
 auto count_if(const Range& range, F f) {
   return std::count_if(range.begin(), range.end(), f);
+}
+
+template <typename Range, typename T>
+auto find(const Range& range, const T& t) {
+  return std::find(range.begin(), range.end(), t);
 }
 
 template <typename Range, typename F>

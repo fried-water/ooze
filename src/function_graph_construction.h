@@ -10,11 +10,16 @@ namespace ooze {
 
 FunctionGraph create_graph(const Env&, const CheckedFunction&);
 
-FunctionGraph create_graph(const std::unordered_set<TypeID>& copy_types,
-                           const AST&,
-                           const TypeGraph&,
-                           const Map<ASTID, AsyncFn>&,
-                           const Map<ASTID, ASTID>& binding_of,
-                           ASTID fn_id);
+struct FunctionGraphData {
+  std::vector<ASTID> global_values;
+  std::vector<ASTID> global_borrows;
+  FunctionGraph fg;
+};
+
+FunctionGraphData create_graph(const AST&,
+                               const TypeGraph&,
+                               const std::unordered_set<TypeID>& copy_types,
+                               const Map<ASTID, ASTID>& binding_of,
+                               ASTID);
 
 } // namespace ooze
