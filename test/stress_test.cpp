@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
     auto t0 = std::chrono::steady_clock::now();
     int result = -1;
     for(int i = 0; i < num_executions; i++) {
-      result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(ex, 1)), {})[0]).wait());
+      result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(1)), {})[0]).wait());
     }
 
     const auto ms =

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ooze/borrowed_future.h"
+#include "ooze/executor.h"
 #include "ooze/future.h"
 
 #include <functional>

@@ -10,11 +10,9 @@ struct BorrowedSharedBlock {
   std::mutex mutex;
   std::condition_variable cv;
   std::vector<std::function<void(const Any&)>> continuations;
-  ExecutorRef executor;
   bool value_ready = false;
 
-  BorrowedSharedBlock(Promise&& p, ExecutorRef executor) : promise(std::move(p)), executor(executor) {}
-
+  BorrowedSharedBlock(Promise&& p) : promise(std::move(p)) {}
   ~BorrowedSharedBlock() { std::move(promise).send(std::move(value)); }
 };
 
@@ -34,10 +32,7 @@ public:
 
     if(_block->value_ready) {
       lk.unlock();
-      _block->executor.run([f = std::move(f), b = _block]() mutable {
-        std::move(f)(b->value);
-        b = nullptr;
-      });
+      std::move(f)(_block->value);
     } else {
       _block->continuations.emplace_back(std::move(f));
     }
@@ -45,21 +40,16 @@ public:
 
   template <typename F, typename = std::enable_if_t<!std::is_same_v<void, std::invoke_result_t<F, const Any&>>>>
   Future then(F f) {
-    auto [p, new_future] = make_promise_future(_block->executor);
-    auto shared_p = std::make_shared<Promise>(std::move(p));
+    auto [p, new_future] = make_promise_future();
 
     std::unique_lock lk(_block->mutex);
 
     if(_block->value_ready) {
       lk.unlock();
-      _block->executor.run([f = std::move(f), b = _block, p = std::move(shared_p)]() mutable {
-        std::move(*p).send(std::move(f)(b->value));
-        b = nullptr;
-      });
+      std::move(p).send(std::move(f)(_block->value));
     } else {
-      _block->continuations.emplace_back([f = std::move(f), p = std::move(shared_p)](const Any& value) mutable {
-        std::move(*p).send(std::move(f)(value));
-      });
+      _block->continuations.emplace_back([f = std::move(f), p = std::make_shared<Promise>(std::move(p))](
+                                           const Any& value) mutable { std::move(*p).send(std::move(f)(value)); });
     }
 
     return std::move(new_future);
@@ -80,10 +70,9 @@ private:
 };
 
 inline std::pair<BorrowedFuture, Future> borrow(Future f, int expected_continuations = 4) {
-  auto executor = f.executor();
-  auto [new_p, new_f] = make_promise_future(executor);
+  auto [new_p, new_f] = make_promise_future();
 
-  auto block = std::make_shared<BorrowedSharedBlock>(std::move(new_p), executor);
+  auto block = std::make_shared<BorrowedSharedBlock>(std::move(new_p));
   block->continuations.reserve(expected_continuations);
 
   std::move(f).then([b = block](Any value) mutable {
@@ -96,10 +85,7 @@ inline std::pair<BorrowedFuture, Future> borrow(Future f, int expected_continuat
     b->cv.notify_all();
 
     for(auto&& f : b->continuations) {
-      b->executor.run([f = std::move(f), b]() mutable {
-        f(b->value);
-        b = nullptr;
-      });
+      std::move(f)(b->value);
     }
     b->continuations.clear();
     b = nullptr;

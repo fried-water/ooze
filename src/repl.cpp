@@ -185,12 +185,12 @@ run(ExecutorRef executor, Env env, Bindings bindings, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
     for(auto& [binding, entry] : bindings) {
-      knot::preorder(entry, [&](Binding& b) { b.future = Future(executor, std::move(b.future).wait()); });
+      knot::preorder(entry, [&](Binding& b) { b.future = Future(std::move(b.future).wait()); });
     }
   } else {
     for(const std::string& binding : cmd.bindings) {
       if(const auto it = bindings.find(binding); it != bindings.end()) {
-        knot::preorder(it->second, [&](Binding& b) { b.future = Future(executor, std::move(b.future).wait()); });
+        knot::preorder(it->second, [&](Binding& b) { b.future = Future(std::move(b.future).wait()); });
       } else {
         output.push_back(fmt::format("Binding {} not found", binding));
       }

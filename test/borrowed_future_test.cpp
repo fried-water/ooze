@@ -1,42 +1,39 @@
 #include "test.h"
 
 #include "ooze/borrowed_future.h"
-#include "ooze/executor/sequential_executor.h"
 
 #include <random>
 #include <thread>
 
 namespace ooze {
 
-static Executor executor = make_seq_executor();
-
 BOOST_AUTO_TEST_SUITE(borrowed_future)
 
 BOOST_AUTO_TEST_CASE(cleanup) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
 }
 
 BOOST_AUTO_TEST_CASE(cleanup_promise_first) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
   p = {};
 }
 
 BOOST_AUTO_TEST_CASE(cleanup_future_first) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
   f = {};
 }
 
 BOOST_AUTO_TEST_CASE(copy_cleanup) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
   auto b2 = b;
 }
 
 BOOST_AUTO_TEST_CASE(forward) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
 
   std::move(p).send(1);
@@ -45,7 +42,7 @@ BOOST_AUTO_TEST_CASE(forward) {
 }
 
 BOOST_AUTO_TEST_CASE(send_wait) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
 
   auto b2 = b;
@@ -57,7 +54,7 @@ BOOST_AUTO_TEST_CASE(send_wait) {
 }
 
 BOOST_AUTO_TEST_CASE(send_then) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
 
   auto b2 = b;
@@ -74,7 +71,7 @@ BOOST_AUTO_TEST_CASE(send_then) {
 }
 
 BOOST_AUTO_TEST_CASE(then_send) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
 
   auto b2 = b;
@@ -102,7 +99,7 @@ BOOST_AUTO_TEST_CASE(stress) {
 
   std::vector<std::function<void()>> functions;
   for(int i = 0; i < count; i++) {
-    auto [p, f] = make_promise_future(executor);
+    auto [p, f] = make_promise_future();
     auto [b, f2] = borrow(std::move(f));
 
     functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });

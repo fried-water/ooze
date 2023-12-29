@@ -1,6 +1,5 @@
 #include "test.h"
 
-#include "ooze/executor/sequential_executor.h"
 #include "ooze/future.h"
 
 #include <random>
@@ -8,19 +7,17 @@
 
 namespace ooze {
 
-static Executor executor = make_seq_executor();
-
 BOOST_AUTO_TEST_SUITE(future)
 
-BOOST_AUTO_TEST_CASE(future_promise_cleanup) { auto [p, f] = make_promise_future(executor); }
+BOOST_AUTO_TEST_CASE(future_promise_cleanup) { auto [p, f] = make_promise_future(); }
 
 BOOST_AUTO_TEST_CASE(promise_future_cleanup) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
   p = {};
 }
 
 BOOST_AUTO_TEST_CASE(wait_no_send) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   p = {};
 
@@ -28,13 +25,13 @@ BOOST_AUTO_TEST_CASE(wait_no_send) {
 }
 
 BOOST_AUTO_TEST_CASE(then_no_send) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(f).then([&](Any v) { BOOST_CHECK(!v.has_value()); });
 }
 
 BOOST_AUTO_TEST_CASE(no_send_then) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   p = {};
 
@@ -42,13 +39,13 @@ BOOST_AUTO_TEST_CASE(no_send_then) {
 }
 
 BOOST_AUTO_TEST_CASE(send_no_receive) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(p).send(1);
 }
 
 BOOST_AUTO_TEST_CASE(no_receive_send) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   f = {};
 
@@ -56,7 +53,7 @@ BOOST_AUTO_TEST_CASE(no_receive_send) {
 }
 
 BOOST_AUTO_TEST_CASE(send_wait) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(p).send(1);
 
@@ -64,21 +61,21 @@ BOOST_AUTO_TEST_CASE(send_wait) {
 }
 
 BOOST_AUTO_TEST_CASE(send_then) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(p).send(1);
   std::move(f).then([](Any v) { BOOST_CHECK_EQUAL(1, any_cast<int>(v)); });
 }
 
 BOOST_AUTO_TEST_CASE(then_send) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(f).then([](Any v) { BOOST_CHECK_EQUAL(1, any_cast<int>(v)); });
   std::move(p).send(1);
 }
 
 BOOST_AUTO_TEST_CASE(then_then_send) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(f)
     .then([](Any v) {
@@ -91,7 +88,7 @@ BOOST_AUTO_TEST_CASE(then_then_send) {
 }
 
 BOOST_AUTO_TEST_CASE(send_then_then_wait) {
-  auto [p, f] = make_promise_future(executor);
+  auto [p, f] = make_promise_future();
 
   std::move(p).send(1);
 
@@ -118,7 +115,7 @@ BOOST_AUTO_TEST_CASE(stress) {
   std::vector<std::function<void()>> functions;
 
   for(int i = 0; i < count; i++) {
-    auto [p, f] = make_promise_future(executor);
+    auto [p, f] = make_promise_future();
     functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
     if(i % 2 == 0) {
       functions.emplace_back([f = std::make_shared<Future>(std::move(f)), &calls]() mutable {

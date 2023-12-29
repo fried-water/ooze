@@ -35,10 +35,10 @@ void compare(const T& exp, Span<Any> act) {
 }
 
 template <typename... Ts, size_t... Is>
-std::vector<Future> to_futures(ExecutorRef ex, std::tuple<Ts...> ts, std::index_sequence<Is...>) {
+std::vector<Future> to_futures(std::tuple<Ts...> ts, std::index_sequence<Is...>) {
   std::vector<Future> futures;
   futures.reserve(sizeof...(Ts));
-  const auto append = [&](auto t) { futures.push_back(Future(ex, Any(std::move(t)))); };
+  const auto append = [&](auto t) { futures.push_back(Future(Any(std::move(t)))); };
   (append(std::move(std::get<Is>(ts))), ...);
   return futures;
 }
@@ -47,8 +47,8 @@ template <typename... Ts, typename... Bs>
 std::vector<Any> run_async_fn(ExecutorRef ex, AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
   return transform_to_vec(
     fn(ex,
-       to_futures(ex, std::move(ts), std::make_index_sequence<sizeof...(Ts)>()),
-       transform_to_vec(to_futures(ex, std::move(bs), std::make_index_sequence<sizeof...(Bs)>()),
+       to_futures(std::move(ts), std::make_index_sequence<sizeof...(Ts)>()),
+       transform_to_vec(to_futures(std::move(bs), std::make_index_sequence<sizeof...(Bs)>()),
                         [](Future f) { return borrow(std::move(f)).first; })),
     [](Future f) { return std::move(f).wait(); });
 }
@@ -247,7 +247,7 @@ BOOST_AUTO_TEST_CASE(fwd) {
   const auto g = create_async_graph(std::move(cg).finalize(cg.add(fwd, inputs, {PassBy::Move}, 1), {PassBy::Move}));
 
   Executor ex = make_seq_executor();
-  std::vector<Future> results = g(ex, make_vector(Future(ex, Any(Sentinal{}))), {});
+  std::vector<Future> results = g(ex, make_vector(Future(Any(Sentinal{}))), {});
   BOOST_REQUIRE_EQUAL(1, results.size());
   const Sentinal result = any_cast<Sentinal>(std::move(results.front()).wait());
 
@@ -267,8 +267,8 @@ BOOST_AUTO_TEST_CASE(borrow_fwd) {
 
   const auto g = create_async_graph(std::move(cg).finalize({}, {}));
 
-  auto [b1, post_future1] = ooze::borrow(Future(ex, Sentinal{}));
-  auto [b2, post_future2] = ooze::borrow(Future(ex, Sentinal{}));
+  auto [b1, post_future1] = ooze::borrow(Future(Sentinal{}));
+  auto [b2, post_future2] = ooze::borrow(Future(Sentinal{}));
   const auto results = g(ex, {}, {std::move(b1), std::move(b2)});
   const Sentinal input1 = any_cast<Sentinal>(std::move(post_future1).wait());
   const Sentinal input2 = any_cast<Sentinal>(std::move(post_future2).wait());
@@ -306,7 +306,7 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
   std::vector<Future> input_futures;
 
   for(size_t i = 0; i < COUNT; i++) {
-    auto [p, f] = make_promise_future(ex);
+    auto [p, f] = make_promise_future();
     auto [b, bf] = ooze::borrow(std::move(f));
     promises.push_back(std::move(p));
     inputs.push_back(std::move(b));
@@ -371,7 +371,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_value) {
   Executor ex = make_seq_executor();
   const auto fn = create_async_function([](Sentinal x) { return x; });
 
-  std::vector<Future> results = fn(ex, make_vector(Future(ex, Sentinal{})), {});
+  std::vector<Future> results = fn(ex, make_vector(Future(Sentinal{})), {});
 
   BOOST_REQUIRE_EQUAL(1, results.size());
 
@@ -385,7 +385,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_rvalue) {
   Executor ex = make_seq_executor();
   const auto fn = create_async_function([](Sentinal&& x) { return x; });
 
-  std::vector<Future> results = fn(ex, make_vector(Future(ex, Sentinal{})), {});
+  std::vector<Future> results = fn(ex, make_vector(Future(Sentinal{})), {});
 
   BOOST_REQUIRE_EQUAL(1, results.size());
 
@@ -399,7 +399,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
   Executor ex = make_seq_executor();
   const auto fn = create_async_function([](const Sentinal& x) { return x; });
 
-  auto [b, post_future] = ooze::borrow(Future(ex, Sentinal{}));
+  auto [b, post_future] = ooze::borrow(Future(Sentinal{}));
   std::vector<Future> results = fn(ex, {}, {std::move(b)});
 
   BOOST_REQUIRE_EQUAL(1, results.size());
