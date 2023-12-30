@@ -286,7 +286,9 @@ ContextualResult2<void, AST, TypeGraph> parse_ast(Parser p, AST ast, TypeGraph t
 ContextualResult2<void, AST, TypeGraph> parse_expr2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(expr, std::move(ast), std::move(tg), id, src);
 }
-ContextualResult2<void, AST, TypeGraph> parse_repl2(AST ast, TypeGraph tg, SrcID id, std::string_view src);
+ContextualResult2<void, AST, TypeGraph> parse_repl2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+  return parse_ast(choose(assignment(), expr), std::move(ast), std::move(tg), id, src);
+}
 ContextualResult2<void, AST, TypeGraph> parse_function2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(function(), std::move(ast), std::move(tg), id, src);
 }

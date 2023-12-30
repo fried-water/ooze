@@ -482,6 +482,26 @@ BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
   check_pass(ast, tg, parse2({}, {}, {}, src));
 }
 
+BOOST_AUTO_TEST_CASE(repl_expr) {
+  const std::string_view src = "x";
+
+  const auto [exp_ast, exp_tg] = check_result(parse_expr2({}, {}, {}, src));
+  const auto [act_ast, act_tg] = check_result(parse_repl2({}, {}, {}, src));
+
+  BOOST_CHECK(exp_ast == act_ast);
+  BOOST_CHECK(exp_tg == act_tg);
+}
+
+BOOST_AUTO_TEST_CASE(repl_assignment) {
+  const std::string_view src = "let x: T = y";
+
+  const auto [exp_ast, exp_tg] = check_result(parse_assignment2({}, {}, {}, src));
+  const auto [act_ast, act_tg] = check_result(parse_repl2({}, {}, {}, src));
+
+  BOOST_CHECK(exp_ast == act_ast);
+  BOOST_CHECK(exp_tg == act_tg);
+}
+
 BOOST_AUTO_TEST_CASE(parse_consecutive) {
   AST ast;
   TypeGraph tg;
