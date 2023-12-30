@@ -42,6 +42,7 @@ public:
   i32 num_nodes() const { return int(_indices.size() - 1); }
   i32 num_edges() const { return int(_fanout.size()); }
   i32 num_fanout(ID n) const { return _indices[as_integral(n) + 1] - _indices[as_integral(n)]; }
+  bool has_fanout(ID n) const { return num_fanout(n) > 0; }
 
   auto nodes() const { return id_range(ID(underlying_type(num_nodes()))); }
   auto fanout(ID n) const {
@@ -161,6 +162,19 @@ void preorder(const Graph<ID, Ts...>& g, ID start, F f) {
       to_visit.insert(to_visit.end(), fanout.rbegin(), fanout.rend());
     }
   }
+}
+
+template <typename ID, typename... Ts>
+Graph<ID, Ts...> invert(const Graph<ID, Ts...>& g) {
+  std::vector<std::vector<ID>> inverted(g.num_nodes());
+
+  for(ID node : g.nodes()) {
+    for(ID fanout : g.fanout(node)) {
+      inverted[fanout.get()].push_back(node);
+    }
+  }
+
+  return Graph<ID, Ts...>(inverted, static_cast<const std::vector<Ts>&>(g)...);
 }
 
 } // namespace ooze

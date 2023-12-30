@@ -541,9 +541,13 @@ BOOST_AUTO_TEST_CASE(sema_cg) {
 
   BOOST_REQUIRE_EQUAL(13, patterns.size());
 
-  const Map<ASTID, std::vector<ASTID>> exp_fn_callers = {
-    {fns[6], {fns[4], fns[5]}}, {fns[4], {fns[2]}}, {fns[5], {fns[3]}}};
-  BOOST_CHECK(exp_fn_callers == cg.fn_callers);
+  std::vector<std::vector<ASTID>> exp_call_graph(ast.forest.size());
+  exp_call_graph[fns[4].get()] = {fns[2]};
+  exp_call_graph[fns[5].get()] = {fns[3]};
+  exp_call_graph[fns[6].get()] = {fns[4], fns[5]};
+
+  BOOST_CHECK(Graph<ASTID>(exp_call_graph) == cg.call_graph);
+  BOOST_CHECK(invert(cg.call_graph) == cg.inverted_call_graph);
 
   const Map<ASTID, ASTID> exp_overloads = {
     {idents[0], patterns[3]},
@@ -558,8 +562,8 @@ BOOST_AUTO_TEST_CASE(sema_cg) {
     {idents[9], patterns[12]}};
   BOOST_CHECK(exp_overloads == cg.binding_of);
 
-  const std::vector<ASTID> exp_root_fns = {fns[0], fns[1], fns[6]};
-  BOOST_CHECK(exp_root_fns == cg.root_fns);
+  const std::vector<ASTID> exp_leaf_fns = {fns[0], fns[1], fns[2], fns[3]};
+  BOOST_CHECK(exp_leaf_fns == cg.leaf_fns);
 }
 
 } // namespace ooze

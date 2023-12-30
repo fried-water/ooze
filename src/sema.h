@@ -23,9 +23,10 @@ type_name_resolution(const SrcMap&, const std::unordered_map<std::string, TypeID
 Graph<ASTID> calculate_ident_graph(const SrcMap&, const AST&);
 
 struct CallGraphData {
-  Map<ASTID, std::vector<ASTID>> fn_callers;
+  Graph<ASTID> call_graph;
+  Graph<ASTID> inverted_call_graph;
   Map<ASTID, ASTID> binding_of;
-  std::vector<ASTID> root_fns;
+  std::vector<ASTID> leaf_fns;
 };
 
 ContextualResult2<CallGraphData, AST, TypeGraph>

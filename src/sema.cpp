@@ -213,29 +213,31 @@ create_call_graph_data(const SrcMap& sm, const TypeCache& tc, const Graph<ASTID>
     }
   }
 
-  Map<ASTID, std::vector<ASTID>> fn_callers;
-  Set<ASTID> used_globals;
+  std::vector<std::vector<ASTID>> call_graph_vec(ast.forest.size());
 
   for(const auto [id, overload] : binding_of) {
     const ASTID root = ast.forest.root(id);
     if(ast.forest[root] == ASTTag::Global && ast.forest[*ast.forest.parent(overload)] == ASTTag::Global) {
-      fn_callers[*ast.forest.first_child(root)].push_back(overload);
-      used_globals.insert(overload);
+      call_graph_vec[ast.forest.first_child(root)->get()].push_back(overload);
     }
   }
 
-  auto root_fns = transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
-    if(ast.forest[id] == ASTTag::Global) {
-      const ASTID fn = *ast.forest.first_child(id);
-      return used_globals.find(fn) == used_globals.end() ? std::optional(fn) : std::nullopt;
+  Graph<ASTID> call_graph = Graph<ASTID>(call_graph_vec);
+  Graph<ASTID> inverted_call_graph = invert(call_graph);
+
+  auto leaf_fns = transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID root) {
+    if(ast.forest[root] == ASTTag::Global) {
+      const auto pattern = *ast.forest.first_child(root);
+      return !call_graph.has_fanout(pattern) ? std::optional(pattern) : std::nullopt;
     }
     return std::optional<ASTID>();
   });
 
-  return value_or_errors(CallGraphData{std::move(fn_callers), std::move(binding_of), std::move(root_fns)},
-                         std::move(errors),
-                         std::move(ast),
-                         std::move(tg));
+  return value_or_errors(
+    CallGraphData{std::move(call_graph), std::move(inverted_call_graph), std::move(binding_of), std::move(leaf_fns)},
+    std::move(errors),
+    std::move(ast),
+    std::move(tg));
 }
 
 } // namespace
