@@ -44,11 +44,11 @@ std::vector<std::string> contextualize(std::string_view src, std::vector<Context
   return strings;
 }
 
-std::vector<std::string> contextualize(const SrcMap& sm, std::vector<ContextualError2> errors) {
+std::vector<std::string> contextualize(Span<std::string_view> srcs, std::vector<ContextualError2> errors) {
   return knot::accumulate(
     sorted(std::move(errors)), std::vector<std::string>{}, [&](std::vector<std::string> strings, ContextualError2 e) {
       if(e.ref.slice != Slice{}) {
-        const std::string_view src{sm[e.ref.file.get()].src};
+        const std::string_view src{srcs[e.ref.file.get()]};
         const auto pos = src.begin() + e.ref.slice.begin;
         const auto is_newline = [](char c) { return c == '\n'; };
 

@@ -10,28 +10,28 @@ namespace {
 
 template <typename Parser>
 void test(Parser p, std::string_view exp, std::string_view src) {
-  Env e = create_primative_env();
-  e.sm.push_back({"", std::string(src)});
+  const auto srcs = make_sv_array(src);
+  const std::unordered_map<std::string, TypeID> type_ids = {{"T", TypeID{1}}};
 
-  const auto [ast, tg] = check_result(p({}, std::move(e.tg), SrcID{1}, src).and_then([&](AST ast, TypeGraph tg) {
-    return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+  const auto [ast, tg] = check_result(p({}, {}, SrcID{0}, src).and_then([&](AST ast, TypeGraph tg) {
+    return type_name_resolution(srcs, type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
       return std::tuple(std::move(ast), std::move(tg));
     });
   }));
 
-  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, ast, tg));
+  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, ast, tg));
 }
 
 void test_type(std::string_view exp, std::string_view src) {
-  Env e = create_primative_env();
-  e.sm.push_back({"", std::string(src)});
-  const auto [ast, tg] =
-    check_result(parse_type2({}, std::move(e.tg), SrcID{1}, src).and_then([&](AST ast, TypeGraph tg) {
-      return type_name_resolution(e.sm, e.type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
-    }));
-  BOOST_CHECK_EQUAL(exp, pretty_print(e.sm, tg, TypeRef(tg.num_nodes() - 1)));
+  const auto srcs = make_sv_array(src);
+  const std::unordered_map<std::string, TypeID> type_ids = {{"T", TypeID{1}}};
+
+  const auto [ast, tg] = check_result(parse_type2({}, {}, SrcID{0}, src).and_then([&](AST ast, TypeGraph tg) {
+    return type_name_resolution(srcs, type_ids, std::move(tg)).map_state([&](TypeGraph tg) {
+      return std::tuple(std::move(ast), std::move(tg));
+    });
+  }));
+  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, tg, TypeRef(tg.num_nodes() - 1)));
 }
 
 } // namespace
@@ -47,15 +47,15 @@ BOOST_AUTO_TEST_CASE(pattern) {
 BOOST_AUTO_TEST_CASE(compound_type) {
   test_type("_", "_");
 
-  test_type("i32", "i32");
-  test_type("&i32", "&i32");
+  test_type("T", "T");
+  test_type("&T", "&T");
 
   test_type("()", "()");
-  test_type("(i32)", "(i32)");
-  test_type("(i32, i32)", "(i32, i32)");
+  test_type("(T)", "(T)");
+  test_type("(T, T)", "(T, T)");
 
-  test_type("fn() -> i32", "fn() -> i32");
-  test_type("fn(i32) -> i32", "fn(i32) -> i32");
+  test_type("fn() -> T", "fn() -> T");
+  test_type("fn(T) -> T", "fn(T) -> T");
 }
 
 BOOST_AUTO_TEST_CASE(unnamed_type) {
@@ -68,13 +68,28 @@ BOOST_AUTO_TEST_CASE(unnamed_type) {
 }
 
 BOOST_AUTO_TEST_CASE(native_fn) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
-  e.add_type<i32>("i32");
-  e.add_function("f", [](i32) { return 1; });
+  constexpr static std::string_view src = "Tf";
 
-  BOOST_CHECK_EQUAL("fn f(i32) -> i32 = <native_fn>",
-                    pretty_print(e.sm, e.ast, e.tg, e.ast.forest.root_ids().get<1>()));
+  AST ast;
+  TypeGraph tg;
+
+  const TypeRef t = tg.add_node(TypeTag::Leaf, SrcRef{SrcID{0}, {0, 1}}, TypeID{});
+  const TypeRef tuple_t = tg.add_node({t}, TypeTag::Tuple, SrcRef{}, TypeID{});
+  const TypeRef fn_t = tg.add_node({tuple_t, t}, TypeTag::Fn, SrcRef{}, TypeID{});
+
+  const ASTID ident = ast.forest.append_root(ASTTag::PatternIdent);
+  const ASTID fn = ast.forest.append_root(ASTTag::EnvValue);
+  const ASTID global = ast.forest.append_root_post_order(ASTTag::Global, std::array{ident, fn});
+
+  ast.srcs.push_back(SrcRef{SrcID{0}, {1, 2}});
+  ast.srcs.push_back(SrcRef{SrcID{0}, {1, 2}});
+  ast.srcs.push_back(SrcRef{});
+
+  ast.types.push_back(fn_t);
+  ast.types.push_back(fn_t);
+  ast.types.push_back(TypeRef::Invalid());
+
+  BOOST_CHECK_EQUAL("fn f(T) -> T = <native_fn>", pretty_print(make_sv_array(src), ast, tg, global));
 }
 
 BOOST_AUTO_TEST_CASE(expr) {
@@ -96,8 +111,8 @@ BOOST_AUTO_TEST_CASE(expr) {
 BOOST_AUTO_TEST_CASE(assignment) {
   test(parse_assignment2, "let x = y", "let x = y");
   test(parse_assignment2, "let x = y", "let x : _ = y");
-  test(parse_assignment2, "let x: i32 = y", "let x: i32 = y");
-  test(parse_assignment2, "let (x, y): (i32, _) = (1, 2)", "let (x, y): (i32, _) = (1, 2)");
+  test(parse_assignment2, "let x: T = y", "let x: T = y");
+  test(parse_assignment2, "let (x, y): (T, _) = (1, 2)", "let (x, y): (T, _) = (1, 2)");
 }
 
 BOOST_AUTO_TEST_CASE(scope) {
@@ -109,16 +124,16 @@ BOOST_AUTO_TEST_CASE(scope) {
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
-  test(parse_function2, "() -> i32 = x", "() -> i32 = x");
-  test(parse_function2, "(x) -> i32 = x", "(x) -> i32 = x");
-  test(parse_function2, "(x: i32) -> i32 = x", "(x: i32) -> i32 = x");
-  test(parse_function2, "(x: i32, _) -> i32 = x", "(x: i32, _) -> i32 = x");
+  test(parse_function2, "() -> T = x", "() -> T = x");
+  test(parse_function2, "(x) -> T = x", "(x) -> T = x");
+  test(parse_function2, "(x: T) -> T = x", "(x: T) -> T = x");
+  test(parse_function2, "(x: T, _) -> T = x", "(x: T, _) -> T = x");
   test(parse_function2, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
 }
 
 BOOST_AUTO_TEST_CASE(ast) {
-  test(parse2, "fn f() -> i32 = x", "fn f() -> i32 = x");
-  test(parse2, "fn f() -> i32 = x\n\nfn g() -> i32 = x", "fn f() -> i32 = x fn g() -> i32 = x");
+  test(parse2, "fn f() -> T = x", "fn f() -> T = x");
+  test(parse2, "fn f() -> T = x\n\nfn g() -> T = x", "fn f() -> T = x fn g() -> T = x");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

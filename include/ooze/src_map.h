@@ -1,11 +1,12 @@
 #pragma once
 
 #include "ooze/slice.h"
+#include "ooze/span.h"
 #include "ooze/strong_id.h"
 
+#include <array>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace ooze {
 
@@ -18,15 +19,15 @@ struct SrcRef {
   KNOT_ORDERED(SrcRef);
 };
 
-struct SrcFile {
-  std::string name;
-  std::string src;
-};
-
-using SrcMap = std::vector<SrcFile>;
+template <typename... Ts>
+std::array<std::string_view, sizeof...(Ts)> make_sv_array(const Ts&... ts) {
+  return {std::string_view(ts)...};
+}
 
 inline constexpr std::string_view sv(std::string_view src, Slice s) { return {src.data() + s.begin, size_t(size(s))}; }
-inline constexpr std::string_view sv(const SrcMap& m, SrcRef ref) { return sv(m[ref.file.get()].src, ref.slice); }
+inline constexpr std::string_view sv(Span<std::string_view> m, SrcRef ref) {
+  return ref.file.is_valid() ? sv(m[ref.file.get()], ref.slice) : "";
+}
 
 // TODO line / character numbers?
 

@@ -39,8 +39,8 @@ FunctionType<TypeID> function_type_of(knot::Type<F> f) {
   }
 }
 
-inline SrcRef append_src(std::string& src, std::string_view name) {
-  const auto ref = SrcRef{SrcID{0}, {i32(src.size()), i32(src.size() + name.size())}};
+inline Slice append_src(std::string& src, std::string_view name) {
+  const auto ref = Slice{i32(src.size()), i32(src.size() + name.size())};
   src.insert(src.end(), name.begin(), name.end());
   return ref;
 }
@@ -51,7 +51,7 @@ struct Env {
   std::unordered_map<std::string, std::vector<EnvFunction>> functions;
   std::unordered_set<TypeID> copy_types;
 
-  SrcMap sm = {{"<env>", {}}};
+  std::string src;
 
   AST ast;
   TypeGraph tg;
@@ -67,7 +67,7 @@ struct Env {
     FunctionType<TypeID> type = function_type_of(decay(knot::Type<F>{}));
     functions[std::string(name)].push_back({std::move(type), create_async_function(std::forward<F>(f))});
 
-    const auto ref = append_src(sm[0].src, name);
+    const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
 
     const TypeRef fn_type = add_fn(tg, type_cache.native, ref, decay(knot::Type<F>{}));
 
@@ -116,7 +116,7 @@ struct Env {
     type_names.emplace(type, std::string(name));
 
     const TypeRef ref = add_or_get_type(tg, type_cache.native, knot::Type<T>{});
-    tg.set<SrcRef>(ref, append_src(sm[0].src, name));
+    tg.set<SrcRef>(ref, SrcRef{SrcID{0}, append_src(src, name)});
 
     flat_types.emplace(std::string(name), ref);
 

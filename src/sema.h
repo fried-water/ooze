@@ -18,9 +18,9 @@ TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
 
 ContextualResult2<void, TypeGraph>
-type_name_resolution(const SrcMap&, const std::unordered_map<std::string, TypeID>&, TypeGraph);
+type_name_resolution(Span<std::string_view>, const std::unordered_map<std::string, TypeID>&, TypeGraph);
 
-Graph<ASTID> calculate_ident_graph(const SrcMap&, const AST&);
+Graph<ASTID> calculate_ident_graph(Span<std::string_view>, const AST&);
 
 struct CallGraphData {
   Graph<ASTID> call_graph;
@@ -30,7 +30,7 @@ struct CallGraphData {
 };
 
 ContextualResult2<CallGraphData, AST, TypeGraph>
-sema(const SrcMap&,
+sema(Span<std::string_view>,
      const TypeCache&,
      const std::unordered_map<std::string, TypeID>&,
      const std::unordered_set<TypeID>& copy_types,

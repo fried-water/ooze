@@ -30,9 +30,9 @@ std::string pretty_print(const Env&, const CheckedFunction&);
 std::string pretty_print(const Env&, const CheckedAssignment&);
 std::string pretty_print(const Env&, const CheckedExpr&);
 
-std::string pretty_print(const SrcMap&, const AST&, const TypeGraph&, std::optional<ASTID> = {});
+std::string pretty_print(Span<std::string_view>, const AST&, const TypeGraph&, std::optional<ASTID> = {});
 
-std::string pretty_print(const SrcMap&, const TypeGraph&, TypeRef);
+std::string pretty_print(Span<std::string_view>, const TypeGraph&, TypeRef);
 
 template <typename R, typename T>
 R untype(const Env& e, const T& t) {

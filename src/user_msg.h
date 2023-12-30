@@ -28,6 +28,6 @@ using ContextualResult2 = Result<T, std::vector<ContextualError2>, Ts...>;
 
 std::vector<std::string> contextualize(std::string_view src, std::vector<ContextualError>);
 
-std::vector<std::string> contextualize(const SrcMap&, std::vector<ContextualError2>);
+std::vector<std::string> contextualize(Span<std::string_view>, std::vector<ContextualError2>);
 
 } // namespace ooze
