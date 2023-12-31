@@ -7,9 +7,11 @@ namespace ooze {
 
 AsyncFn create_async_value(Any);
 AsyncFn create_async_graph(FunctionGraph);
-AsyncFn create_async_functional(int output_count);
+AsyncFn create_async_functional(int output_count, bool borrowed_fn = false);
 AsyncFn create_async_if(int output_count, AsyncFn, AsyncFn);
 AsyncFn create_async_select();
 AsyncFn create_async_converge();
+
+AsyncFn curry(AsyncFn, std::vector<BorrowedFuture>);
 
 } // namespace ooze

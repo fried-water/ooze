@@ -429,6 +429,30 @@ BOOST_AUTO_TEST_CASE(functional) {
                        std::tuple(6)));
 }
 
+BOOST_AUTO_TEST_CASE(functional_borrow) {
+  compare(std::tuple(), run_async_fn(create_async_functional(0, true), {}, std::tuple(create_async_function([]() {}))));
+  compare(3, run_async_fn(create_async_functional(1, true), {}, std::tuple(create_async_function([]() { return 3; }))));
+  compare(7, run_async_fn(create_async_functional(1, true), std::tuple(6), std::tuple(create_async_function([](int x) {
+                            return x + 1;
+                          }))));
+  compare(
+    7,
+    run_async_fn(
+      create_async_functional(1, true), {}, std::tuple(create_async_function([](const int& x) { return x + 1; }), 6)));
+  compare(9,
+          run_async_fn(create_async_functional(1, true),
+                       std::tuple(2),
+                       std::tuple(create_async_function([](int x, const int& y) { return x + y + 1; }), 6)));
+}
+
+BOOST_AUTO_TEST_CASE(curry_fn) {
+  const auto add3 =
+    curry(create_async_function([](const i32& x, const i32& y) { return x + y; }), {borrow(Future(Any{3})).first});
+  const auto seven = curry(add3, {borrow(Future(Any{4})).first});
+  compare(5, run_async_fn(add3, {}, std::tuple(2)));
+  compare(7, run_async_fn(seven, {}, {}));
+}
+
 BOOST_AUTO_TEST_CASE(select) {
   compare(std::tuple(), run_async_fn(create_async_select(), std::tuple(true), {}));
   compare(std::tuple(), run_async_fn(create_async_select(), std::tuple(false), {}));

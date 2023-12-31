@@ -293,20 +293,38 @@ AsyncFn create_async_graph(FunctionGraph fg) {
   };
 }
 
-AsyncFn create_async_functional(int output_count) {
-  return [=](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
+AsyncFn create_async_functional(int output_count, bool borrowed_fn) {
+  return borrowed_fn ? AsyncFn([=](ExecutorRef ex,
+                                   std::vector<Future> inputs,
+                                   std::vector<BorrowedFuture> borrowed_inputs) {
     auto [promises, futures] = make_multi_promise_future(output_count);
 
-    Future fn = std::move(inputs[0]);
-    inputs.erase(inputs.begin());
+    BorrowedFuture fn = std::move(borrowed_inputs[0]);
+    borrowed_inputs.erase(borrowed_inputs.begin());
 
     Block* b = new Block{ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
-    std::move(fn).then([b](Any fn) {
+    fn.then([b](const Any& fn) {
       forward_results_then_delete(any_cast<AsyncFn>(fn)(b->e, std::move(b->owned_inputs), b->borrowed_inputs), b);
     });
 
     return std::move(futures);
-  };
+  })
+                     : AsyncFn(
+                         [=](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
+                           auto [promises, futures] = make_multi_promise_future(output_count);
+
+                           Future fn = std::move(inputs[0]);
+                           inputs.erase(inputs.begin());
+
+                           Block* b = new Block{
+                             ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
+                           std::move(fn).then([b](Any fn) {
+                             forward_results_then_delete(
+                               any_cast<AsyncFn>(fn)(b->e, std::move(b->owned_inputs), b->borrowed_inputs), b);
+                           });
+
+                           return std::move(futures);
+                         });
 }
 
 AsyncFn create_async_if(int output_count, AsyncFn if_graph, AsyncFn else_graph) {
@@ -355,7 +373,7 @@ AsyncFn create_async_select() {
 }
 
 AsyncFn create_async_converge() {
-  return [=](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
+  return [](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
     const int output_count = int(inputs.size()) - 2;
     auto [promises, futures] = make_multi_promise_future(output_count);
 
@@ -369,6 +387,14 @@ AsyncFn create_async_converge() {
                         std::move(fn)});
 
     return std::move(futures);
+  };
+}
+
+AsyncFn curry(AsyncFn fn, std::vector<BorrowedFuture> args) {
+  return [fn = std::move(fn), args = std::move(args)](
+           ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
+    borrowed_inputs.insert(borrowed_inputs.end(), args.begin(), args.end());
+    return fn(ex, std::move(inputs), std::move(borrowed_inputs));
   };
 }
 
