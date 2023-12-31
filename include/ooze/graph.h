@@ -5,6 +5,8 @@
 #include "ooze/span.h"
 #include "ooze/strong_id.h"
 
+#include <deque>
+#include <unordered_set>
 #include <vector>
 
 namespace ooze {
@@ -175,6 +177,28 @@ Graph<ID, Ts...> invert(const Graph<ID, Ts...>& g) {
   }
 
   return Graph<ID, Ts...>(inverted, static_cast<const std::vector<Ts>&>(g)...);
+}
+
+template <typename ID, typename... Ts>
+std::vector<ID> bfs_traversal(const Graph<ID, Ts...>& g, const std::vector<ID>& initial_ids) {
+  std::vector<ID> traversal;
+  std::unordered_set<ID> visited;
+
+  std::deque<ID> to_visit(initial_ids.begin(), initial_ids.end());
+
+  while(!to_visit.empty()) {
+    const ID id = to_visit.front();
+    to_visit.pop_front();
+
+    if(visited.insert(id).second) {
+      traversal.push_back(id);
+
+      const auto fanout = g.fanout(id);
+      to_visit.insert(to_visit.end(), fanout.begin(), fanout.end());
+    }
+  }
+
+  return traversal;
 }
 
 } // namespace ooze
