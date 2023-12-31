@@ -502,8 +502,7 @@ BOOST_AUTO_TEST_CASE(sema_unresolved_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(sema_cg) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
 
   e.add_type<i32>("i32");
   e.add_type<f32>("f32");

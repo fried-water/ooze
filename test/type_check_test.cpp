@@ -392,8 +392,7 @@ BOOST_AUTO_TEST_CASE(fn_multi) {
   const std::string_view exp =
     "fn f(x: i32) -> i32 = x\n"
     "fn g(x: i32) -> i32 = f(x)\n";
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   test_tc_fns(e, src, exp);
 }
@@ -405,8 +404,7 @@ BOOST_AUTO_TEST_CASE(fn_multi_prop_down) {
   const std::string_view exp =
     "fn f(x: i32) -> i32 = x\n"
     "fn g(x: i32) -> i32 = f(x)\n";
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   test_tc_fns(e, src, exp);
 }
@@ -415,15 +413,13 @@ BOOST_AUTO_TEST_CASE(fn_multi_dont_prop_up) {
   const std::string_view src =
     "fn f(x) -> _ = x\n"
     "fn g(x: i32) -> i32 = f(x)\n";
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   test_tc_fns(e, src, src);
 }
 
 BOOST_AUTO_TEST_CASE(fn_multi_or) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   e.add_type<f32>("f32");
 
@@ -442,8 +438,7 @@ BOOST_AUTO_TEST_CASE(fn_multi_or) {
 }
 
 BOOST_AUTO_TEST_CASE(fn_multi_or_global) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   e.add_type<f32>("f32");
   e.add_function("f", [](f32 x) { return x; });
@@ -488,8 +483,7 @@ BOOST_AUTO_TEST_CASE(scope) {
 BOOST_AUTO_TEST_CASE(function_identity) { test_tc(create_primative_env(), "(x) -> _ = x", "(x) -> _ = x"); }
 
 BOOST_AUTO_TEST_CASE(function_return) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_function("f", []() {});
   test_tc(e, "() -> _ = f()", "() -> () = f()");
 }
@@ -632,8 +626,7 @@ BOOST_AUTO_TEST_CASE(return_floating_borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(pattern_mismatch) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   test_tc_error(e, "() -> () { let () = (1); () }", {{{SrcID{1}, {15, 17}}, "expected (), given (i32)"}});
   test_tc_error(e, "() -> () { let (x) = (); () }", {{{SrcID{1}, {15, 18}}, "expected (()), given ()"}});
@@ -777,8 +770,7 @@ BOOST_AUTO_TEST_CASE(wrong_arg_type) {
 }
 
 BOOST_AUTO_TEST_CASE(wrong_bind_type) {
-  Env e;
-  e.type_cache = create_type_cache(e.tg);
+  Env e = create_empty_env();
   e.add_type<i32>("i32");
   e.add_type<u32>("u32");
   e.add_function("identity", [](i32 x) { return x; });
