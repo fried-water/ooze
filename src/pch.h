@@ -72,4 +72,20 @@ Result<T, std::vector<E>> result_and_errors(Result<T, std::vector<E>> r, std::ve
   }
 }
 
+template <typename E, typename... Ts, typename F, typename Range>
+Result<void, std::vector<E>, Ts...> accumulate_errors(F f, Range&& range, Ts... ts) {
+  std::vector<E> errors;
+  for(auto&& ele : range) {
+    std::tie(ts...) =
+      f(ele, std::move(ts)...)
+        .or_else([&](std::vector<E> new_errors, Ts... ts) {
+          errors = to_vec(std::move(new_errors), std::move(errors));
+          return Result<void, std::vector<E>, Ts...>{std::move(ts)...};
+        })
+        .state();
+  }
+
+  return void_or_errors(std::move(errors), std::move(ts)...);
+}
+
 } // namespace ooze

@@ -73,6 +73,12 @@ auto id_range(StrongID<Space, T, Invalid> max) {
   return IterRange{StrongIDIter{StrongID<Space, T, Invalid>{type{0}}}, StrongIDIter{max}};
 }
 
+template <typename Space, typename T = int, T Invalid = T(-1)>
+auto id_range(StrongID<Space, T, Invalid> min, StrongID<Space, T, Invalid> max) {
+  using type = typename StrongID<Space, T, Invalid>::underlying_type;
+  return IterRange{StrongIDIter{min}, StrongIDIter{max}};
+}
+
 } // namespace ooze
 
 template <typename Space, typename T, T Invalid>

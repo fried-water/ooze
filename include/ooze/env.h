@@ -57,36 +57,35 @@ struct Env {
   TypeGraph tg;
   TypeCache type_cache;
 
-  std::unordered_map<ASTID, AsyncFn> native_functions;
-
   std::unordered_map<std::string, TypeRef> flat_types;
-  std::unordered_map<std::string, std::vector<ASTID>> flat_functions;
+  std::unordered_map<ASTID, AsyncFn> flat_functions;
+
+  ASTID add_function(std::string_view name, TypeRef type, AsyncFn fn) {
+    const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
+
+    const ASTID ident_id = ast.forest.append_root(ASTTag::PatternIdent);
+    const ASTID fn_id = ast.forest.append_root(ASTTag::EnvValue);
+    ast.forest.append_root_post_order(ASTTag::Global, std::array{ident_id, fn_id});
+
+    ast.srcs.push_back(ref);
+    ast.srcs.push_back(ref);
+    ast.srcs.push_back(SrcRef{SrcID::Invalid()});
+
+    ast.types.push_back(type);
+    ast.types.push_back(type);
+    ast.types.push_back(TypeRef::Invalid());
+
+    flat_functions.emplace(ident_id, std::move(fn));
+    return ident_id;
+  }
 
   template <typename F>
   ASTID add_function(std::string_view name, F&& f) {
     FunctionType<TypeID> type = function_type_of(decay(knot::Type<F>{}));
     functions[std::string(name)].push_back({std::move(type), create_async_function(std::forward<F>(f))});
 
-    const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
-
-    const TypeRef fn_type = add_fn(tg, type_cache.native, ref, decay(knot::Type<F>{}));
-
-    const ASTID ident = ast.forest.append_root(ASTTag::PatternIdent);
-    const ASTID fn = ast.forest.append_root(ASTTag::EnvValue);
-    const ASTID global = ast.forest.append_root_post_order(ASTTag::Global, std::array{ident, fn});
-
-    ast.srcs.push_back(ref);
-    ast.srcs.push_back(ref);
-    ast.srcs.push_back(ref);
-
-    ast.types.push_back(fn_type);
-    ast.types.push_back(fn_type);
-    ast.types.push_back(TypeRef::Invalid());
-
-    native_functions.emplace(fn, create_async_function(std::forward<F>(f)));
-    flat_functions[std::string(name)].push_back(fn);
-
-    return global;
+    return add_function(
+      name, add_fn(tg, type_cache.native, decay(knot::Type<F>{})), create_async_function(std::forward<F>(f)));
   }
 
   void add_graph(const std::string& name, FunctionType<TypeID> t, FunctionGraph f) {

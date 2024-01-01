@@ -42,8 +42,7 @@ TypeRef add_or_get_type(TypeGraph& g, std::unordered_map<TypeID, std::pair<TypeR
 }
 
 template <typename F>
-TypeRef add_fn(
-  TypeGraph& g, std::unordered_map<TypeID, std::pair<TypeRef, TypeRef>>& existing_types, SrcRef ref, knot::Type<F> f) {
+TypeRef add_fn(TypeGraph& g, std::unordered_map<TypeID, std::pair<TypeRef, TypeRef>>& existing_types, knot::Type<F> f) {
   std::vector<TypeRef> types;
   types.reserve(size(args(f)));
   visit(args(f), [&](auto t) { types.push_back(add_or_get_type(g, existing_types, t)); });
@@ -51,13 +50,13 @@ TypeRef add_fn(
 
   if constexpr(const auto fn_ret = return_types(f); size(fn_ret) == 1) {
     const TypeRef result = add_or_get_type(g, existing_types, head(fn_ret));
-    return g.add_node(std::array{args, result}, TypeTag::Fn, ref, TypeID{});
+    return g.add_node(std::array{args, result}, TypeTag::Fn, SrcRef{}, TypeID{});
   } else {
     types.clear();
     types.reserve(size(fn_ret));
     visit(fn_ret, [&](auto t) { types.push_back(add_or_get_type(g, existing_types, t)); });
     const TypeRef result = g.add_node(types, TypeTag::Tuple, SrcRef{}, TypeID{});
-    return g.add_node(std::array{args, result}, TypeTag::Fn, ref, TypeID{});
+    return g.add_node(std::array{args, result}, TypeTag::Fn, SrcRef{}, TypeID{});
   }
 }
 

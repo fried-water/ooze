@@ -31,6 +31,12 @@
     return std::move(r.error());                                                                                       \
   }(expr)
 
+#define check_error_state(expr)                                                                                        \
+  [](auto r) {                                                                                                         \
+    BOOST_REQUIRE(!r.has_value());                                                                                     \
+    return std::move(r).error_and_state();                                                                             \
+  }(expr)
+
 #define check_range(expected, actual)                                                                                  \
   [](const auto& e, const auto& a) {                                                                                   \
     BOOST_REQUIRE_EQUAL(std::distance(e.begin(), e.end()), std::distance(a.begin(), a.end()));                         \

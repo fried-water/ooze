@@ -8,6 +8,8 @@
 #include "ooze/executor/task_executor.h"
 #include "parser.h"
 #include "parser_combinators.h"
+#include "parser_flat.h"
+#include "pretty_print.h"
 #include "repl.h"
 #include "sema.h"
 #include "type_check.h"
@@ -326,6 +328,68 @@ struct TypeOfBindingConverter {
   }
 };
 
+TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& m, const TypeGraph& tg, TypeRef type) {
+  if(const auto it = m.find(type); it != m.end()) {
+    return it->second;
+  } else if(tg.get<TypeTag>(type) == TypeTag::Leaf) {
+    const TypeID type_id = tg.get<TypeID>(type);
+    const auto it = env.type_cache.native.find(type_id);
+    return it != env.type_cache.native.end()
+             ? it->second.first
+             : env.tg.add_node(
+                 TypeTag::Leaf, SrcRef{SrcID{0}, append_src(env.src, sv(srcs, tg.get<SrcRef>(type)))}, type_id);
+  } else {
+    std::vector<TypeRef> children =
+      transform_to_vec(tg.fanout(type), [&](TypeRef fanout) { return copy_type(srcs, env, m, tg, fanout); });
+
+    const TypeRef new_type = env.tg.add_node(children, tg.get<TypeTag>(type), SrcRef{}, tg.get<TypeID>(type));
+    m.emplace(type, new_type);
+    return new_type;
+  }
+}
+
+Env generate_functions(
+  Span<std::string_view> srcs, Env env, const AST& ast, const TypeGraph& tg, const CallGraphData& cg) {
+  Map<TypeRef, TypeRef> to_env_type;
+
+  // type graph was copied from env initially, so all those nodes should be identical
+  for(TypeRef t : id_range(TypeRef{env.tg.num_nodes()})) {
+    to_env_type.emplace(t, t);
+  }
+
+  Map<ASTID, ASTID> to_env_id;
+
+  for(ASTID id : bfs_traversal(cg.inverted_call_graph, cg.leaf_fns)) {
+    const auto fn_id = ast.forest.next_sibling(id);
+    assert(fn_id);
+
+    if(ast.forest[*fn_id] == ASTTag::Fn) {
+      const auto fn_id = ast.forest.next_sibling(id);
+      assert(fn_id && ast.forest[*fn_id] == ASTTag::Fn);
+      auto [global_values, global_borrows, fg] = create_graph(ast, tg, env.copy_types, cg.binding_of, *fn_id);
+
+      assert(global_values.empty());
+
+      std::vector<BorrowedFuture> borrowed = transform_to_vec(global_borrows, [&](ASTID id) {
+        const auto it = to_env_id.find(id);
+        assert(it != to_env_id.end());
+        return borrow(Future(Any(env.flat_functions.at(it->second)))).first;
+      });
+
+      const TypeRef env_fn_type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
+
+      to_env_id.emplace(
+        id,
+        env.add_function(
+          sv(srcs, ast.srcs[id.get()]), env_fn_type, curry(create_async_graph(std::move(fg)), std::move(borrowed))));
+    } else {
+      to_env_id.emplace(id, id);
+    }
+  }
+
+  return env;
+}
+
 } // namespace
 
 Tree<Any> await(Tree<Binding> tree) {
@@ -438,6 +502,32 @@ int main(int argc, const char** argv, Env e) {
   }
 
   return !result.has_value();
+}
+
+StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
+  const std::string env_src = env.src;
+  const auto srcs = flatten(make_sv_array(env_src), files);
+
+  return accumulate_errors<ContextualError2>(
+           [&srcs](SrcID src, AST ast, TypeGraph tg) {
+             return parse2(std::move(ast), std::move(tg), src, srcs[src.get()]);
+           },
+           id_range(SrcID(1), SrcID(srcs.size())),
+           env.ast,
+           env.tg)
+    .append_state(std::move(env))
+    .and_then([&srcs](AST ast, TypeGraph tg, Env env) {
+      return sema(srcs, env.type_cache, env.type_ids, env.copy_types, std::move(ast), std::move(tg))
+        .append_state(std::move(env));
+    })
+    .map([&srcs](CallGraphData cg, AST ast, TypeGraph tg, Env env) {
+      env = generate_functions(srcs, std::move(env), ast, tg, cg);
+      return std::tuple(std::move(ast), std::move(tg), std::move(env));
+    })
+    .map_state([](AST, TypeGraph, Env env) { return env; })
+    .map_error([&srcs](auto errors, Env env) {
+      return std::tuple(contextualize(srcs, std::move(errors)), std::move(env));
+    });
 }
 
 } // namespace ooze

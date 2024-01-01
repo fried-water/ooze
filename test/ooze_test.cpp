@@ -1,7 +1,9 @@
 #include "test.h"
 
+#include "async_test.h"
 #include "bindings.h"
 #include "ooze/core.h"
+#include "ooze/executor/sequential_executor.h"
 #include "ooze/executor/task_executor.h"
 
 namespace ooze {
@@ -39,6 +41,13 @@ assign(Env env, std::string_view script, std::string_view expr) {
     .map_state(nullify());
 }
 
+template <typename... Ts, typename... Bs>
+Any invoke1(AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
+  std::vector<Any> results = invoke(std::move(fn), std::move(ts), std::move(bs));
+  BOOST_REQUIRE_EQUAL(1, results.size());
+  return std::move(results[0]);
+}
+
 #define check_any_tree(_EXP, _EXPR)                                                                                    \
   [](auto e, const Tree<Any>& t) {                                                                                     \
     BOOST_REQUIRE(std::holds_alternative<Any>(t.v));                                                                   \
@@ -58,6 +67,17 @@ assign(Env env, std::string_view script, std::string_view expr) {
     BOOST_REQUIRE(it != m.end());                                                                                      \
     return it->second;                                                                                                 \
   }(_NAME, _MAP)
+
+AsyncFn global_fn(const Env& e, std::string_view name) {
+  for(const auto& [id, fn] : e.flat_functions) {
+    if(sv(make_sv_array(e.src), e.ast.srcs[id.get()]) == name) {
+      return fn;
+    }
+  }
+
+  BOOST_REQUIRE(false);
+  return {};
+}
 
 } // namespace
 
@@ -472,6 +492,75 @@ BOOST_AUTO_TEST_CASE(print_fn) {
 
   // TODO improve this error
   BOOST_CHECK(!run_to_string(executor, std::move(e), {}, "f"));
+}
+
+BOOST_AUTO_TEST_CASE(native_constant_fn) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+  e.add_function("f", []() { return 3; });
+  check_any(3, invoke1(global_fn(e, "f"), {}, {}));
+}
+
+BOOST_AUTO_TEST_CASE(native_identity_fn) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+  e.add_function("f", [](i32 x) { return x; });
+  check_any(7, invoke1(global_fn(e, "f"), std::tuple(7), {}));
+}
+
+BOOST_AUTO_TEST_CASE(native_clone_fn) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+  check_any(7, invoke1(global_fn(e, "clone"), {}, std::tuple(7)));
+}
+
+BOOST_AUTO_TEST_CASE(script_constant_fn) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  e = check_result(parse_scripts(std::move(e), make_sv_array("fn f() -> i32 = 3")));
+
+  check_any(3, invoke1(global_fn(e, "f"), {}, {}));
+}
+
+BOOST_AUTO_TEST_CASE(script_identity_fn) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: i32) -> i32 = x")));
+
+  check_any(7, invoke1(global_fn(e, "f"), std::tuple(7), {}));
+}
+
+BOOST_AUTO_TEST_CASE(script_call_native) {
+  Env e = create_empty_env();
+
+  e.add_type<i32>("i32");
+  e.add_function("c", [](const i32& x) { return x; });
+
+  e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: &i32) -> i32 = c(x)")));
+
+  check_any(7, invoke1(global_fn(e, "f"), {}, std::tuple(7)));
+}
+
+BOOST_AUTO_TEST_CASE(script_call_script) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: i32) -> i32 = x", "fn g(x: i32) -> i32 = f(x)")));
+
+  check_any(7, invoke1(global_fn(e, "g"), std::tuple(7), {}));
+}
+
+BOOST_AUTO_TEST_CASE(script_parse_error_env_same) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  auto [errors, e2] = check_error_state(parse_scripts(e, make_sv_array("fn f() -> i32 = ")));
+
+  BOOST_CHECK_EQUAL(e.src, e2.src);
+  BOOST_CHECK(e.ast == e2.ast);
+  BOOST_CHECK(e.tg == e2.tg);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
