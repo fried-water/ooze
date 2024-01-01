@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "async_functions.h"
+#include "async_test.h"
 #include "function_graph_inner.h"
 #include "ooze/executor/sequential_executor.h"
 #include "ooze/executor/task_executor.h"
@@ -14,49 +15,6 @@
 namespace ooze {
 
 namespace {
-
-template <typename... Ts, size_t... Is>
-void compare(const std::tuple<Ts...>& exp, Span<Any> act, std::index_sequence<Is...>) {
-  BOOST_REQUIRE_EQUAL(sizeof...(Ts), act.size());
-  const auto compare = [&](const Any& any, const auto& t) {
-    BOOST_CHECK(any_cast<std::decay_t<decltype(t)>>(any) == t);
-  };
-  (compare(act[Is], std::get<Is>(exp)), ...);
-}
-
-template <typename... Ts>
-void compare(const std::tuple<Ts...>& exp, Span<Any> act) {
-  compare(exp, act, std::make_index_sequence<sizeof...(Ts)>());
-}
-
-template <typename T>
-void compare(const T& exp, Span<Any> act) {
-  compare(std::tuple(exp), act);
-}
-
-template <typename... Ts, size_t... Is>
-std::vector<Future> to_futures(std::tuple<Ts...> ts, std::index_sequence<Is...>) {
-  std::vector<Future> futures;
-  futures.reserve(sizeof...(Ts));
-  const auto append = [&](auto t) { futures.push_back(Future(Any(std::move(t)))); };
-  (append(std::move(std::get<Is>(ts))), ...);
-  return futures;
-}
-
-template <typename... Ts, typename... Bs>
-std::vector<Any> run_async_fn(ExecutorRef ex, AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
-  return transform_to_vec(
-    fn(ex,
-       to_futures(std::move(ts), std::make_index_sequence<sizeof...(Ts)>()),
-       transform_to_vec(to_futures(std::move(bs), std::make_index_sequence<sizeof...(Bs)>()),
-                        [](Future f) { return borrow(std::move(f)).first; })),
-    [](Future f) { return std::move(f).wait(); });
-}
-
-template <typename... Ts, typename... Bs>
-std::vector<Any> run_async_fn(AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
-  return run_async_fn(make_seq_executor(), std::move(fn), std::move(ts), std::move(bs));
-}
 
 std::vector<int> create_vector(int size) {
   std::mt19937 rng;
@@ -125,7 +83,7 @@ void execute_with_threads(AsyncFn fn, MakeExecutor f) {
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
     Executor e = f(num_threads);
     const auto t0 = std::chrono::steady_clock::now();
-    const auto results = run_async_fn(e, fn, std::tuple(size), std::tuple());
+    const auto results = invoke(e, fn, std::tuple(size), std::tuple());
     const auto t1 = std::chrono::steady_clock::now();
     fmt::print("{} THREADS: result is {} after {}us\n",
                num_threads,
@@ -180,28 +138,28 @@ BOOST_AUTO_TEST_CASE(test_executor_ref_count) {
 BOOST_AUTO_TEST_CASE(empty) {
   auto [cg, s] = make_graph({false});
   const auto g = std::move(cg).finalize(s, {PassBy::Copy});
-  compare(7, run_async_fn(create_async_graph(g), std::tuple(7), {}));
+  compare(7, invoke(create_async_graph(g), std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(copy) {
   const auto take = create_async_function([](int i) { return i; });
   auto [cg, s] = make_graph({false});
   const auto g = std::move(cg).finalize(cg.add(take, s, {PassBy::Copy}, 1), {PassBy::Copy});
-  compare(7, run_async_fn(create_async_graph(g), std::tuple(7), {}));
+  compare(7, invoke(create_async_graph(g), std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(move) {
   const auto take = create_async_function([](int i) { return i; });
   auto [cg, s] = make_graph({false});
   const auto g = std::move(cg).finalize(cg.add(take, s, {PassBy::Move}, 1), {PassBy::Move});
-  compare(7, run_async_fn(create_async_graph(g), std::tuple(7), {}));
+  compare(7, invoke(create_async_graph(g), std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(borrow) {
   const auto take_ref = create_async_function([](const int& i) { return i; });
   auto [cg, s] = make_graph({false});
   const auto g = std::move(cg).finalize(cg.add(take_ref, s, {PassBy::Borrow}, 1), {PassBy::Copy});
-  compare(7, run_async_fn(create_async_graph(g), std::tuple(7), {}));
+  compare(7, invoke(create_async_graph(g), std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(sentinal) {
@@ -223,7 +181,7 @@ BOOST_AUTO_TEST_CASE(sentinal) {
   const auto g = create_async_graph(std::move(cg).finalize(
     {o1, o2, o3, o4, o5}, {PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move}));
 
-  const std::vector<Any> results = run_async_fn(g, std::tuple(Sentinal{}, Sentinal{}, Sentinal{}), {});
+  const std::vector<Any> results = invoke(g, std::tuple(Sentinal{}, Sentinal{}, Sentinal{}), {});
 
   BOOST_REQUIRE_EQUAL(5, results.size());
   BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(results[0]).copies); // Move since inputs[0] not used elsewhere
@@ -237,7 +195,7 @@ BOOST_AUTO_TEST_CASE(move_only) {
   const auto take = create_async_function([](std::unique_ptr<int> ptr) { return *ptr; });
   auto [cg, ptr] = make_graph({false});
   const auto g = create_async_graph(std::move(cg).finalize(cg.add(take, ptr, {PassBy::Move}, 1), {PassBy::Move}));
-  compare(5, run_async_fn(g, std::tuple(std::make_unique<int>(5)), {}));
+  compare(5, invoke(g, std::tuple(std::make_unique<int>(5)), {}));
 }
 
 BOOST_AUTO_TEST_CASE(fwd) {
@@ -352,19 +310,18 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(async_fns)
 
 BOOST_AUTO_TEST_CASE(value) {
-  compare(1, run_async_fn(create_async_value(1), {}, {}));
-  compare(std::string("abc"), run_async_fn(create_async_value(std::string("abc")), {}, {}));
+  compare(1, invoke(create_async_value(1), {}, {}));
+  compare(std::string("abc"), invoke(create_async_value(std::string("abc")), {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(any_function) {
-  compare(std::tuple(), run_async_fn(create_async_function([]() {}), {}, {}));
-  compare(3, run_async_fn(create_async_function([]() { return 3; }), {}, {}));
-  compare(7, run_async_fn(create_async_function([](int x) { return x; }), std::tuple(7), {}));
+  compare(std::tuple(), invoke(create_async_function([]() {}), {}, {}));
+  compare(3, invoke(create_async_function([]() { return 3; }), {}, {}));
+  compare(7, invoke(create_async_function([](int x) { return x; }), std::tuple(7), {}));
   compare(std::tuple(3, 4),
-          run_async_fn(create_async_function([](int x) { return std::tuple(x, x + 1); }), std::tuple(3), {}));
-  compare(7, run_async_fn(create_async_function([](const int& x) { return x; }), {}, std::tuple(7)));
-  compare(9,
-          run_async_fn(create_async_function([](int x, const int& y) { return x + y; }), std::tuple(2), std::tuple(7)));
+          invoke(create_async_function([](int x) { return std::tuple(x, x + 1); }), std::tuple(3), {}));
+  compare(7, invoke(create_async_function([](const int& x) { return x; }), {}, std::tuple(7)));
+  compare(9, invoke(create_async_function([](int x, const int& y) { return x + y; }), std::tuple(2), std::tuple(7)));
 }
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_value) {
@@ -415,86 +372,85 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(functional) {
-  compare(std::tuple(), run_async_fn(create_async_functional(0), std::tuple(create_async_function([]() {})), {}));
-  compare(3, run_async_fn(create_async_functional(1), std::tuple(create_async_function([]() { return 3; })), {}));
-  compare(
-    7, run_async_fn(create_async_functional(1), std::tuple(create_async_function([](int x) { return x + 1; }), 6), {}));
+  compare(std::tuple(), invoke(create_async_functional(0), std::tuple(create_async_function([]() {})), {}));
+  compare(3, invoke(create_async_functional(1), std::tuple(create_async_function([]() { return 3; })), {}));
+  compare(7, invoke(create_async_functional(1), std::tuple(create_async_function([](int x) { return x + 1; }), 6), {}));
   compare(7,
-          run_async_fn(create_async_functional(1),
-                       std::tuple(create_async_function([](const int& x) { return x + 1; })),
-                       std::tuple(6)));
+          invoke(create_async_functional(1),
+                 std::tuple(create_async_function([](const int& x) { return x + 1; })),
+                 std::tuple(6)));
   compare(9,
-          run_async_fn(create_async_functional(1),
-                       std::tuple(create_async_function([](int x, const int& y) { return x + y + 1; }), 2),
-                       std::tuple(6)));
+          invoke(create_async_functional(1),
+                 std::tuple(create_async_function([](int x, const int& y) { return x + y + 1; }), 2),
+                 std::tuple(6)));
 }
 
 BOOST_AUTO_TEST_CASE(functional_borrow) {
-  compare(std::tuple(), run_async_fn(create_async_functional(0, true), {}, std::tuple(create_async_function([]() {}))));
-  compare(3, run_async_fn(create_async_functional(1, true), {}, std::tuple(create_async_function([]() { return 3; }))));
-  compare(7, run_async_fn(create_async_functional(1, true), std::tuple(6), std::tuple(create_async_function([](int x) {
-                            return x + 1;
-                          }))));
-  compare(
-    7,
-    run_async_fn(
-      create_async_functional(1, true), {}, std::tuple(create_async_function([](const int& x) { return x + 1; }), 6)));
+  compare(std::tuple(), invoke(create_async_functional(0, true), {}, std::tuple(create_async_function([]() {}))));
+  compare(3, invoke(create_async_functional(1, true), {}, std::tuple(create_async_function([]() { return 3; }))));
+  compare(7, invoke(create_async_functional(1, true), std::tuple(6), std::tuple(create_async_function([](int x) {
+                      return x + 1;
+                    }))));
+  compare(7,
+          invoke(create_async_functional(1, true),
+                 {},
+                 std::tuple(create_async_function([](const int& x) { return x + 1; }), 6)));
   compare(9,
-          run_async_fn(create_async_functional(1, true),
-                       std::tuple(2),
-                       std::tuple(create_async_function([](int x, const int& y) { return x + y + 1; }), 6)));
+          invoke(create_async_functional(1, true),
+                 std::tuple(2),
+                 std::tuple(create_async_function([](int x, const int& y) { return x + y + 1; }), 6)));
 }
 
 BOOST_AUTO_TEST_CASE(curry_fn) {
   const auto add3 =
     curry(create_async_function([](const i32& x, const i32& y) { return x + y; }), {borrow(Future(Any{3})).first});
   const auto seven = curry(add3, {borrow(Future(Any{4})).first});
-  compare(5, run_async_fn(add3, {}, std::tuple(2)));
-  compare(7, run_async_fn(seven, {}, {}));
+  compare(5, invoke(add3, {}, std::tuple(2)));
+  compare(7, invoke(seven, {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(select) {
-  compare(std::tuple(), run_async_fn(create_async_select(), std::tuple(true), {}));
-  compare(std::tuple(), run_async_fn(create_async_select(), std::tuple(false), {}));
+  compare(std::tuple(), invoke(create_async_select(), std::tuple(true), {}));
+  compare(std::tuple(), invoke(create_async_select(), std::tuple(false), {}));
 
-  compare(1, run_async_fn(create_async_select(), std::tuple(true, 1, 2), {}));
-  compare(2, run_async_fn(create_async_select(), std::tuple(false, 1, 2), {}));
+  compare(1, invoke(create_async_select(), std::tuple(true, 1, 2), {}));
+  compare(2, invoke(create_async_select(), std::tuple(false, 1, 2), {}));
 
-  compare(std::tuple(1, 2), run_async_fn(create_async_select(), std::tuple(true, 1, 2, 3, 4), {}));
-  compare(std::tuple(3, 4), run_async_fn(create_async_select(), std::tuple(false, 1, 2, 3, 4), {}));
+  compare(std::tuple(1, 2), invoke(create_async_select(), std::tuple(true, 1, 2, 3, 4), {}));
+  compare(std::tuple(3, 4), invoke(create_async_select(), std::tuple(false, 1, 2, 3, 4), {}));
 }
 
 BOOST_AUTO_TEST_CASE(if_) {
-  compare(1, run_async_fn(create_async_if(1, create_async_value(1), create_async_value(2)), std::tuple(true), {}));
-  compare(2, run_async_fn(create_async_if(1, create_async_value(1), create_async_value(2)), std::tuple(false), {}));
+  compare(1, invoke(create_async_if(1, create_async_value(1), create_async_value(2)), std::tuple(true), {}));
+  compare(2, invoke(create_async_if(1, create_async_value(1), create_async_value(2)), std::tuple(false), {}));
 
   const auto identity = create_async_function([](int x) { return x; });
   const auto add1 = create_async_function([](int x) { return x + 1; });
 
-  compare(5, run_async_fn(create_async_if(1, identity, add1), std::tuple(true, 5), {}));
-  compare(6, run_async_fn(create_async_if(1, identity, add1), std::tuple(false, 5), {}));
+  compare(5, invoke(create_async_if(1, identity, add1), std::tuple(true, 5), {}));
+  compare(6, invoke(create_async_if(1, identity, add1), std::tuple(false, 5), {}));
 
   const auto identity_borrow = create_async_function([](const int& x) { return x; });
   const auto add1_borrow = create_async_function([](const int& x) { return x + 1; });
 
-  compare(5, run_async_fn(create_async_if(1, identity_borrow, add1_borrow), std::tuple(true), std::tuple(5)));
-  compare(6, run_async_fn(create_async_if(1, identity_borrow, add1_borrow), std::tuple(false), std::tuple(5)));
+  compare(5, invoke(create_async_if(1, identity_borrow, add1_borrow), std::tuple(true), std::tuple(5)));
+  compare(6, invoke(create_async_if(1, identity_borrow, add1_borrow), std::tuple(false), std::tuple(5)));
 
   const auto add = create_async_function([](int x, const int& y) { return x + y; });
   const auto mul = create_async_function([](int x, const int& y) { return x * y; });
 
-  compare(7, run_async_fn(create_async_if(1, add, mul), std::tuple(true, 3), std::tuple(4)));
-  compare(12, run_async_fn(create_async_if(1, add, mul), std::tuple(false, 3), std::tuple(4)));
+  compare(7, invoke(create_async_if(1, add, mul), std::tuple(true, 3), std::tuple(4)));
+  compare(12, invoke(create_async_if(1, add, mul), std::tuple(false, 3), std::tuple(4)));
 }
 
 BOOST_AUTO_TEST_CASE(converge) {
   const auto empty_body = create_async_value(true);
   const auto body = create_async_function([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
 
-  compare(std::tuple(), run_async_fn(create_async_converge(), std::tuple(empty_body, false), {}));
-  compare(std::tuple(), run_async_fn(create_async_converge(), std::tuple(empty_body, true), {}));
-  compare(10, run_async_fn(create_async_converge(), std::tuple(body, false, 5), std::tuple(10)));
-  compare(5, run_async_fn(create_async_converge(), std::tuple(body, true, 5), std::tuple(10)));
+  compare(std::tuple(), invoke(create_async_converge(), std::tuple(empty_body, false), {}));
+  compare(std::tuple(), invoke(create_async_converge(), std::tuple(empty_body, true), {}));
+  compare(10, invoke(create_async_converge(), std::tuple(body, false, 5), std::tuple(10)));
+  compare(5, invoke(create_async_converge(), std::tuple(body, true, 5), std::tuple(10)));
 }
 
 BOOST_AUTO_TEST_SUITE(stress)
@@ -504,23 +460,23 @@ constexpr int NUM_EXECUTIONS = 100;
 BOOST_AUTO_TEST_CASE(any_function) {
   const auto fn = create_async_function([](int x, const int& y) { return x + y; });
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i + 5, run_async_fn(make_task_executor(), fn, std::tuple(5), std::tuple(i)));
+    compare(i + 5, invoke(make_task_executor(), fn, std::tuple(5), std::tuple(i)));
   }
 }
 
 BOOST_AUTO_TEST_CASE(functional) {
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     compare(i + 12,
-            run_async_fn(make_task_executor(),
-                         create_async_functional(1),
-                         std::tuple(create_async_function([i](int x, const int& y) { return x + y + i; }), 5),
-                         std::tuple(7)));
+            invoke(make_task_executor(),
+                   create_async_functional(1),
+                   std::tuple(create_async_function([i](int x, const int& y) { return x + y + i; }), 5),
+                   std::tuple(7)));
   }
 }
 
 BOOST_AUTO_TEST_CASE(select) {
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i % 2, run_async_fn(make_task_executor(), create_async_select(), std::tuple(i % 2 == 0, 0, 1), {}));
+    compare(i % 2, invoke(make_task_executor(), create_async_select(), std::tuple(i % 2 == 0, 0, 1), {}));
   }
 }
 
@@ -529,9 +485,8 @@ BOOST_AUTO_TEST_CASE(converge) {
 
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     const int limit = i % 10;
-    compare(
-      limit,
-      run_async_fn(make_task_executor(), create_async_converge(), std::tuple(body, 0 >= limit, 0), std::tuple(limit)));
+    compare(limit,
+            invoke(make_task_executor(), create_async_converge(), std::tuple(body, 0 >= limit, 0), std::tuple(limit)));
   }
 }
 
@@ -539,8 +494,7 @@ BOOST_AUTO_TEST_CASE(if_) {
   const auto identity = create_async_function([](int x) { return x; });
   const auto add1 = create_async_function([](int x) { return x + 1; });
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i % 2,
-            run_async_fn(make_task_executor(), create_async_if(1, identity, add1), std::tuple(i % 2 == 0, 0), {}));
+    compare(i % 2, invoke(make_task_executor(), create_async_if(1, identity, add1), std::tuple(i % 2 == 0, 0), {}));
   }
 }
 

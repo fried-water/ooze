@@ -39,12 +39,6 @@ assign(Env env, std::string_view script, std::string_view expr) {
     .map_state(nullify());
 }
 
-#define check_any(_EXP, _EXPR)                                                                                         \
-  [](auto e, const Any& a) {                                                                                           \
-    BOOST_REQUIRE(holds_alternative<decltype(e)>(a));                                                                  \
-    BOOST_REQUIRE(e == any_cast<decltype(e)>(a));                                                                      \
-  }(_EXP, _EXPR)
-
 #define check_any_tree(_EXP, _EXPR)                                                                                    \
   [](auto e, const Tree<Any>& t) {                                                                                     \
     BOOST_REQUIRE(std::holds_alternative<Any>(t.v));                                                                   \

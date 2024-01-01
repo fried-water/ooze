@@ -8,6 +8,19 @@
 
 namespace ooze {
 
+template <typename T, typename... Ts, size_t... Is, typename F>
+std::vector<T> tuple_to_vec_helper(std::tuple<Ts...> ts, F f, std::index_sequence<Is...>) {
+  std::vector<T> v;
+  v.reserve(sizeof...(Ts));
+  (v.push_back(f(std::move(std::get<Is>(ts)))), ...);
+  return v;
+}
+
+template <typename T, typename... Ts, size_t... Is, typename F>
+std::vector<T> tuple_to_vec(std::tuple<Ts...> ts, F f) {
+  return tuple_to_vec_helper<T>(std::move(ts), std::move(f), std::make_index_sequence<sizeof...(Ts)>());
+}
+
 template <typename O, typename R>
 auto to(R&& range, O out = {}) {
   if constexpr(std::is_lvalue_reference_v<R>) {

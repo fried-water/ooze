@@ -37,6 +37,12 @@
     for(int i = 0; i < int(e.size()); ++i) BOOST_CHECK_EQUAL(e[i], a[i]);                                              \
   }(expected, actual)
 
+#define check_any(expected, actual)                                                                                    \
+  [](const auto& e, const Any& a) {                                                                                    \
+    BOOST_REQUIRE(holds_alternative<std::decay_t<decltype(e)>>(a));                                                    \
+    BOOST_CHECK(any_cast<std::decay_t<decltype(e)>>(a) == e);                                                          \
+  }(expected, actual)
+
 struct Sentinal {
   int copies = 0;
   int moves = 0;
