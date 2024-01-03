@@ -359,7 +359,7 @@ Env generate_functions(
 
   Map<ASTID, ASTID> to_env_id;
 
-  for(ASTID id : bfs_traversal(cg.inverted_call_graph, cg.leaf_fns)) {
+  for(ASTID id : bfs_traversal(invert(cg.call_graph), cg.leaf_fns)) {
     const auto fn_id = ast.forest.next_sibling(id);
     assert(fn_id);
 

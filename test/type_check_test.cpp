@@ -30,12 +30,14 @@ auto run_tc(Parser p, Env e, std::string_view src, bool debug = false) {
     .and_then([&](AST ast, TypeGraph tg) {
       return apply_language_rules(srcs, e.type_cache, std::move(ast), std::move(tg));
     })
-    .map([&](AST ast, TypeGraph tg) {
-      auto ident_graph = calculate_ident_graph(srcs, ast);
-      auto propagations = calculate_propagations(ident_graph, ast.forest);
-      return std::tuple(std::tuple(std::move(ident_graph), std::move(propagations)), std::move(ast), std::move(tg));
+    .and_then([&](AST ast, TypeGraph tg) {
+      return calculate_ident_graph(srcs, ast).append_state(std::move(ast), std::move(tg));
     })
-    .and_then(flattened([&](auto ident_graph, auto propagations, AST ast, TypeGraph tg) {
+    .map([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
+      auto propagations = calculate_propagations(ig, ast.forest);
+      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
+    })
+    .and_then(flattened([&](Graph<ASTID> ident_graph, auto propagations, AST ast, TypeGraph tg) {
       return constraint_propagation(
         srcs, e.type_cache, e.copy_types, ident_graph, propagations, std::move(ast), std::move(tg), debug);
     }));
@@ -55,16 +57,22 @@ void compare_tc(R exp_result, R act_result) {
     const TypeRef exp_type = exp_ast.types[id.get()];
     const TypeRef act_type = act_ast.types[id.get()];
 
+    if(!compare_dags(exp_tg_no_refs, act_tg_no_refs, exp_type, act_type)) {
+      fmt::print("ID {}\n", id.get());
+      fmt::print("E {}\n", knot::debug(exp_tg.template get<TypeTag>(exp_type)));
+      fmt::print("A {}\n", knot::debug(act_tg.template get<TypeTag>(act_type)));
+    }
+
     BOOST_CHECK(compare_dags(exp_tg_no_refs, act_tg_no_refs, exp_type, act_type));
   }
 }
 
 void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse_function2, e, exp)), check_result(run_tc(parse_function2, e, src, debug)));
+  compare_tc(check_result(run_tc(parse_function2, e, exp, debug)), check_result(run_tc(parse_function2, e, src)));
 }
 
 void test_tc_fns(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse2, e, exp)), check_result(run_tc(parse2, e, src, debug)));
+  compare_tc(check_result(run_tc(parse2, e, exp, debug)), check_result(run_tc(parse2, e, src)));
 }
 
 void test_tc_error(
@@ -293,12 +301,20 @@ BOOST_AUTO_TEST_CASE(apply_fn_deduce_arg_ref) {
     create_primative_env(), "(f: fn(_) -> i32, x:i32) -> _ = f(&x)", "(f: fn(&i32) -> i32, x: i32) -> i32 = f(&x)");
 }
 
-BOOST_AUTO_TEST_CASE(global_fn) { test_tc(create_primative_env(), "() -> _ = f()", "() -> _ = f()"); }
+BOOST_AUTO_TEST_CASE(global_fn) {
+  Env e = create_empty_env();
+  e.add_function("f", []() {});
+  test_tc(std::move(e), "() -> () = f()", "() -> () = f()");
+}
 
 BOOST_AUTO_TEST_CASE(global_fn_deduce) {
-  test_tc(create_primative_env(),
-          "(x: i32) -> i32 { let g = f; g(x) }",
-          "(x: i32) -> i32 { let g: fn(i32) -> i32 = f; g(x) }");
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+  test_tc_fns(std::move(e),
+              "fn f(x) -> _ = x\n"
+              "fn g(x: i32) -> i32 { let g = f; g(x) }",
+              "fn f(x) -> _ = x\n"
+              "fn g(x: i32) -> i32 { let g: fn(i32) -> i32 = f; g(x) }");
 }
 
 BOOST_AUTO_TEST_CASE(parameter_tuple) {
@@ -703,11 +719,15 @@ BOOST_AUTO_TEST_CASE(binding_reuse_both) {
 }
 
 BOOST_AUTO_TEST_CASE(binding_ref_reuse) {
-  test_tc(create_primative_env(), "(x: &_) -> _ = f(x, x)", "(x: &_) -> _ = f(x, x)");
+  Env e = create_primative_env();
+  e.add_function("f", [](const i32&, const i32&) {});
+  test_tc(std::move(e), "(x: &_) -> _ = f(x, x)", "(x: &_) -> _ = f(x, x)");
 }
 
 BOOST_AUTO_TEST_CASE(binding_ref_value_reuse) {
-  test_tc(create_primative_env(), "(x: _) -> _ = f(&x, x)", "(x: _) -> _ = f(&x, x)");
+  Env e = create_primative_env();
+  e.add_function("f", [](const i32&, i32) {});
+  test_tc(std::move(e), "(x: _) -> _ = f(&x, x)", "(x: _) -> _ = f(&x, x)");
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse_copy) {

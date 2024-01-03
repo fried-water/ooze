@@ -20,13 +20,12 @@ ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFun
 ContextualResult2<void, TypeGraph>
 type_name_resolution(Span<std::string_view>, const std::unordered_map<std::string, TypeID>&, TypeGraph);
 
-Graph<ASTID> calculate_ident_graph(Span<std::string_view>, const AST&);
+ContextualResult2<Graph<ASTID>> calculate_ident_graph(Span<std::string_view>, const AST&);
 
 struct CallGraphData {
   Graph<ASTID> call_graph;
-  Graph<ASTID> inverted_call_graph;
-  Map<ASTID, ASTID> binding_of;
   std::vector<ASTID> leaf_fns;
+  Map<ASTID, ASTID> binding_of;
 };
 
 ContextualResult2<CallGraphData, AST, TypeGraph>

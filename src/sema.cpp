@@ -119,6 +119,8 @@ struct IdentGraphCtx {
   std::vector<std::vector<ASTID>> fanouts;
   std::vector<std::pair<std::string_view, ASTID>> globals;
   std::vector<std::pair<std::string_view, ASTID>> stack;
+
+  std::vector<ASTID> undeclared_bindings;
 };
 
 void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> srcs, const AST& ast) {
@@ -147,6 +149,10 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
           ctx.fanouts[id.get()].push_back(pattern_id);
           ctx.fanouts[pattern_id.get()].push_back(id);
         }
+      }
+
+      if(ctx.fanouts[id.get()].empty()) {
+        ctx.undeclared_bindings.push_back(id);
       }
     }
     break;
@@ -222,8 +228,11 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
     }
   }
 
+  for(auto& v : call_graph_vec) {
+    v = unique(sorted(std::move(v)));
+  }
+
   Graph<ASTID> call_graph = Graph<ASTID>(call_graph_vec);
-  Graph<ASTID> inverted_call_graph = invert(call_graph);
 
   auto leaf_fns = transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID root) {
     if(ast.forest[root] == ASTTag::Global) {
@@ -233,11 +242,10 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
     return std::optional<ASTID>();
   });
 
-  return value_or_errors(
-    CallGraphData{std::move(call_graph), std::move(inverted_call_graph), std::move(binding_of), std::move(leaf_fns)},
-    std::move(errors),
-    std::move(ast),
-    std::move(tg));
+  return value_or_errors(CallGraphData{std::move(call_graph), std::move(leaf_fns), std::move(binding_of)},
+                         std::move(errors),
+                         std::move(ast),
+                         std::move(tg));
 }
 
 } // namespace
@@ -279,7 +287,7 @@ type_name_resolution(Span<std::string_view> srcs, const std::unordered_map<std::
   return void_or_errors(std::move(errors), std::move(tg));
 }
 
-Graph<ASTID> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) {
+ContextualResult2<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) {
   IdentGraphCtx ctx = {
     std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
       return ast.forest[id] == ASTTag::Global
@@ -292,7 +300,12 @@ Graph<ASTID> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) 
     calculate_ident_graph(ctx, root, srcs, ast);
   }
 
-  return Graph<ASTID>(ctx.fanouts);
+  return ctx.undeclared_bindings.empty()
+           ? ContextualResult2<Graph<ASTID>>{Graph<ASTID>(ctx.fanouts)}
+           : ContextualResult2<Graph<ASTID>>{Failure{transform_to_vec(ctx.undeclared_bindings, [&](ASTID id) {
+               return ContextualError2{
+                 ast.srcs[id.get()], fmt::format("use of undeclared binding '{}'", sv(srcs, ast.srcs[id.get()]))};
+             })}};
 }
 
 TypedPattern inferred_inputs(const TypedExpr& expr, Set<std::string> active) {
@@ -365,8 +378,10 @@ sema(Span<std::string_view> srcs,
   return type_name_resolution(srcs, type_ids, std::move(tg))
     .map_state([&](TypeGraph tg) { return std::tuple(std::move(ast), std::move(tg)); })
     .and_then([&](AST ast, TypeGraph tg) { return apply_language_rules(srcs, tc, std::move(ast), std::move(tg)); })
-    .map([&](AST ast, TypeGraph tg) {
-      auto ig = calculate_ident_graph(srcs, ast);
+    .and_then([&](AST ast, TypeGraph tg) {
+      return calculate_ident_graph(srcs, ast).append_state(std::move(ast), std::move(tg));
+    })
+    .map([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
       auto propagations = calculate_propagations(ig, ast.forest);
       return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
     })
