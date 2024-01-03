@@ -183,6 +183,8 @@ Type<TypeID> propagated_type(Propagation p, bool wrap, Type<TypeID> t) {
 }
 
 TypeRef propagated_type(TypeGraph& g, Propagation p, bool wrap, TypeRef t, TypeRef floating) {
+  const auto opt_fanout = [&](TypeRef t, int i) { return i < g.num_fanout(t) ? g.fanout(t)[i] : TypeRef{}; };
+
   return std::visit(
     Overloaded{[&](DirectProp) { return t; },
                [&](FloatingProp) { return floating; },
@@ -194,15 +196,15 @@ TypeRef propagated_type(TypeGraph& g, Propagation p, bool wrap, TypeRef t, TypeR
                    }
                    return type;
                  } else {
-                   return g.fanout(t)[p.idx];
+                   return opt_fanout(t, p.idx);
                  }
                },
-               [&](BorrowProp) { return wrap ? g.add_node(std::array{t}, TypeTag::Borrow, {}, {}) : g.fanout(t)[0]; },
+               [&](BorrowProp) { return wrap ? g.add_node(std::array{t}, TypeTag::Borrow, {}, {}) : opt_fanout(t, 0); },
                [&](FnInputProp) {
-                 return wrap ? g.add_node(std::array{t, floating}, TypeTag::Fn, {}, {}) : g.fanout(t)[0];
+                 return wrap ? g.add_node(std::array{t, floating}, TypeTag::Fn, {}, {}) : opt_fanout(t, 0);
                },
                [&](FnOutputProp) {
-                 return wrap ? g.add_node(std::array{floating, t}, TypeTag::Fn, {}, {}) : g.fanout(t)[1];
+                 return wrap ? g.add_node(std::array{floating, t}, TypeTag::Fn, {}, {}) : opt_fanout(t, 1);
                }},
     p);
 }
@@ -731,7 +733,10 @@ std::tuple<TypeGraph, std::vector<TypeRef>, std::vector<TypeCheckError2>> constr
     // First time a conflict happens propagate it, produces better error messages
     if(!was_conflicting && conflicting_types[id.get()].is_valid()) {
       for(const auto [dst, wrap, propagation] : propagations[id.get()]) {
-        to_visit.emplace_back(dst, propagated_type(tg, propagation, wrap, conflicting_types[id.get()], tc.floating));
+        const TypeRef propagated = propagated_type(tg, propagation, wrap, conflicting_types[id.get()], tc.floating);
+        if(propagated.is_valid()) {
+          to_visit.emplace_back(dst, propagated);
+        }
       }
     }
   }

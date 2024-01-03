@@ -645,7 +645,7 @@ BOOST_AUTO_TEST_CASE(pattern_mismatch) {
   Env e = create_empty_env();
   e.add_type<i32>("i32");
   test_tc_error(e, "() -> () { let () = (1); () }", {{{SrcID{1}, {15, 17}}, "expected (), given (i32)"}});
-  test_tc_error(e, "() -> () { let (x) = (); () }", {{{SrcID{1}, {15, 18}}, "expected (()), given ()"}});
+  test_tc_error(e, "() -> () { let (x) = (); () }", {{{SrcID{1}, {15, 18}}, "expected (_), given ()"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_type_mismatch) {
@@ -843,7 +843,7 @@ BOOST_AUTO_TEST_CASE(missized_pattern) {
   test_tc_error(e, "((x) : (_, _)) -> _ = 1", {{{SrcID{1}, {1, 4}}, "expected (_), given (_, _)"}});
 
   test_tc_error(e, "() -> _ { let () = (1); 1 }", {{{SrcID{1}, {14, 16}}, "expected (), given (i32)"}});
-  test_tc_error(e, "() -> _ { let (x) = (); 1 }", {{{SrcID{1}, {14, 17}}, "expected (()), given ()"}});
+  test_tc_error(e, "() -> _ { let (x) = (); 1 }", {{{SrcID{1}, {14, 17}}, "expected (_), given ()"}});
   test_tc_error(e, "() -> _ { let (x) = (1, 1); 1 }", {{{SrcID{1}, {14, 17}}, "expected (_), given (i32, i32)"}});
 
   test_tc_error(e, "(x) -> _ { let () : (_) = x; 1 }", {{{SrcID{1}, {15, 17}}, "expected (), given (_)"}});
