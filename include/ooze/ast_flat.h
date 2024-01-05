@@ -72,4 +72,13 @@ inline const Literal& lookup_literal(const AST& ast, ASTID id) {
     ->second;
 }
 
+inline bool is_pattern(ASTTag tag) {
+  switch(tag) {
+  case ASTTag::PatternWildCard:
+  case ASTTag::PatternTuple:
+  case ASTTag::PatternIdent: return true;
+  default: return false;
+  }
+}
+
 } // namespace ooze

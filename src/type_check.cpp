@@ -906,8 +906,11 @@ std::vector<TypeCheckError2> find_binding_usage_errors(
   };
 
   const auto is_global = [&](ASTID id) {
-    const auto parent = ast.forest.parent(id);
-    return parent && ast.forest[*parent] == ASTTag::Global;
+    while(!ast.forest.is_root(id) && is_pattern(ast.forest[id])) {
+      id = *ast.forest.parent(id);
+    }
+    const auto tag = ast.forest[id];
+    return ast.forest.is_root(id) && (tag == ASTTag::Assignment || tag == ASTTag::Global);
   };
 
   return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {

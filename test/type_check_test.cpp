@@ -699,6 +699,11 @@ BOOST_AUTO_TEST_CASE(unused_binding_scope) {
                 {{{SrcID{1}, {16, 17}}, "unused binding 'x'", {"prefix with an _ to silence this error"}}});
 }
 
+BOOST_AUTO_TEST_CASE(unused_binding_root_assign) {
+  check_result(run_tc(parse_assignment2, create_primative_env(), "let x = 1"));
+  check_result(run_tc(parse_assignment2, create_primative_env(), "let (x, y) = (1, 1)"));
+}
+
 BOOST_AUTO_TEST_CASE(unused_binding_ignore) {
   test_tc(create_primative_env(), "(_x: i32) -> i32 = 1", "(_x: i32) -> i32 = 1");
 }
