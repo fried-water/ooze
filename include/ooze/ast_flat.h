@@ -29,10 +29,10 @@ enum class ASTTag {
   ExprWith,
   ExprTuple,
   ExprIdent,
-
-  Assignment,
   Fn,
-  EnvValue
+  EnvValue,
+
+  Assignment
 };
 
 constexpr auto names(knot::Type<ASTTag>) {
@@ -48,9 +48,9 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprWith",
      "ExprTuple",
      "ExprIdent",
-     "Assignment",
      "Fn",
-     "EnvValue"});
+     "EnvValue",
+     "Assignment"});
 }
 
 using ASTID = StrongID<struct ASTSpace>;
@@ -68,6 +68,21 @@ inline const Literal& lookup_literal(const AST& ast, ASTID id) {
   return std::lower_bound(
            ast.literals.begin(), ast.literals.end(), id, [](const auto& p, ASTID id) { return p.first < id; })
     ->second;
+}
+
+inline bool is_expr(ASTTag tag) {
+  switch(tag) {
+  case ASTTag::ExprLiteral:
+  case ASTTag::ExprCall:
+  case ASTTag::ExprSelect:
+  case ASTTag::ExprBorrow:
+  case ASTTag::ExprWith:
+  case ASTTag::ExprTuple:
+  case ASTTag::ExprIdent:
+  case ASTTag::Fn:
+  case ASTTag::EnvValue: return true;
+  default: return false;
+  }
 }
 
 inline bool is_pattern(ASTTag tag) {

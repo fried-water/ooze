@@ -75,14 +75,23 @@ void test_tc_fns(const Env& e, std::string_view src, std::string_view exp, bool 
   compare_tc(check_result(run_tc(parse2, e, exp, debug)), check_result(run_tc(parse2, e, src)));
 }
 
-void test_tc_error(
-  const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors, bool debug = false) {
-  const auto errors = check_error(run_tc(parse_function2, e, src, debug));
+template <typename Parser>
+void test_tc_error(Parser parser,
+                   const Env& e,
+                   std::string_view src,
+                   const std::vector<ContextualError2>& expected_errors,
+                   bool debug = false) {
+  const auto errors = check_error(run_tc(parser, e, src, debug));
   if(expected_errors != errors) {
     fmt::print("E {}\n", knot::debug(expected_errors));
     fmt::print("A {}\n", knot::debug(errors));
     BOOST_CHECK(expected_errors == errors);
   }
+}
+
+void test_tc_error(
+  const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors, bool debug = false) {
+  test_tc_error(parse_function2, e, src, expected_errors, debug);
 }
 
 TypeGraph type_graph_of(
@@ -621,6 +630,18 @@ BOOST_AUTO_TEST_CASE(return_borrow) {
                 "() -> _ = (&1, &2)",
                 {{{SrcID{1}, {11, 13}}, "cannot return a borrowed value"},
                  {{SrcID{1}, {15, 17}}, "cannot return a borrowed value"}});
+}
+
+BOOST_AUTO_TEST_CASE(return_borrow_root) {
+  test_tc_error(parse_expr2, create_primative_env(), "&1", {{{SrcID{1}, {0, 2}}, "cannot return a borrowed value"}});
+  test_tc_error(parse_expr2, create_primative_env(), "(&1)", {{{SrcID{1}, {1, 3}}, "cannot return a borrowed value"}});
+
+  test_tc_error(
+    parse_assignment2, create_primative_env(), "let x = &1", {{{SrcID{1}, {8, 10}}, "cannot return a borrowed value"}});
+  test_tc_error(parse_assignment2,
+                create_primative_env(),
+                "let (x) = (&1)",
+                {{{SrcID{1}, {11, 13}}, "cannot return a borrowed value"}});
 }
 
 BOOST_AUTO_TEST_CASE(return_borrow_ident) {

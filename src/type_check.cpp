@@ -875,9 +875,13 @@ void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<Type
 std::vector<TypeCheckError2> find_returned_borrows(const AST& ast, const TypeGraph& tg) {
   std::vector<TypeCheckError2> errors;
 
-  for(ASTID id : ast.forest.ids()) {
-    if(ast.forest[id] == ASTTag::Fn) {
-      find_returned_borrows(ast, tg, errors, ast.forest.child_ids(id).get<1>());
+  for(ASTID root_id : ast.forest.root_ids()) {
+    const ASTID expr_id = is_expr(ast.forest[root_id]) ? root_id : ast.forest.child_ids(root_id).get<1>();
+
+    find_returned_borrows(ast, tg, errors, expr_id);
+
+    if(ast.forest[expr_id] == ASTTag::Fn) {
+      find_returned_borrows(ast, tg, errors, ast.forest.child_ids(expr_id).get<1>());
     }
   }
 
