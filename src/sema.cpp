@@ -162,13 +162,13 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
 
     // Parse expr before pattern
     calculate_ident_graph(ctx, expr, srcs, ast);
-    calculate_ident_graph(ctx, pattern, srcs, ast);
+
+    // Skip identifier of globals, already added up front
+    if(!ast.forest.is_root(id)) {
+      calculate_ident_graph(ctx, pattern, srcs, ast);
+    }
     break;
   }
-  case ASTTag::Global:
-    // Skip identifier of globals, already added up front
-    calculate_ident_graph(ctx, ast.forest.child_ids(id).get<1>(), srcs, ast);
-    break;
   case ASTTag::EnvValue:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternTuple:
@@ -223,7 +223,7 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
 
   for(const auto [id, overload] : binding_of) {
     const ASTID root = ast.forest.root(id);
-    if(ast.forest[root] == ASTTag::Global && ast.forest[*ast.forest.parent(overload)] == ASTTag::Global) {
+    if(ast.forest[root] == ASTTag::Assignment && is_global(ast.forest, overload)) {
       call_graph_vec[ast.forest.first_child(root)->get()].push_back(overload);
     }
   }
@@ -235,7 +235,8 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
   Graph<ASTID> call_graph = Graph<ASTID>(call_graph_vec);
 
   auto leaf_fns = transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID root) {
-    if(ast.forest[root] == ASTTag::Global) {
+    if(ast.forest[root] == ASTTag::Assignment) {
+      // TODO check leaves?
       const auto pattern = *ast.forest.first_child(root);
       return !call_graph.has_fanout(pattern) ? std::optional(pattern) : std::nullopt;
     }
@@ -290,7 +291,7 @@ type_name_resolution(Span<std::string_view> srcs, const std::unordered_map<std::
 ContextualResult2<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) {
   IdentGraphCtx ctx = {
     std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
-      return ast.forest[id] == ASTTag::Global
+      return ast.forest[id] == ASTTag::Assignment
                ? std::optional(std::pair(
                    sv(srcs, ast.srcs[ast.forest.child_ids(id).get<0>().get()]), ast.forest.child_ids(id).get<0>()))
                : std::nullopt;

@@ -268,8 +268,13 @@ void pretty_print(
   }
   case ASTTag::Assignment: {
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
-    print_binding(os << "let ", pattern);
-    pretty_print(os << " = ", srcs, ast, tg, expr, indentation);
+    if(ast.forest.is_root(id) && ast.forest[expr] == ASTTag::Fn) {
+      pretty_print(os << "fn ", srcs, ast, tg, pattern, indentation);
+      pretty_print(os, srcs, ast, tg, expr, indentation);
+    } else {
+      print_binding(os << "let ", pattern);
+      pretty_print(os << " = ", srcs, ast, tg, expr, indentation);
+    }
     return;
   }
   case ASTTag::ExprWith:
@@ -313,13 +318,6 @@ void pretty_print(
 
     return;
   }
-  case ASTTag::Global: {
-    // TODO check if function
-    const auto [ident, fn] = ast.forest.child_ids(id).take<2>();
-    pretty_print(os << "fn ", srcs, ast, tg, ident, indentation);
-    pretty_print(os, srcs, ast, tg, fn, indentation);
-    return;
-  }
   case ASTTag::PatternTuple:
   case ASTTag::ExprTuple:
     os << '(';
@@ -333,11 +331,7 @@ void pretty_print(
     os << ')';
     return;
   case ASTTag::EnvValue: {
-    // TODO handle non functions
-    const auto type_children = tg.fanout(ast.types[id.get()]);
-    pretty_print(os, srcs, tg, type_children[0]);
-    pretty_print(os << " -> ", srcs, tg, type_children[1]);
-    os << " = <native_fn>";
+    os << "<env_value>";
     return;
   }
   }

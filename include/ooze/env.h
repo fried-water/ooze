@@ -65,7 +65,7 @@ struct Env {
 
     const ASTID ident_id = ast.forest.append_root(ASTTag::PatternIdent);
     const ASTID fn_id = ast.forest.append_root(ASTTag::EnvValue);
-    ast.forest.append_root_post_order(ASTTag::Global, std::array{ident_id, fn_id});
+    ast.forest.append_root_post_order(ASTTag::Assignment, std::array{ident_id, fn_id});
 
     ast.srcs.push_back(ref);
     ast.srcs.push_back(ref);

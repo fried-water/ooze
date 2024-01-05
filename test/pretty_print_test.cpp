@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(native_fn) {
 
   const ASTID ident = ast.forest.append_root(ASTTag::PatternIdent);
   const ASTID fn = ast.forest.append_root(ASTTag::EnvValue);
-  const ASTID global = ast.forest.append_root_post_order(ASTTag::Global, std::array{ident, fn});
+  const ASTID global = ast.forest.append_root_post_order(ASTTag::Assignment, std::array{ident, fn});
 
   ast.srcs.push_back(SrcRef{SrcID{0}, {1, 2}});
   ast.srcs.push_back(SrcRef{SrcID{0}, {1, 2}});
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(native_fn) {
   ast.types.push_back(fn_t);
   ast.types.push_back(TypeRef::Invalid());
 
-  BOOST_CHECK_EQUAL("fn f(T) -> T = <native_fn>", pretty_print(make_sv_array(src), ast, tg, global));
+  BOOST_CHECK_EQUAL("let f: fn(T) -> T = <env_value>", pretty_print(make_sv_array(src), ast, tg, global));
 }
 
 BOOST_AUTO_TEST_CASE(expr) {

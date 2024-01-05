@@ -131,7 +131,8 @@ auto find_globals(const AST& ast, const TypeGraph& tg, const Map<ASTID, ASTID>& 
 
     const auto it = binding_of.find(id);
     assert(it != binding_of.end() && !ast.forest.is_root(it->second));
-    if(ast.forest[*ast.forest.parent(it->second)] == ASTTag::Global) {
+
+    if(is_global(ast.forest, it->second)) {
       const auto parent = ast.forest.parent(id);
       const bool borrowed =
         parent && ast.forest[*parent] == ASTTag::ExprBorrow || tg.get<TypeTag>(ast.types[id.get()]) == TypeTag::Fn;
@@ -431,8 +432,7 @@ add_expr(const AST& ast,
   case ASTTag::PatternTuple:
   case ASTTag::Fn:
   case ASTTag::Assignment:
-  case ASTTag::EnvValue:
-  case ASTTag::Global: assert(false); return {};
+  case ASTTag::EnvValue: assert(false); return {};
   case ASTTag::ExprLiteral: {
     std::vector<Oterm> terms = std::visit(
       [&](const auto& v) { return ctx.cg.add(create_async_value(Any(v)), {}, {}, 1); }, lookup_literal(ast, id));

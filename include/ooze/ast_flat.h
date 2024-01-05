@@ -32,8 +32,7 @@ enum class ASTTag {
 
   Assignment,
   Fn,
-  EnvValue,
-  Global
+  EnvValue
 };
 
 constexpr auto names(knot::Type<ASTTag>) {
@@ -51,8 +50,7 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprIdent",
      "Assignment",
      "Fn",
-     "EnvValue",
-     "Global"});
+     "EnvValue"});
 }
 
 using ASTID = StrongID<struct ASTSpace>;
@@ -79,6 +77,13 @@ inline bool is_pattern(ASTTag tag) {
   case ASTTag::PatternIdent: return true;
   default: return false;
   }
+}
+
+inline bool is_global(const Forest<ASTTag, ASTID>& f, ASTID id) {
+  while(!f.is_root(id) && is_pattern(f[id])) {
+    id = *f.parent(id);
+  }
+  return f.is_root(id) && f[id] == ASTTag::Assignment;
 }
 
 } // namespace ooze

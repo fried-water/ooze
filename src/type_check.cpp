@@ -905,20 +905,12 @@ std::vector<TypeCheckError2> find_binding_usage_errors(
     return !parent || ast.forest[*parent] != ASTTag::ExprBorrow;
   };
 
-  const auto is_global = [&](ASTID id) {
-    while(!ast.forest.is_root(id) && is_pattern(ast.forest[id])) {
-      id = *ast.forest.parent(id);
-    }
-    const auto tag = ast.forest[id];
-    return ast.forest.is_root(id) && (tag == ASTTag::Assignment || tag == ASTTag::Global);
-  };
-
   return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError2> {
     const TypeRef t = ast.types[id.get()];
     if(ast.forest[id] != ASTTag::PatternIdent) {
       return std::nullopt;
     } else if(sv(srcs, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
-      return is_global(id) ? std::nullopt : std::optional(TypeCheckError2{UnusedBinding{}, id});
+      return is_global(ast.forest, id) ? std::nullopt : std::optional(TypeCheckError2{UnusedBinding{}, id});
     } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
               has_non_copy_type(has_non_copy_type, ast.types[id.get()])) {
       return TypeCheckError2{OverusedBinding{ident_graph.num_fanout(id)}, id};
@@ -1001,7 +993,6 @@ TypeRef language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID i
 
   case ASTTag::Fn: return tc.fn_floating;
 
-  case ASTTag::Global:
   case ASTTag::Assignment: return tc.unit;
 
   case ASTTag::ExprCall:
@@ -1224,7 +1215,6 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       add_pair(id, expr, DirectProp{});
       break;
     }
-    case ASTTag::Global:
     case ASTTag::Assignment: {
       const auto [pattern, expr] = forest.child_ids(id).take<2>();
       add_pair(pattern, expr, DirectProp{});
@@ -1238,7 +1228,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
     }
     case ASTTag::ExprIdent: {
       for(ASTID pattern : ident_graph.fanout(id)) {
-        if(forest[*forest.parent(pattern)] == ASTTag::Global) {
+        if(is_global(forest, pattern)) {
           // Only propogate one way
           propagations[pattern.get()].push_back(
             {id, true, ident_graph.num_fanout(id) == 1 ? Propagation{DirectProp{}} : Propagation{FloatingProp{}}});
