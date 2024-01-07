@@ -75,4 +75,21 @@ inline TypeCache create_type_cache(TypeGraph& g) {
   return tc;
 }
 
+inline int size_of(const TypeGraph& g, const TypeRef& t) {
+  int s = 0;
+
+  preorder(g, t, [&](TypeRef t) {
+    switch(g.get<TypeTag>(t)) {
+    case TypeTag::Leaf:
+    case TypeTag::Fn: s += 1; return false;
+    case TypeTag::Floating: assert(false);
+    case TypeTag::Borrow:
+    case TypeTag::Tuple: break;
+    }
+    return true;
+  });
+
+  return s;
+}
+
 } // namespace ooze
