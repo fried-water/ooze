@@ -35,7 +35,15 @@ StringResult<void, Env> parse_script(Env, std::string_view script);
 StringResult<Tree<Binding>, Env, Bindings> run(ExecutorRef, Env, Bindings, std::string_view expr);
 StringResult<std::string, Env, Bindings> run_to_string(ExecutorRef, Env, Bindings, std::string_view expr);
 
+struct Binding2 {
+  TypeRef type;
+  std::vector<Binding> values;
+};
+
+using Bindings2 = std::unordered_map<std::string, Binding2>;
+
 StringResult<void, Env> parse_scripts(Env, Span<std::string_view>);
+StringResult<Binding2, Env, Bindings2> run(ExecutorRef, Env, Bindings2, std::string_view);
 
 int main(int argc, const char** argv, Env);
 
