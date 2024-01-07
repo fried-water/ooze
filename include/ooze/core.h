@@ -44,6 +44,7 @@ using Bindings2 = std::unordered_map<std::string, Binding2>;
 
 StringResult<void, Env> parse_scripts(Env, Span<std::string_view>);
 StringResult<Binding2, Env, Bindings2> run(ExecutorRef, Env, Bindings2, std::string_view);
+StringResult<std::string, Env, Bindings2> run_to_string(ExecutorRef, Env, Bindings2, std::string_view);
 
 int main(int argc, const char** argv, Env);
 

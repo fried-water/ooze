@@ -369,14 +369,14 @@ BOOST_AUTO_TEST_CASE(expr_or_error) {
 
 BOOST_AUTO_TEST_CASE(to_string) {
   auto executor = make_seq_executor();
-  BOOST_CHECK_EQUAL("1", check_result_value(run_to_string(executor, create_primative_env(), {}, "1")));
+  BOOST_CHECK_EQUAL("1", check_result_value(run_to_string(executor, create_primative_env(), Bindings2{}, "1")));
 }
 
 BOOST_AUTO_TEST_CASE(to_string_fn) {
   auto executor = make_seq_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
-  BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), {}, "f()")));
+  BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), Bindings2{}, "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(extract_binding) {
@@ -418,50 +418,19 @@ BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {
 BOOST_AUTO_TEST_CASE(reuse_to_string_binding) {
   auto executor = make_seq_executor();
 
-  const auto result =
-    run(executor, create_primative_env(), Bindings{}, "let x = 1")
-      .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
-        return run_to_string(executor, std::move(env), std::move(bindings), "x");
-      })
-      .and_then([&](std::string result, Env env, Bindings bindings) {
-        BOOST_REQUIRE_EQUAL("1", result);
-        return run_to_string(executor, std::move(env), std::move(bindings), "x");
-      })
-      .map([](std::string result, Env env, Bindings bindings) {
-        BOOST_REQUIRE_EQUAL("1", result);
-        return std::tuple(std::move(env), std::move(bindings));
-      });
-
-  if(!result) {
-    fmt::print("{}\n", knot::debug(result.error()));
-    BOOST_CHECK(result);
-  }
-}
-
-BOOST_AUTO_TEST_CASE(reuse_to_string_indirect) {
-  auto executor = make_seq_executor();
-
   Env e = create_primative_env();
-  e.add_function("f", [](const int& x) { return x; });
 
-  const auto result =
-    run(executor, std::move(e), Bindings{}, "let x = 1")
-      .and_then([&](Tree<Binding> result, Env env, Bindings bindings) {
-        return run_to_string(executor, std::move(env), std::move(bindings), "f(&x)");
-      })
-      .and_then([&](std::string result, Env env, Bindings bindings) {
-        BOOST_REQUIRE_EQUAL("1", result);
-        return run_to_string(executor, std::move(env), std::move(bindings), "f(&x)");
-      })
-      .map([](std::string result, Env env, Bindings bindings) {
-        BOOST_REQUIRE_EQUAL("1", result);
-        return std::tuple(std::move(env), std::move(bindings));
-      });
+  std::string result;
+  Bindings2 bindings;
 
-  if(!result) {
-    fmt::print("{}\n", knot::debug(result.error()));
-    BOOST_CHECK(result);
-  }
+  std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "let x = 1"));
+  BOOST_CHECK_EQUAL("", result);
+
+  std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "x"));
+  BOOST_CHECK_EQUAL("1", result);
+
+  std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "x"));
+  BOOST_CHECK_EQUAL("1", result);
 }
 
 BOOST_AUTO_TEST_CASE(reuse_assign_binding_indirect) {
@@ -517,7 +486,7 @@ BOOST_AUTO_TEST_CASE(print_fn) {
   e.add_function("f", []() { return 1; });
 
   // TODO improve this error
-  BOOST_CHECK(!run_to_string(executor, std::move(e), {}, "f"));
+  check_error(run_to_string(executor, std::move(e), Bindings2{}, "f"));
 }
 
 BOOST_AUTO_TEST_CASE(native_constant_fn) {
