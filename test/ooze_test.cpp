@@ -379,7 +379,7 @@ BOOST_AUTO_TEST_CASE(to_string_fn) {
   BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), Bindings2{}, "f()")));
 }
 
-BOOST_AUTO_TEST_CASE(extract_binding) {
+BOOST_AUTO_TEST_CASE(copy_binding) {
   auto executor = make_seq_executor();
 
   Env e = create_primative_env();
@@ -389,11 +389,28 @@ BOOST_AUTO_TEST_CASE(extract_binding) {
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 3"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
 
-  // TODO should we copy this since its a copy type?
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "x"));
   check_binding(e, await(std::move(result)), "i32", 3);
 
-  BOOST_REQUIRE_EQUAL(0, bindings.size());
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "x"));
+  check_binding(e, await(std::move(result)), "i32", 3);
+}
+
+BOOST_AUTO_TEST_CASE(extract_binding) {
+  auto executor = make_seq_executor();
+
+  Env e = create_primative_env();
+  Binding2 result;
+  Bindings2 bindings;
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 'abc'"));
+  check_binding(e, await(std::move(result)), "()", std::tuple());
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "x"));
+  check_binding(e, await(std::move(result)), "string", std::string("abc"));
+
+  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
+  check_range(expected, check_error(run(std::move(e), "", "x")));
 }
 
 BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {
@@ -462,7 +479,6 @@ BOOST_AUTO_TEST_CASE(tuple_untuple) {
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let (a, b) = z"));
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "(a, b)"));
   check_binding(e, await(std::move(result)), "(i32, string)", std::tuple(3, std::string("abc")));
-  BOOST_REQUIRE_EQUAL(0, bindings.size());
 }
 
 BOOST_AUTO_TEST_CASE(overwrite_binding) {
@@ -477,7 +493,6 @@ BOOST_AUTO_TEST_CASE(overwrite_binding) {
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 4"));
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "x"));
   check_binding(e, await(std::move(result)), "i32", 4);
-  BOOST_REQUIRE_EQUAL(0, bindings.size());
 }
 
 BOOST_AUTO_TEST_CASE(print_fn) {

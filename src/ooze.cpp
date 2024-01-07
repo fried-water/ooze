@@ -44,6 +44,26 @@ std::optional<Command> parse_cmd_line(int argc, const char** argv) {
   }
 }
 
+bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& copy_types, TypeRef type) {
+  bool is_copyable = true;
+
+  preorder(tg, type, [&](TypeRef t) {
+    switch(tg.get<TypeTag>(t)) {
+    case TypeTag::Leaf:
+      is_copyable = is_copyable && copy_types.find(tg.get<TypeID>(t)) != copy_types.end();
+      return false;
+    case TypeTag::Fn: return false;
+    case TypeTag::Floating: assert(false); return false;
+    case TypeTag::Borrow: assert(false); return false;
+    case TypeTag::Tuple: return true;
+    }
+    assert(false);
+    return true;
+  });
+
+  return is_copyable;
+}
+
 StringResult<void, Env> parse_scripts(Env e, const std::vector<std::string>& filenames) {
   return knot::accumulate(
     filenames, StringResult<void, Env>{std::move(e)}, [&](auto result, const std::string& filename) {
@@ -376,9 +396,17 @@ std::tuple<std::vector<Binding>, Map<ASTID, std::vector<Binding>>> run_function(
   for(ASTID id : value_inputs) {
     const auto it = bindings.find(id);
     assert(it != bindings.end());
-    futures = transform_to_vec(
-      std::move(it->second), [](Binding b) { return take(std::move(b)); }, std::move(futures));
-    bindings.erase(it);
+
+    if(is_binding_copyable(tg, copy_types, ast.types[id.get()])) {
+      for(Binding& b : it->second) {
+        futures = transform_to_vec(
+          it->second, [](Binding& b) { return borrow(b).then([](const Any& a) { return a; }); }, std::move(futures));
+      }
+    } else {
+      futures = transform_to_vec(
+        std::move(it->second), [](Binding b) { return take(std::move(b)); }, std::move(futures));
+      bindings.erase(it);
+    }
   }
 
   AsyncFn fn = create_async_graph(std::move(fg));
