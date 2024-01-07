@@ -384,20 +384,19 @@ std::tuple<std::vector<Binding>, Map<ASTID, std::vector<Binding>>> run_function(
 
   std::vector<BorrowedFuture> borrowed;
   for(ASTID id : borrow_inputs) {
-    if(const auto it = bindings.find(id); it != bindings.end()) {
-      borrowed = transform_to_vec(
-        it->second, [](Binding& b) { return borrow(b); }, std::move(borrowed));
-    } else {
-      borrowed.push_back(borrow(Future(Any(flat_functions.at(id)))).first);
-    }
+    const auto it = bindings.find(id);
+    assert(it != bindings.end());
+    borrowed = transform_to_vec(
+      it->second, [](Binding& b) { return borrow(b); }, std::move(borrowed));
   }
 
   std::vector<Future> futures;
   for(ASTID id : value_inputs) {
-    const auto it = bindings.find(id);
-    assert(it != bindings.end());
-
-    if(is_binding_copyable(tg, copy_types, ast.types[id.get()])) {
+    if(const auto it = bindings.find(id); it == bindings.end()) {
+      const auto fn_it = flat_functions.find(id);
+      assert(fn_it != flat_functions.end());
+      futures.push_back(Future(Any(fn_it->second)));
+    } else if(is_binding_copyable(tg, copy_types, ast.types[id.get()])) {
       for(Binding& b : it->second) {
         futures = transform_to_vec(
           it->second, [](Binding& b) { return borrow(b).then([](const Any& a) { return a; }); }, std::move(futures));
@@ -489,12 +488,14 @@ Env generate_functions(
       assert(fn_id && ast.forest[*fn_id] == ASTTag::Fn);
       auto [global_values, global_borrows, fg] = create_graph(ast, tg, env.copy_types, cg.binding_of, *fn_id);
 
-      assert(global_values.empty());
+      assert(global_borrows.empty());
 
-      std::vector<BorrowedFuture> borrowed = transform_to_vec(global_borrows, [&](ASTID id) {
+      std::vector<Any> values = transform_to_vec(global_values, [&](ASTID id) {
         const auto it = to_env_id.find(id);
         assert(it != to_env_id.end());
-        return borrow(Future(Any(env.flat_functions.at(it->second)))).first;
+        const auto fn_it = env.flat_functions.find(it->second);
+        assert(fn_it != env.flat_functions.end());
+        return Any(fn_it->second);
       });
 
       const TypeRef env_fn_type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
@@ -502,7 +503,7 @@ Env generate_functions(
       to_env_id.emplace(
         id,
         env.add_function(
-          sv(srcs, ast.srcs[id.get()]), env_fn_type, curry(create_async_graph(std::move(fg)), std::move(borrowed))));
+          sv(srcs, ast.srcs[id.get()]), env_fn_type, curry(create_async_graph(std::move(fg)), std::move(values))));
     } else {
       to_env_id.emplace(id, id);
     }

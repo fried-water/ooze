@@ -75,7 +75,7 @@ std::vector<PassBy> pass_bys_of(
     case TypeTag::Leaf:
       pass_bys.push_back(copy_types.find(g.get<TypeID>(t)) != copy_types.end() ? PassBy::Copy : PassBy::Move);
       return false;
-    case TypeTag::Fn: pass_bys.push_back(PassBy::Borrow); return false;
+    case TypeTag::Fn: pass_bys.push_back(PassBy::Copy); return false;
     case TypeTag::Borrow: pass_bys.push_back(PassBy::Borrow); return false;
     case TypeTag::Floating: assert(false);
     case TypeTag::Tuple: return true;
@@ -93,7 +93,7 @@ std::vector<bool> borrows_of(const TypeGraph& g, const TypeRef& t) {
   preorder(g, t, [&](TypeRef t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf: borrows.push_back(false); return false;
-    case TypeTag::Fn: borrows.push_back(true); return false;
+    case TypeTag::Fn: borrows.push_back(false); return false;
     case TypeTag::Borrow: borrows.push_back(true); return false;
     case TypeTag::Floating: assert(false);
     case TypeTag::Tuple: return true;
@@ -117,8 +117,7 @@ auto find_globals(const AST& ast, const TypeGraph& tg, const Map<ASTID, ASTID>& 
 
     if(is_global(ast.forest, it->second)) {
       const auto parent = ast.forest.parent(id);
-      const bool borrowed =
-        parent && ast.forest[*parent] == ASTTag::ExprBorrow || tg.get<TypeTag>(ast.types[id.get()]) == TypeTag::Fn;
+      const bool borrowed = parent && ast.forest[*parent] == ASTTag::ExprBorrow;
 
       if(borrowed) {
         borrows.push_back(it->second);
@@ -398,7 +397,7 @@ add_call_expr(const AST& ast,
   pass_bys = pass_bys_of(copy_types, tg, ast.types[arg.get()], std::move(pass_bys));
 
   const int output_count = size_of(tg, ast.types[id.get()]);
-  std::vector<Oterm> terms = ctx.cg.add(create_async_functional(output_count, true), arg_terms, pass_bys, output_count);
+  std::vector<Oterm> terms = ctx.cg.add(create_async_functional(output_count), arg_terms, pass_bys, output_count);
   return {std::move(ctx), std::move(terms)};
 }
 

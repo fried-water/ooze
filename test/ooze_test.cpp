@@ -413,11 +413,41 @@ BOOST_AUTO_TEST_CASE(extract_binding) {
   check_range(expected, check_error(run(std::move(e), "", "x")));
 }
 
+BOOST_AUTO_TEST_CASE(assign_env_fn) {
+  auto executor = make_seq_executor();
+
+  Env e = create_primative_env();
+  e.add_function("f", []() { return 3; });
+
+  Binding2 result;
+  Bindings2 bindings;
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let f2 = f"));
+  check_binding(e, await(std::move(result)), "()", std::tuple());
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "f2()"));
+  check_binding(e, await(std::move(result)), "i32", 3);
+}
+
+BOOST_AUTO_TEST_CASE(assign_script_fn) {
+  auto executor = make_seq_executor();
+
+  Env e = check_result(parse_scripts(create_primative_env(), make_sv_array("fn f() -> i32 = 3")));
+
+  Binding2 result;
+  Bindings2 bindings;
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let f2 = f"));
+  check_binding(e, await(std::move(result)), "()", std::tuple());
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "f2()"));
+  check_binding(e, await(std::move(result)), "i32", 3);
+}
+
 BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {
   auto executor = make_seq_executor();
 
   Env e = create_primative_env();
-  e.add_function("f", [](const int& x) { return std::to_string(x); });
 
   Binding2 result;
   Bindings2 bindings;
