@@ -511,6 +511,23 @@ BOOST_AUTO_TEST_CASE(tuple_untuple) {
   check_binding(e, await(std::move(result)), "(i32, string)", std::tuple(3, std::string("abc")));
 }
 
+BOOST_AUTO_TEST_CASE(overload_fn_binding) {
+  auto executor = make_seq_executor();
+
+  Env e = create_primative_env();
+  e.add_function("f", []() { return 1; });
+
+  Binding2 result;
+  Bindings2 bindings;
+
+  std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let f = 1"));
+
+  const std::vector<std::string> expected{
+    "1:0 error: ambiguous overload", " | f", " | ^", "deduced _ [2 candidate(s)]", "  fn() -> i32", "  i32"};
+
+  check_range(expected, check_error(run(executor, std::move(e), std::move(bindings), "f")));
+}
+
 BOOST_AUTO_TEST_CASE(overwrite_binding) {
   auto executor = make_seq_executor();
 

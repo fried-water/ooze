@@ -210,7 +210,7 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
     } else {
       errors.push_back(
         {ast.srcs[id.get()],
-         "function call is ambiguous",
+         "ambiguous overload",
          transform_to_vec(
            ident_graph.fanout(id),
            [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, ast.types[id.get()])); },
@@ -393,15 +393,15 @@ sema(Span<std::string_view> srcs,
         });
     }))
     .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
-      auto errors = check_fully_resolved(srcs, propagations, ast, tg);
-      return value_or_errors(std::move(ig), std::move(errors), std::move(ast), std::move(tg));
-    }))
-    .and_then([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
       return create_call_graph_data(srcs, tc, ig, std::move(ast), std::move(tg))
-        .map([&ig](CallGraphData cg, AST ast, TypeGraph tg) {
-          return std::tuple(std::move(cg), std::move(ast), std::move(tg));
+        .map([&](CallGraphData cg, AST ast, TypeGraph tg) {
+          return std::tuple(std::tuple(std::move(cg), std::move(propagations)), std::move(ast), std::move(tg));
         });
-    });
+    }))
+    .and_then(flattened([&](CallGraphData cg, auto propagations, AST ast, TypeGraph tg) {
+      auto errors = check_fully_resolved(srcs, propagations, ast, tg);
+      return value_or_errors(std::move(cg), std::move(errors), std::move(ast), std::move(tg));
+    }));
 }
 
 } // namespace ooze

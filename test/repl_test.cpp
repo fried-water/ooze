@@ -105,17 +105,6 @@ BOOST_AUTO_TEST_CASE(bindings) {
   BOOST_CHECK_EQUAL("abc", any_cast<std::string>(std::move(y.future).wait()));
 }
 
-BOOST_AUTO_TEST_CASE(binding_overload_fn) {
-  auto executor = make_task_executor();
-  Env e = create_primative_env();
-
-  e.add_function("f", []() { return 1; });
-
-  Bindings b;
-  std::tie(e, b) = step_and_compare({}, "let f = 5", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"5"}, "f", std::move(e), std::move(b));
-}
-
 BOOST_AUTO_TEST_CASE(bindings_post_dump) {
   auto executor = make_task_executor();
   Env e = create_primative_env();
