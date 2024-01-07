@@ -46,20 +46,4 @@ std::vector<Any> invoke(AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) 
   return invoke(make_seq_executor(), std::move(fn), std::move(ts), std::move(bs));
 }
 
-template <typename... Ts, size_t... Is>
-void compare(const std::tuple<Ts...>& exp, Span<Any> act, std::index_sequence<Is...>) {
-  BOOST_REQUIRE_EQUAL(sizeof...(Ts), act.size());
-  (check_any(std::get<Is>(exp), act[Is]), ...);
-}
-
-template <typename... Ts>
-void compare(const std::tuple<Ts...>& exp, Span<Any> act) {
-  compare(exp, act, std::make_index_sequence<sizeof...(Ts)>());
-}
-
-template <typename T>
-void compare(const T& exp, Span<Any> act) {
-  compare(std::tie(exp), act);
-}
-
 } // namespace ooze

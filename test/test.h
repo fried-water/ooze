@@ -2,6 +2,8 @@
 
 #include "pch.h"
 
+#include "ooze/any.h"
+
 #include <boost/test/unit_test.hpp>
 
 #define BOOST_CHECK_RANGE_EQUAL(r1, r2)                                                                                \
@@ -49,6 +51,24 @@
     BOOST_CHECK(any_cast<std::decay_t<decltype(e)>>(a) == e);                                                          \
   }(expected, actual)
 
+namespace ooze {
+
+template <typename... Ts, size_t... Is>
+void compare(const std::tuple<Ts...>& exp, Span<Any> act, std::index_sequence<Is...>) {
+  BOOST_REQUIRE_EQUAL(sizeof...(Ts), act.size());
+  (check_any(std::get<Is>(exp), act[Is]), ...);
+}
+
+template <typename... Ts>
+void compare(const std::tuple<Ts...>& exp, Span<Any> act) {
+  compare(exp, act, std::make_index_sequence<sizeof...(Ts)>());
+}
+
+template <typename T>
+void compare(const T& exp, Span<Any> act) {
+  compare(std::tie(exp), act);
+}
+
 struct Sentinal {
   int copies = 0;
   int moves = 0;
@@ -70,3 +90,5 @@ struct Sentinal {
     return *this;
   }
 };
+
+} // namespace ooze
