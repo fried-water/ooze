@@ -120,11 +120,7 @@ struct ASTAppender {
     return (*this)(s, SrcRef{s.src_id, char_slice(tokens, ref)}, ids);
   }
 
-  ASTID operator()(State& s, SrcRef ref, Span<ASTID> ids) const {
-    s.ast.srcs.push_back(ref);
-    s.ast.types.push_back(_type);
-    return s.ast.forest.append_root_post_order(_tag, ids);
-  }
+  ASTID operator()(State& s, SrcRef ref, Span<ASTID> ids) const { return append_root(s.ast, _tag, ref, _type, ids); }
 };
 
 struct TypeAppender {
