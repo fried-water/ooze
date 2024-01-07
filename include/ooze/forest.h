@@ -76,6 +76,15 @@ class Forest {
     }
   };
 
+  struct LeafIDs {
+    ID operator()(const Forest& f, ID id) const {
+      do {
+        id = PreOrderIDs{}(f, id);
+      } while(id != INVALID && !f.is_leaf(id));
+      return id;
+    }
+  };
+
   struct Connectivity {
     ID parent = INVALID;
     ID next_sibling = INVALID;
@@ -104,24 +113,32 @@ class Forest {
     }
   }
 
+  ID first_leaf_or_invalid(ID id) const { return id != INVALID ? first_leaf(id) : INVALID; }
+
 public:
   using AllIDIter = Iter<AllIDs, IDIterTraits>;
-  using SiblingIDIter = Iter<SiblingIDs, IDIterTraits>;
-  using AncestorIDIter = Iter<SiblingIDs, IDIterTraits>;
-  using PreOrderIDIter = Iter<PreOrderIDs, IDIterTraits>;
-  using PostOrderIDIter = Iter<PostOrderIDs, IDIterTraits>;
-
   using AllIter = Iter<AllIDs, ValueIterTraits<false>>;
-  using SiblingIter = Iter<SiblingIDs, ValueIterTraits<false>>;
-  using AncestorIter = Iter<SiblingIDs, ValueIterTraits<false>>;
-  using PreOrderIter = Iter<PreOrderIDs, ValueIterTraits<false>>;
-  using PostOrderIter = Iter<PostOrderIDs, ValueIterTraits<false>>;
-
   using AllConstIter = Iter<AllIDs, ValueIterTraits<true>>;
+
+  using SiblingIDIter = Iter<SiblingIDs, IDIterTraits>;
+  using SiblingIter = Iter<SiblingIDs, ValueIterTraits<false>>;
   using SiblingConstIter = Iter<SiblingIDs, ValueIterTraits<true>>;
+
+  using AncestorIDIter = Iter<SiblingIDs, IDIterTraits>;
+  using AncestorIter = Iter<SiblingIDs, ValueIterTraits<false>>;
   using AncestorConstIter = Iter<SiblingIDs, ValueIterTraits<true>>;
+
+  using PreOrderIDIter = Iter<PreOrderIDs, IDIterTraits>;
+  using PreOrderIter = Iter<PreOrderIDs, ValueIterTraits<false>>;
   using PreOrderConstIter = Iter<PreOrderIDs, ValueIterTraits<true>>;
+
+  using PostOrderIDIter = Iter<PostOrderIDs, IDIterTraits>;
+  using PostOrderIter = Iter<PostOrderIDs, ValueIterTraits<false>>;
   using PostOrderConstIter = Iter<PostOrderIDs, ValueIterTraits<true>>;
+
+  using LeafIDIter = Iter<LeafIDs, IDIterTraits>;
+  using LeafIter = Iter<LeafIDs, ValueIterTraits<false>>;
+  using LeafConstIter = Iter<LeafIDs, ValueIterTraits<true>>;
 
   constexpr static ID ABOVE_ROOTS = ID(-2);
 
@@ -334,6 +351,23 @@ public:
       PostOrderConstIter(
         this, id == ABOVE_ROOTS ? (_first_root != INVALID ? first_leaf(_first_root) : INVALID) : first_leaf(id)),
       PostOrderConstIter(this, id == ABOVE_ROOTS ? INVALID : PostOrderIDs{}(*this, id)));
+  }
+
+  auto leaf_ids(ID id = ABOVE_ROOTS) const {
+    return IterRange(LeafIDIter(this, id == ABOVE_ROOTS ? first_leaf_or_invalid(_first_root) : first_leaf(id)),
+                     LeafIDIter(this, id == ABOVE_ROOTS ? INVALID : first_leaf_or_invalid(next_pre_order_sibling(id))));
+  }
+
+  auto leaves(ID id = ABOVE_ROOTS) {
+    return IterRange(LeafIter(this, id == ABOVE_ROOTS ? first_leaf_or_invalid(_first_root) : first_leaf(id)),
+                     LeafIter(this, id == ABOVE_ROOTS ? INVALID : first_leaf_or_invalid(next_pre_order_sibling(id))));
+  }
+
+  auto leaves(ID id = ABOVE_ROOTS) const {
+    return IterRange(
+      LeafConstIter(this,
+                    id == ABOVE_ROOTS ? (_first_root != INVALID ? first_leaf(_first_root) : INVALID) : first_leaf(id)),
+      LeafConstIter(this, id == ABOVE_ROOTS ? INVALID : first_leaf_or_invalid(next_pre_order_sibling(id))));
   }
 
   friend bool compare_trees(const Forest& f1, const Forest& f2, ID lhs, ID rhs) {

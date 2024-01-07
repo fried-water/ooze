@@ -96,6 +96,22 @@ BOOST_AUTO_TEST_CASE(post_order) {
   BOOST_CHECK_RANGE_EQUAL((std::array{"d"}), f.post_order(3));
 }
 
+BOOST_AUTO_TEST_CASE(leaves) {
+  const auto f = make_test_forest();
+
+  BOOST_CHECK(Forest<int>().leaves().empty());
+
+  const std::array exp = {"d", "e", "g", "j", "k", "l", "m"};
+  BOOST_CHECK_RANGE_EQUAL(exp, f.leaves());
+
+  BOOST_CHECK_RANGE_EQUAL((std::array{"d", "e", "g"}), f.leaves(0));
+  BOOST_CHECK_RANGE_EQUAL((std::array{"d", "e"}), f.leaves(1));
+  BOOST_CHECK_RANGE_EQUAL((std::array{"d"}), f.leaves(2));
+  BOOST_CHECK_RANGE_EQUAL((std::array{"d"}), f.leaves(3));
+
+  BOOST_CHECK_RANGE_EQUAL((std::array{"j", "k", "l", "m"}), f.leaves(7));
+}
+
 BOOST_AUTO_TEST_CASE(append_post_order) {
   auto f = Forest<std::string>();
 
