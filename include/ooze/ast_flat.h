@@ -101,4 +101,20 @@ inline bool is_global(const Forest<ASTTag, ASTID>& f, ASTID id) {
   return f.is_root(id) && f[id] == ASTTag::Assignment;
 }
 
+inline ASTID add_global(AST& ast, SrcRef ref, TypeRef type) {
+  const ASTID ident_id = ast.forest.append_root(ASTTag::PatternIdent);
+  const ASTID fn_id = ast.forest.append_root(ASTTag::EnvValue);
+  ast.forest.append_root_post_order(ASTTag::Assignment, std::array{ident_id, fn_id});
+
+  ast.srcs.push_back(ref);
+  ast.srcs.push_back(ref);
+  ast.srcs.push_back(SrcRef{SrcID::Invalid()});
+
+  ast.types.push_back(type);
+  ast.types.push_back(type);
+  ast.types.push_back(TypeRef::Invalid());
+
+  return ident_id;
+}
+
 } // namespace ooze

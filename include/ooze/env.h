@@ -62,21 +62,9 @@ struct Env {
 
   ASTID add_function(std::string_view name, TypeRef type, AsyncFn fn) {
     const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
-
-    const ASTID ident_id = ast.forest.append_root(ASTTag::PatternIdent);
-    const ASTID fn_id = ast.forest.append_root(ASTTag::EnvValue);
-    ast.forest.append_root_post_order(ASTTag::Assignment, std::array{ident_id, fn_id});
-
-    ast.srcs.push_back(ref);
-    ast.srcs.push_back(ref);
-    ast.srcs.push_back(SrcRef{SrcID::Invalid()});
-
-    ast.types.push_back(type);
-    ast.types.push_back(type);
-    ast.types.push_back(TypeRef::Invalid());
-
-    flat_functions.emplace(ident_id, std::move(fn));
-    return ident_id;
+    const ASTID id = add_global(ast, ref, type);
+    flat_functions.emplace(id, std::move(fn));
+    return id;
   }
 
   template <typename F>
