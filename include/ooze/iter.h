@@ -2,6 +2,7 @@
 
 #include "ooze/primitives.h"
 
+#include <algorithm>
 #include <cassert>
 #include <iterator>
 #include <tuple>

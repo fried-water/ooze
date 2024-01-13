@@ -4,7 +4,6 @@
 #include "ooze/graph.h"
 #include "ooze/primitives.h"
 #include "ooze/src_map.h"
-#include "ooze/type.h"
 #include "ooze/type_flat.h"
 
 #include <knot/core.h>

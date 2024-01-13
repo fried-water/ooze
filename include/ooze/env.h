@@ -6,7 +6,6 @@
 #include "ooze/function_graph.h"
 #include "ooze/src_map.h"
 #include "ooze/traits.h"
-#include "ooze/type.h"
 
 #include <knot/core.h>
 

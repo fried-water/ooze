@@ -1,11 +1,37 @@
 #pragma once
 
-#include "ooze/type.h"
+#include "ooze/graph.h"
+#include "ooze/strong_id.h"
+#include "ooze/traits.h"
 
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+namespace ooze {
+
+struct TypeID {
+  uintptr_t id = {};
+
+  static constexpr TypeID Invalid() { return TypeID{}; }
+
+  KNOT_ORDERED(TypeID);
+};
+
+template <typename T>
+constexpr TypeID type_id(knot::Type<T> t) {
+  static_assert(t == decay(t));
+  static_assert(std::is_move_constructible_v<T>);
+  return {reinterpret_cast<uintptr_t>(&type_id<T>)};
+}
+
+} // namespace ooze
+
+template <>
+struct std::hash<ooze::TypeID> {
+  size_t operator()(ooze::TypeID t) const noexcept { return std::hash<uintptr_t>{}(t.id); }
+};
 
 namespace ooze {
 

@@ -4,7 +4,6 @@
 #include "ooze/async_fn.h"
 #include "ooze/span.h"
 #include "ooze/traits.h"
-#include "ooze/type.h"
 
 #include <exception>
 #include <functional>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/type.h"
+#include <memory>
 
 namespace ooze {
 
