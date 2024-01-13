@@ -1,7 +1,6 @@
 #include "test.h"
 
 #include "frontend_helpers.h"
-#include "parser.h"
 #include "parser_flat.h"
 #include "pretty_print.h"
 #include "sema.h"
