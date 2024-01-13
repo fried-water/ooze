@@ -993,8 +993,7 @@ TypeRef language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID i
     const TypeID tid = std::visit(
       [](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, lookup_literal(ast, id));
     const auto it = tc.native.find(tid);
-    assert(it != tc.native.end());
-    return it->second.first;
+    return it != tc.native.end() ? it->second.first : g.add_node(TypeTag::Leaf, tid);
   }
 
   case ASTTag::ExprBorrow: return tc.borrow_floating;

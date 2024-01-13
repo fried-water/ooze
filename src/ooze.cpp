@@ -629,10 +629,10 @@ int main(int argc, const char** argv, Env e) {
   Executor executor = make_task_executor();
 
   const auto result =
-    parse_scripts(std::move(e), cmd->filenames).append_state(Bindings{}).and_then([&](Env env, Bindings bindings) {
+    parse_scripts(std::move(e), cmd->filenames).append_state(Bindings2{}).and_then([&](Env env, Bindings2 bindings) {
       if(cmd->run_main) {
         return run_to_string(executor, std::move(env), std::move(bindings), "main()")
-          .map([](std::string s, Env e, Bindings b) {
+          .map([](std::string s, Env e, Bindings2 b) {
             return std::tuple(make_vector(std::move(s)), std::move(e), std::move(b));
           });
       } else {

@@ -1,6 +1,7 @@
 #include "test.h"
 
-#include "ooze/executor/task_executor.h"
+#include "bindings.h"
+#include "ooze/executor/sequential_executor.h"
 #include "pretty_print.h"
 #include "repl.h"
 
@@ -8,107 +9,178 @@ namespace ooze {
 
 namespace {
 
+const TypeID I = type_id(knot::Type<i32>{});
+
 #define step_and_compare(_EXP, _STR, _ENV, _BND)                                                                       \
-  [&](const std::vector<std::string>& e, std::string_view str, Env env, Bindings b) {                                  \
-    auto [a, e1, b1] = step_repl(executor, std::move(env), std::move(b), str);                                         \
+  [&](const std::vector<std::string>& e, std::string_view str, Env env, Bindings2 b) {                                 \
+    auto [a, e1, b1] = step_repl(make_seq_executor(), std::move(env), std::move(b), str);                              \
     if(e != a) {                                                                                                       \
       fmt::print("E: {}\n", knot::debug(e));                                                                           \
       fmt::print("A: {}\n", knot::debug(a));                                                                           \
     }                                                                                                                  \
     check_range(e, a);                                                                                                 \
     return std::tuple(std::move(e1), std::move(b1));                                                                   \
-  }(_EXP, _STR, std::move(_ENV), std::move(_BND))
+  }(_EXP, _STR, _ENV, _BND)
 
 } // namespace
 
 BOOST_AUTO_TEST_SUITE(repl)
 
 BOOST_AUTO_TEST_CASE(empty) {
-  auto executor = make_task_executor();
-  const auto [ouptut, env, bindings] = step_repl(executor, {}, {}, "");
+  const auto [ouptut, env, bindings] = step_repl(make_seq_executor(), {}, {}, "");
   BOOST_CHECK(ouptut.empty());
   BOOST_CHECK(bindings.empty());
 }
 
 BOOST_AUTO_TEST_CASE(run_expr) {
-  auto executor = make_task_executor();
   Env e = create_primative_env();
   e.add_function("pow", [](int x) { return x * x; });
 
-  Bindings b;
+  Bindings2 b;
   std::tie(e, b) = step_and_compare({"3"}, "3", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"abc"}, "'abc'", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"9"}, "pow(3)", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(pass_binding_by_value) {
-  auto executor = make_task_executor();
+BOOST_AUTO_TEST_CASE(move_only_binding) {
   Env e = create_primative_env();
   e.add_type<std::unique_ptr<int>>("unique_int");
 
   e.add_function("make_ptr", [](int x) { return std::make_unique<int>(x); });
   e.add_function("take_ptr", [](std::unique_ptr<int> x) { return *x; });
 
-  Bindings b;
+  Bindings2 b;
   std::tie(e, b) = step_and_compare({}, "let x = make_ptr(5)", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"5"}, "take_ptr(x)", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(store_function) {
-  auto executor = make_task_executor();
+BOOST_AUTO_TEST_CASE(store_env_function) {
   Env e = create_primative_env();
 
   e.add_function("f", []() { return 37; });
 
-  Bindings b;
+  Bindings2 b;
   std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
-
-  BOOST_REQUIRE_EQUAL(1, b.size());
-  Binding& x = std::get<Binding>(b.at("x").v);
-  BOOST_CHECK(function_type(tuple_type<TypeID>({}), leaf_type(type_id(knot::Type<int>{}))) == x.type);
-
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(bindings) {
-  auto executor = make_task_executor();
-  Env e;
-  Bindings b;
+BOOST_AUTO_TEST_CASE(store_script_function) {
+  Env e = check_result(parse_scripts(create_primative_env(), make_sv_array("fn f() -> i32 = 37")));
+  Bindings2 b;
 
-  std::tie(e, b) = step_and_compare({"0 binding(s)"}, ":b", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({}, "let x =  5", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
+}
+
+BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", create_empty_env(), Bindings2{}); }
+
+BOOST_AUTO_TEST_CASE(single_binding) {
+  Env e = create_empty_env();
+  Bindings2 b;
+
+  e.add_type<i32>("i32");
+
+  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
 
-  const std::vector<std::string> one_unknown_binding{
-    "1 binding(s)", fmt::format("  x: type 0x{:x}", type_id(knot::Type<int>{}).id)};
+  const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
+}
 
-  std::tie(e, b) = step_and_compare(one_unknown_binding, ":b", std::move(e), std::move(b));
+BOOST_AUTO_TEST_CASE(multi_binding) {
+  Env e = create_empty_env();
+  Bindings2 b;
 
-  std::tie(e, b) = step_and_compare({}, "let y =  'abc'", std::move(e), std::move(b));
+  e.add_type<i32>("i32");
+  e.add_type<std::string>("string");
+
+  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({}, "let y = 'abc'", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
 
-  e.add_type<int>("i32");
+  const std::vector<std::string> exp{"2 binding(s)", "  x: i32", "  y: string"};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
+}
 
-  const std::vector<std::string> two_bindings{
-    "2 binding(s)", "  x: i32", fmt::format("  y: {}", pretty_print(e, type_id(knot::Type<std::string>{})))};
+BOOST_AUTO_TEST_CASE(tuple_binding) {
+  Env e = create_empty_env();
+  Bindings2 b;
 
-  std::tie(e, b) = step_and_compare(two_bindings, ":b", std::move(e), std::move(b));
-  BOOST_REQUIRE(b.size() == 2);
+  e.add_type<i32>("i32");
+  e.add_type<std::string>("string");
 
-  Binding& x = std::get<Binding>(b.at("x").v);
-  Binding& y = std::get<Binding>(b.at("y").v);
+  std::tie(e, b) = step_and_compare({}, "let x = (5, 'abc')", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
 
-  BOOST_CHECK(leaf_type(type_id(knot::Type<int>{})) == x.type);
-  BOOST_CHECK(leaf_type(type_id(knot::Type<std::string>{})) == y.type);
+  const std::vector<std::string> exp{"1 binding(s)", "  x: (i32, string)"};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
+}
 
-  BOOST_CHECK_EQUAL(5, any_cast<int>(std::move(x.future).wait()));
-  BOOST_CHECK_EQUAL("abc", any_cast<std::string>(std::move(y.future).wait()));
+BOOST_AUTO_TEST_CASE(unnamed_binding) {
+  Env e = create_empty_env();
+  Bindings2 b;
+
+  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
+
+  const std::vector<std::string> exp{"1 binding(s)", fmt::format("  x: type 0x{:x}", I.id)};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
+}
+
+BOOST_AUTO_TEST_CASE(post_named_binding) {
+  Env e = create_empty_env();
+  Bindings2 b;
+
+  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
+  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
+
+  e.add_type<i32>("i32");
+
+  const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
+}
+
+BOOST_AUTO_TEST_CASE(binding_not_ready) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  auto [promise, future] = make_promise_future();
+
+  Bindings2 b;
+  b.emplace(
+    "x", Binding2{e.tg.add_node(TypeTag::Leaf, I), make_vector(Binding{floating_type<TypeID>(), std::move(future)})});
+
+  const std::vector<std::string> exp_not_ready{"1 binding(s)", "  x: *i32"};
+  std::tie(e, b) = step_and_compare(exp_not_ready, ":b", std::move(e), std::move(b));
+
+  std::move(promise).send(0);
+
+  const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
+}
+
+BOOST_AUTO_TEST_CASE(binding_borrowed) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  Bindings2 b;
+  b.emplace("x",
+            Binding2{e.tg.add_node(TypeTag::Leaf, I), make_vector(Binding{floating_type<TypeID>(), Future(Any(0))})});
+
+  auto borrowed = borrow(b["x"].values[0]);
+
+  const std::vector<std::string> exp_borrowed{"1 binding(s)", "  x: &i32"};
+  std::tie(e, b) = step_and_compare(exp_borrowed, ":b", std::move(e), std::move(b));
+
+  borrowed = {};
+
+  const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
+  step_and_compare(exp, ":b", std::move(e), std::move(b));
 }
 
 BOOST_AUTO_TEST_CASE(bindings_post_dump) {
-  auto executor = make_task_executor();
   Env e = create_primative_env();
-  Bindings b;
+  Bindings2 b;
 
   std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"5"}, "x", std::move(e), std::move(b));
@@ -117,12 +189,20 @@ BOOST_AUTO_TEST_CASE(bindings_post_dump) {
   step_and_compare(expected, ":b", std::move(e), std::move(b));
 }
 
+BOOST_AUTO_TEST_CASE(no_to_string, *boost::unit_test::disabled()) {
+  Env e = create_empty_env();
+  e.add_type<i32>("i32");
+
+  // TODO add some unique identifier (ptr? how should tuples be handled?)
+  const std::vector<std::string> exp{"<value of i32>"};
+  step_and_compare(exp, "1", std::move(e), Bindings2{});
+}
+
 BOOST_AUTO_TEST_CASE(types) {
   struct A {};
   struct B {};
 
-  auto executor = make_task_executor();
-  Env e;
+  Env e = create_empty_env();
 
   add_tieable_type<int>(e, "i32");
 
@@ -134,11 +214,10 @@ BOOST_AUTO_TEST_CASE(types) {
   const std::vector<std::string> expected{
     "2 type(s)", "  A                    [to_string: N]", "  i32                  [to_string: Y]"};
 
-  step_and_compare(expected, ":t", std::move(e), Bindings{});
+  step_and_compare(expected, ":t", std::move(e), Bindings2{});
 }
 
 BOOST_AUTO_TEST_CASE(functions) {
-  auto executor = make_task_executor();
   Env e = create_primative_env();
 
   struct A {};
@@ -167,7 +246,7 @@ BOOST_AUTO_TEST_CASE(functions) {
     "  write(&string, &string) -> ()",
     "  write(&string, &vector<byte>) -> ()"};
 
-  step_and_compare(expected, ":f", std::move(e), Bindings{});
+  step_and_compare(expected, ":f", std::move(e), Bindings2{});
 }
 
 BOOST_AUTO_TEST_SUITE_END()

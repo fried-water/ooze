@@ -4,6 +4,15 @@
 
 namespace ooze {
 
+enum class BindingState { Ready, Borrowed, NotReady };
+
+inline BindingState find_binding_state(const Binding& binding) {
+  const auto& [t, f, b] = binding;
+  return f.ready() || (b.valid() && b.unique())
+           ? BindingState::Ready
+           : (b.valid() ? BindingState::Borrowed : BindingState::NotReady);
+}
+
 inline Future take(Binding binding) { return std::move(binding.future); }
 
 inline BorrowedFuture borrow(Binding& b) {
@@ -12,6 +21,8 @@ inline BorrowedFuture borrow(Binding& b) {
   }
   return b.borrowed_future;
 }
+
+inline Binding await(Binding b) { return Binding{std::move(b.type), take(std::move(b))}; }
 
 inline std::vector<Future> take(Tree<Binding> tree) {
   return knot::preorder_accumulate(std::move(tree), std::vector<Future>{}, [](auto v, Binding b) {
