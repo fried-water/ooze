@@ -35,6 +35,8 @@ pretty_print(Span<std::string_view>, const AST&, const TypeGraph&, const TypeNam
 
 std::string pretty_print(Span<std::string_view>, const TypeGraph&, const TypeNames&, TypeRef);
 
+std::string pretty_print_fn_type(Span<std::string_view>, const TypeGraph&, const TypeNames&, TypeRef);
+
 template <typename R, typename T>
 R untype(const Env& e, const T& t) {
   return knot::map<R>(t,

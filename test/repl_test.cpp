@@ -233,18 +233,18 @@ BOOST_AUTO_TEST_CASE(functions) {
   e.add_function("concat", [](const std::string& a, const std::string& b) { return a + b; });
 
   const std::vector<std::string> expected{
-    "9 function(s)",
+    "58 function(s)",
     "  clone [13 overloads]",
-    "  to_string [12 overloads]",
-    "  serialize [12 overloads]",
-    "  deserialize [12 overloads]",
     "  concat(&string, &string) -> string",
     fmt::format("  create_a() -> {}", pretty_print(e, a_type)),
+    "  deserialize [12 overloads]",
     "  pow(i32) -> i32",
     "  read(&string) -> byte_vector",
     "  read(&string) -> string",
     fmt::format("  read_a(&{}) -> ()", pretty_print(e, a_type)),
+    "  serialize [12 overloads]",
     fmt::format("  take_a({}) -> ()", pretty_print(e, a_type)),
+    "  to_string [12 overloads]",
     "  write(&string, &byte_vector) -> ()",
     "  write(&string, &string) -> ()"};
 

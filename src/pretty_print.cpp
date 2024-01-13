@@ -412,4 +412,16 @@ std::string pretty_print(Span<std::string_view> srcs, const TypeGraph& g, const 
   return std::move(os).str();
 }
 
+std::string
+pretty_print_fn_type(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, TypeRef t) {
+  assert(g.get<TypeTag>(t) == TypeTag::Fn);
+
+  std::ostringstream os;
+
+  const auto children = g.fanout(t);
+  pretty_print(os, srcs, g, type_names, children[0]);
+  pretty_print(os << " -> ", srcs, g, type_names, children[1]);
+  return std::move(os).str();
+}
+
 } // namespace ooze

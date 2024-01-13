@@ -128,6 +128,20 @@ BOOST_AUTO_TEST_CASE(ast) {
   test(parse2, "fn f() -> T = x\n\nfn g() -> T = x", "fn f() -> T = x fn g() -> T = x");
 }
 
+BOOST_AUTO_TEST_CASE(fn_type) {
+  const auto srcs = make_sv_array("fn(T) -> T");
+  const TypeNames names{{"T", TypeID{1}}};
+
+  const TypeGraph tg = std::get<1>(
+    check_result(parse_type2({}, {}, SrcID{0}, srcs[0]).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    })));
+
+  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, tg, names, TypeRef(tg.num_nodes() - 1)));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

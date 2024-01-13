@@ -164,29 +164,37 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const FunctionsCmd&) {
-  std::vector<std::pair<std::string, std::string>> functions;
+  std::vector<std::pair<std::string_view, std::string>> functions;
 
-  const std::array<std::string, 4> COLLAPSE{{"clone", "to_string", "serialize", "deserialize"}};
+  const auto srcs = make_sv_array(env.src);
 
-  for(const auto& [name, fs] : env.functions) {
-    if(std::find(COLLAPSE.begin(), COLLAPSE.end(), name) == COLLAPSE.end()) {
-      for(const auto& f : fs) {
-        functions.emplace_back(
-          name, fmt::format("{}{} -> {}", name, pretty_print(env, *f.type.input), pretty_print(env, *f.type.output)));
-      }
+  for(const ASTID id : env.ast.forest.root_ids()) {
+    const ASTID ident = *env.ast.forest.first_child(id);
+    const TypeRef type = env.ast.types[ident.get()];
+    if(env.tg.get<TypeTag>(type) == TypeTag::Fn) {
+      const std::string_view name = sv(srcs, env.ast.srcs[ident.get()]);
+      functions.emplace_back(name, pretty_print_fn_type(srcs, env.tg, env.native_types.names, type));
     }
   }
+
+  functions = sorted(std::move(functions));
 
   std::vector<std::string> output{fmt::format("{} function(s)", functions.size())};
 
-  for(const std::string& name : COLLAPSE) {
-    if(const auto it = env.functions.find(name); it != env.functions.end()) {
-      output.push_back(fmt::format("  {} [{} overloads]", name, it->second.size()));
-    }
-  }
+  auto it = functions.begin();
+  while(it != functions.end()) {
+    const auto& [name, type] = *it;
+    const auto next_it = std::find_if(it, functions.end(), [&](const auto& p) { return p.first != it->first; });
 
-  for(const auto& [name, str] : sorted(std::move(functions))) {
-    output.push_back(fmt::format("  {}", str));
+    if(const auto count = std::distance(it, next_it); count == 1) {
+      output.push_back(fmt::format("  {}{}", name, type));
+    } else if(count <= 5) {
+      std::for_each(it, next_it, [&](const auto& p) { output.push_back(fmt::format("  {}{}", p.first, p.second)); });
+    } else {
+      output.push_back(fmt::format("  {} [{} overloads]", name, count));
+    }
+
+    it = next_it;
   }
 
   return std::tuple(std::move(output), std::move(env), std::move(bindings));
