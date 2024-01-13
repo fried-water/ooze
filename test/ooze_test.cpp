@@ -30,7 +30,7 @@ StringResult<std::pair<TypeRef, std::vector<Any>>, Env> run(Env env, std::string
 template <typename T>
 void check_binding(
   const Env& e, const std::pair<TypeRef, std::vector<Any>>& binding, std::string_view exp_type, const T& exp_value) {
-  BOOST_CHECK_EQUAL(exp_type, pretty_print(make_sv_array(e.src), e.tg, binding.first));
+  BOOST_CHECK_EQUAL(exp_type, pretty_print(make_sv_array(e.src), e.tg, e.native_types.names, binding.first));
   compare(exp_value, binding.second);
 }
 

@@ -57,6 +57,8 @@ struct Env {
   TypeGraph tg;
   TypeCache type_cache;
 
+  NativeTypeInfo native_types;
+
   std::unordered_map<std::string, TypeRef> flat_types;
   std::unordered_map<ASTID, AsyncFn> flat_functions;
 
@@ -81,7 +83,7 @@ struct Env {
   }
 
   template <typename T>
-  TypeRef add_type(std::string_view name, std::optional<bool> copy_override = {}) {
+  void add_type(std::string_view name, std::optional<bool> copy_override = {}) {
     const TypeID type = type_id(knot::Type<T>{});
 
     constexpr bool is_default_copy =
@@ -93,6 +95,7 @@ struct Env {
     if(is_copy_type) {
       assert(std::is_copy_constructible_v<T>);
       copy_types.insert(type);
+      native_types.copyable.insert(type);
     }
 
     if constexpr(std::is_copy_constructible_v<T>) {
@@ -102,12 +105,7 @@ struct Env {
     type_ids.emplace(std::string(name), type);
     type_names.emplace(type, std::string(name));
 
-    const TypeRef ref = add_or_get_type(tg, type_cache.native, knot::Type<T>{});
-    tg.set<SrcRef>(ref, SrcRef{SrcID{0}, append_src(src, name)});
-
-    flat_types.emplace(std::string(name), ref);
-
-    return ref;
+    insert(native_types.names, std::string(name), type);
   }
 };
 

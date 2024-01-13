@@ -354,15 +354,12 @@ TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& 
   } else if(tg.get<TypeTag>(type) == TypeTag::Leaf) {
     const TypeID type_id = tg.get<TypeID>(type);
     const auto it = env.type_cache.native.find(type_id);
-    return it != env.type_cache.native.end()
-             ? it->second.first
-             : env.tg.add_node(
-                 TypeTag::Leaf, SrcRef{SrcID{0}, append_src(env.src, sv(srcs, tg.get<SrcRef>(type)))}, type_id);
+    return it != env.type_cache.native.end() ? it->second.first : env.tg.add_node(TypeTag::Leaf, type_id);
   } else {
     std::vector<TypeRef> children =
       transform_to_vec(tg.fanout(type), [&](TypeRef fanout) { return copy_type(srcs, env, m, tg, fanout); });
 
-    const TypeRef new_type = env.tg.add_node(children, tg.get<TypeTag>(type), SrcRef{}, tg.get<TypeID>(type));
+    const TypeRef new_type = env.tg.add_node(children, tg.get<TypeTag>(type), tg.get<TypeID>(type));
     m.emplace(type, new_type);
     return new_type;
   }
@@ -656,19 +653,23 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
   const std::string env_src = env.src;
   const auto srcs = flatten(make_sv_array(env_src), files);
 
-  return accumulate_errors<ContextualError2>(
+  return accumulate_errors<std::pair<TypeRef, SrcRef>, ContextualError2>(
            [&srcs](SrcID src, AST ast, TypeGraph tg) {
              return parse2(std::move(ast), std::move(tg), src, srcs[src.get()]);
            },
            id_range(SrcID(1), SrcID(srcs.size())),
            env.ast,
            env.tg)
-    .append_state(std::move(env))
-    .and_then([&srcs](AST ast, TypeGraph tg, Env env) {
-      return sema(srcs, env.type_cache, env.type_ids, env.copy_types, std::move(ast), std::move(tg))
-        .append_state(std::move(env));
+    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
     })
-    .map([&srcs](CallGraphData cg, AST ast, TypeGraph tg, Env env) {
+    .and_then([&](AST ast, TypeGraph tg) {
+      return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
+    })
+    .append_state(std::move(env))
+    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env) {
       env = generate_functions(srcs, std::move(env), ast, tg, cg);
       return std::tuple(std::move(ast), std::move(tg), std::move(env));
     })
@@ -686,8 +687,13 @@ StringResult<Binding2, Env, Bindings2> run(ExecutorRef ex, Env env, Bindings2 st
   const auto srcs = make_sv_array(env_src, expr);
 
   return parse_repl2(std::move(ast), env.tg, SrcID{1}, srcs[1])
+    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    })
     .and_then([&](AST ast, TypeGraph tg) {
-      return sema(srcs, env.type_cache, env.type_ids, env.copy_types, std::move(ast), std::move(tg));
+      return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
     })
     .append_state(std::move(env), std::move(bindings))
     .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<Binding>> bindings) {
@@ -723,8 +729,13 @@ run_to_string(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view 
   const auto srcs = make_sv_array(env_src, expr);
 
   return parse_repl2(std::move(ast), env.tg, SrcID{1}, srcs[1])
+    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    })
     .and_then([&](AST ast, TypeGraph tg) {
-      return sema(srcs, env.type_cache, env.type_ids, env.copy_types, std::move(ast), std::move(tg));
+      return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
     })
     .and_then([&](CallGraphData cg, AST ast, TypeGraph tg) {
       const auto id = ASTID{i32(ast.forest.size() - 1)};
@@ -732,17 +743,17 @@ run_to_string(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view 
         return success(knot::Type<std::vector<ContextualError2>>{}, std::move(cg), std::move(ast), std::move(tg));
       } else {
         const TypeRef expr_type = ast.types[id.get()];
-        const TypeRef borrow_type = tg.add_node(std::array{expr_type}, TypeTag::Borrow, SrcRef{}, TypeID{});
-        const TypeRef tuple_type = tg.add_node(std::array{borrow_type}, TypeTag::Tuple, SrcRef{}, TypeID{});
-        const TypeRef string_type = tg.add_node(TypeTag::Leaf, string_ref, type_id(knot::Type<std::string>{}));
-        const TypeRef fn_type = tg.add_node(std::array{tuple_type, string_type}, TypeTag::Fn, SrcRef{}, TypeID{});
+        const TypeRef borrow_type = tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});
+        const TypeRef tuple_type = tg.add_node(std::array{borrow_type}, TypeTag::Tuple, TypeID{});
+        const TypeRef string_type = tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::string>{}));
+        const TypeRef fn_type = tg.add_node(std::array{tuple_type, string_type}, TypeTag::Fn, TypeID{});
 
         const ASTID borrow_id = append_root(ast, ASTTag::ExprBorrow, SrcRef{}, borrow_type, std::array{id});
         const ASTID tuple_id = append_root(ast, ASTTag::ExprTuple, SrcRef{}, tuple_type, std::array{borrow_id});
         const ASTID callee_id = append_root(ast, ASTTag::ExprIdent, to_string_ref, fn_type);
         const ASTID fn_id = append_root(ast, ASTTag::ExprCall, SrcRef{}, string_type, std::array{callee_id, tuple_id});
 
-        return sema(srcs, env.type_cache, env.type_ids, env.copy_types, std::move(ast), std::move(tg));
+        return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
       }
     })
     .append_state(std::move(env), std::move(bindings))

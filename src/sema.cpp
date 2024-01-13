@@ -185,7 +185,12 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
 }
 
 ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
-  Span<std::string_view> srcs, const TypeCache& tc, const Graph<ASTID>& ident_graph, AST ast, TypeGraph tg) {
+  Span<std::string_view> srcs,
+  const TypeCache& tc,
+  const TypeNames& type_names,
+  const Graph<ASTID>& ident_graph,
+  AST ast,
+  TypeGraph tg) {
   Map<ASTID, ASTID> binding_of;
 
   std::vector<ContextualError2> errors;
@@ -203,9 +208,9 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
          "no matching overload found",
          transform_to_vec(
            ident_graph.fanout(id),
-           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, ast.types[id.get()])); },
+           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, type_names, ast.types[id.get()])); },
            make_vector(fmt::format("deduced {} [{} candidate(s)]",
-                                   pretty_print(srcs, tg, ast.types[id.get()]),
+                                   pretty_print(srcs, tg, type_names, ast.types[id.get()]),
                                    ident_graph.fanout(id).size())))});
     } else {
       errors.push_back(
@@ -213,9 +218,9 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
          "ambiguous overload",
          transform_to_vec(
            ident_graph.fanout(id),
-           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, ast.types[id.get()])); },
-           make_vector(
-             fmt::format("deduced {} [{} candidate(s)]", pretty_print(srcs, tg, ast.types[id.get()]), matches)))});
+           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, type_names, ast.types[id.get()])); },
+           make_vector(fmt::format(
+             "deduced {} [{} candidate(s)]", pretty_print(srcs, tg, type_names, ast.types[id.get()]), matches)))});
     }
   }
 
@@ -272,16 +277,20 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env& e, const Type<Nam
 }
 
 ContextualResult2<void, TypeGraph>
-type_name_resolution(Span<std::string_view> srcs, const std::unordered_map<std::string, TypeID>& types, TypeGraph tg) {
+type_name_resolution(Span<std::string_view> srcs,
+                     const TypeNames& type_names,
+                     const std::vector<std::pair<TypeRef, SrcRef>>& type_srcs,
+                     TypeGraph tg) {
+
+  assert(std::is_sorted(type_names.begin(), type_names.end()));
+
   std::vector<ContextualError2> errors;
 
-  for(TypeRef t : tg.nodes()) {
-    if(tg.get<TypeTag>(t) == TypeTag::Leaf && tg.get<TypeID>(t) == TypeID{}) {
-      if(const auto it = types.find(std::string(sv(srcs, tg.get<SrcRef>(t)))); it != types.end()) {
-        tg.set<TypeID>(t, it->second);
-      } else {
-        errors.push_back(ContextualError2{tg.get<SrcRef>(t), "undefined type"});
-      }
+  for(const auto& [t, src] : type_srcs) {
+    if(const auto opt_id = find_id(type_names, sv(srcs, src)); opt_id) {
+      tg.set<TypeID>(t, *opt_id);
+    } else {
+      errors.push_back(ContextualError2{src, "undefined type"});
     }
   }
 
@@ -370,15 +379,8 @@ ContextualResult<CheckedFunction> overload_resolution(const Env& env, const Type
 }
 
 ContextualResult2<CallGraphData, AST, TypeGraph>
-sema(Span<std::string_view> srcs,
-     const TypeCache& tc,
-     const std::unordered_map<std::string, TypeID>& type_ids,
-     const std::unordered_set<TypeID>& copy_types,
-     AST ast,
-     TypeGraph tg) {
-  return type_name_resolution(srcs, type_ids, std::move(tg))
-    .map_state([&](TypeGraph tg) { return std::tuple(std::move(ast), std::move(tg)); })
-    .and_then([&](AST ast, TypeGraph tg) { return apply_language_rules(srcs, tc, std::move(ast), std::move(tg)); })
+sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, TypeGraph tg) {
+  return apply_language_rules(srcs, tc, native_types.names, std::move(ast), std::move(tg))
     .and_then([&](AST ast, TypeGraph tg) {
       return calculate_ident_graph(srcs, ast).append_state(std::move(ast), std::move(tg));
     })
@@ -387,19 +389,19 @@ sema(Span<std::string_view> srcs,
       return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
     })
     .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
-      return constraint_propagation(srcs, tc, copy_types, ig, propagations, std::move(ast), std::move(tg))
+      return constraint_propagation(srcs, tc, native_types, ig, propagations, std::move(ast), std::move(tg))
         .map([&](AST ast, TypeGraph tg) {
           return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
         });
     }))
     .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
-      return create_call_graph_data(srcs, tc, ig, std::move(ast), std::move(tg))
+      return create_call_graph_data(srcs, tc, native_types.names, ig, std::move(ast), std::move(tg))
         .map([&](CallGraphData cg, AST ast, TypeGraph tg) {
           return std::tuple(std::tuple(std::move(cg), std::move(propagations)), std::move(ast), std::move(tg));
         });
     }))
     .and_then(flattened([&](CallGraphData cg, auto propagations, AST ast, TypeGraph tg) {
-      auto errors = check_fully_resolved(srcs, propagations, ast, tg);
+      auto errors = check_fully_resolved(srcs, propagations, ast, tg, native_types.names);
       return value_or_errors(std::move(cg), std::move(errors), std::move(ast), std::move(tg));
     }));
 }

@@ -17,8 +17,8 @@ ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<Named
 TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
 ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
 
-ContextualResult2<void, TypeGraph>
-type_name_resolution(Span<std::string_view>, const std::unordered_map<std::string, TypeID>&, TypeGraph);
+ContextualResult2<void, TypeGraph> type_name_resolution(
+  Span<std::string_view>, const TypeNames&, const std::vector<std::pair<TypeRef, SrcRef>>&, TypeGraph);
 
 ContextualResult2<Graph<ASTID>> calculate_ident_graph(Span<std::string_view>, const AST&);
 
@@ -29,11 +29,6 @@ struct CallGraphData {
 };
 
 ContextualResult2<CallGraphData, AST, TypeGraph>
-sema(Span<std::string_view>,
-     const TypeCache&,
-     const std::unordered_map<std::string, TypeID>&,
-     const std::unordered_set<TypeID>& copy_types,
-     AST,
-     TypeGraph);
+sema(Span<std::string_view>, const TypeCache&, const NativeTypeInfo&, AST, TypeGraph);
 
 } // namespace ooze
