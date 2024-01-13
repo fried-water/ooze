@@ -5,7 +5,6 @@
 #include "ooze/executor.h"
 #include "ooze/future.h"
 #include "ooze/result.h"
-#include "ooze/tree.h"
 #include "ooze/type.h"
 
 #include <string>
@@ -23,17 +22,6 @@ struct Binding {
   Future future;
   BorrowedFuture borrowed_future;
 };
-
-using Bindings = std::unordered_map<std::string, Tree<Binding>>;
-
-Tree<Any> await(Tree<Binding>);
-
-Type<TypeID> type(const Tree<Binding>&);
-
-StringResult<void, Env> parse_script(Env, std::string_view script);
-
-StringResult<Tree<Binding>, Env, Bindings> run(ExecutorRef, Env, Bindings, std::string_view expr);
-StringResult<std::string, Env, Bindings> run_to_string(ExecutorRef, Env, Bindings, std::string_view expr);
 
 struct Binding2 {
   TypeRef type;
