@@ -201,6 +201,7 @@ BOOST_AUTO_TEST_CASE(types) {
   struct B {};
 
   Env e = create_empty_env();
+  e.add_type<std::string>("string");
 
   add_tieable_type<int>(e, "i32");
 
@@ -210,7 +211,10 @@ BOOST_AUTO_TEST_CASE(types) {
   e.add_function("to_string", [](const B&) { return std::string("B"); });
 
   const std::vector<std::string> expected{
-    "2 type(s)", "  A                    [to_string: N]", "  i32                  [to_string: Y]"};
+    "3 type(s)",
+    "  A                    [to_string: N]",
+    "  i32                  [to_string: Y]",
+    "  string               [to_string: N]"};
 
   step_and_compare(expected, ":t", std::move(e), Bindings{});
 }

@@ -52,6 +52,25 @@ TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& 
   }
 }
 
+template <typename Parser>
+ContextualResult2<CallGraphData, AST, TypeGraph>
+type_check(Parser p,
+           Span<std::string_view> srcs,
+           const TypeCache& tc,
+           const NativeTypeInfo& native_types,
+           AST ast,
+           TypeGraph tg) {
+  assert(srcs.size() == 2);
+
+  return p(std::move(ast), std::move(tg), SrcID{1}, srcs[1])
+    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    })
+    .and_then([&](AST ast, TypeGraph tg) { return sema(srcs, tc, native_types, std::move(ast), std::move(tg)); });
+}
+
 std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_function(
   Span<std::string_view> srcs,
   const AST& ast,
@@ -221,6 +240,22 @@ std::tuple<Env, Bindings> to_str_bindings(
 
 } // namespace
 
+StringResult<void> type_check_expr(const Env& env, std::string_view expr) {
+  const auto srcs = make_sv_array(env.src, expr);
+  return type_check(parse_expr2, srcs, env.type_cache, env.native_types, env.ast, env.tg)
+    .map_state(nullify())
+    .map(nullify())
+    .map_error([&](std::vector<ContextualError2> errors) { return contextualize(srcs, std::move(errors)); });
+}
+
+StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
+  const auto srcs = make_sv_array(env.src, fn);
+  return type_check(parse_function2, srcs, env.type_cache, env.native_types, env.ast, env.tg)
+    .map_state(nullify())
+    .map(nullify())
+    .map_error([&](std::vector<ContextualError2> errors) { return contextualize(srcs, std::move(errors)); });
+}
+
 StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
   const std::string env_src = env.src;
   const auto srcs = flatten(make_sv_array(env_src), files);
@@ -258,15 +293,7 @@ StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_b
 
   const auto srcs = make_sv_array(env_src, expr);
 
-  return parse_repl2(std::move(ast), env.tg, SrcID{1}, srcs[1])
-    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
-    })
-    .and_then([&](AST ast, TypeGraph tg) {
-      return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
-    })
+  return type_check(parse_repl2, srcs, env.type_cache, env.native_types, std::move(ast), env.tg)
     .append_state(std::move(env), std::move(bindings))
     .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       Binding result;
@@ -300,15 +327,7 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
 
   const auto srcs = make_sv_array(env_src, expr);
 
-  return parse_repl2(std::move(ast), env.tg, SrcID{1}, srcs[1])
-    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
-    })
-    .and_then([&](AST ast, TypeGraph tg) {
-      return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
-    })
+  return type_check(parse_repl2, srcs, env.type_cache, env.native_types, std::move(ast), env.tg)
     .and_then([&](CallGraphData cg, AST ast, TypeGraph tg) {
       const auto id = ASTID{i32(ast.forest.size() - 1)};
       if(ast.forest[id] == ASTTag::Assignment) {

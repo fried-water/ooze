@@ -1,16 +1,12 @@
 #include "pch.h"
 
 #include "bindings.h"
-#include "function_graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
 #include "ooze/executor/task_executor.h"
-#include "parser.h"
 #include "parser_combinators.h"
 #include "pretty_print.h"
 #include "repl.h"
-#include "sema.h"
-#include "type_check.h"
 
 #include <iostream>
 #include <map>
@@ -197,19 +193,10 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const TypesCmd&) {
-  std::map<std::string, bool> types;
-
-  for(const auto& [id, name] : env.type_names) {
-    TypedFunction to_string_wrap{
-      TypedPattern{ast::Ident{"x"}, borrow_type(leaf_type(id))},
-      {TypedCallExpr{{{ast::Ident{"to_string"}}}, {{std::vector{TypedExpr{ast::Ident{"x"}}}}}},
-       leaf_type(type_id(knot::Type<std::string>{}))}};
-
-    types[pretty_print(env, id)] =
-      type_check(env, std::move(to_string_wrap))
-        .and_then([&](TypedFunction f) { return overload_resolution(env, f); })
-        .has_value();
-  }
+  const auto types = sorted(transform_to_vec(env.native_types.names, [&](const auto& p) {
+    return std::pair(p.first,
+                     type_check_fn(env, fmt::format("(x: &{}) -> string = to_string(x)", p.first)).has_value());
+  }));
 
   std::vector<std::string> output{fmt::format("{} type(s)", types.size())};
   for(const auto& [name, info] : types) {
