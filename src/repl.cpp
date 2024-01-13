@@ -4,6 +4,7 @@
 #include "function_graph_construction.h"
 #include "io.h"
 #include "ooze/core.h"
+#include "ooze/executor/task_executor.h"
 #include "parser.h"
 #include "parser_combinators.h"
 #include "pretty_print.h"
@@ -17,6 +18,45 @@
 namespace ooze {
 
 namespace {
+
+struct Command {
+  bool run_main = false;
+  std::vector<std::string> filenames;
+};
+
+std::optional<Command> parse_cmd_line(int argc, const char** argv) {
+  if(argc <= 1) {
+    return Command{};
+  } else {
+    const std::string_view cmd = argv[1];
+
+    std::vector<std::string> filenames;
+    for(int i = 2; i < argc; i++) {
+      filenames.push_back(argv[i]);
+    }
+
+    if(cmd == "run") {
+      return Command{true, std::move(filenames)};
+    } else if(cmd == "repl") {
+      return Command{false, std::move(filenames)};
+    } else {
+      return std::nullopt;
+    }
+  }
+}
+
+StringResult<void, Env> parse_scripts(Env e, const std::vector<std::string>& filenames) {
+  std::vector<StringResult<std::string>> srcs = transform_to_vec(filenames, read_text_file);
+
+  std::vector<std::string> errors = knot::accumulate(srcs, std::vector<std::string>{}, [](auto acc, const auto& r) {
+    return r ? std::move(acc) : to_vec(std::move(r.error()), std::move(acc));
+  });
+
+  return errors.empty()
+           ? parse_scripts(std::move(e),
+                           transform_to_vec(srcs, [](const auto& r) { return std::string_view{r.value()}; }))
+           : StringResult<void, Env>{Failure{std::move(errors)}, std::move(e)};
+}
 
 struct HelpCmd {};
 struct EvalCmd {
@@ -260,6 +300,42 @@ std::tuple<Env, Bindings2> run_repl(ExecutorRef executor, Env env, Bindings2 bin
   }
 
   return {std::move(env), std::move(bindings)};
+}
+
+int repl_main(int argc, const char** argv, Env e) {
+  const std::optional<Command> cmd = parse_cmd_line(argc, argv);
+
+  if(!cmd) {
+    const char* msg =
+      "Usage:\n"
+      "  run [scripts...]\n"
+      "  repl [scripts...]\n";
+
+    fmt::print("{}", msg);
+    return 1;
+  }
+
+  Executor executor = make_task_executor();
+
+  const auto result =
+    parse_scripts(std::move(e), cmd->filenames).append_state(Bindings2{}).and_then([&](Env env, Bindings2 bindings) {
+      if(cmd->run_main) {
+        return run_to_string(executor, std::move(env), std::move(bindings), "main()")
+          .map([](std::string s, Env e, Bindings2 b) {
+            return std::tuple(make_vector(std::move(s)), std::move(e), std::move(b));
+          });
+      } else {
+        std::tie(env, bindings) = run_repl(executor, std::move(env), std::move(bindings));
+        return success(
+          knot::Type<std::vector<std::string>>{}, std::vector<std::string>{}, std::move(env), std::move(bindings));
+      }
+    });
+
+  for(const std::string& line : result ? result.value() : result.error()) {
+    fmt::print("{}\n", line);
+  }
+
+  return !result.has_value();
 }
 
 } // namespace ooze

@@ -1,4 +1,4 @@
-#include "ooze/core.h"
+#include "ooze/repl.h"
 
 #include <fmt/core.h>
 
@@ -51,7 +51,7 @@ ooze::Env create_env() {
 
 int main(int argc, const char** argv) {
   try {
-    return ooze::main(argc, argv, create_env());
+    return ooze::repl_main(argc, argv, create_env());
   } catch(const std::exception& e) {
     fmt::print("Error: uncaught exception {}\n", e.what());
   } catch(...) {
