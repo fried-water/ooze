@@ -40,9 +40,7 @@ Type copy_type(Span<std::string_view> srcs, Env& env, Map<Type, Type>& m, const 
   if(const auto it = m.find(type); it != m.end()) {
     return it->second;
   } else if(tg.get<TypeTag>(type) == TypeTag::Leaf) {
-    const TypeID type_id = tg.get<TypeID>(type);
-    const auto it = env.type_cache.native.find(type_id);
-    return it != env.type_cache.native.end() ? it->second.first : env.tg.add_node(TypeTag::Leaf, type_id);
+    return env.tg.add_node(TypeTag::Leaf, tg.get<TypeID>(type));
   } else {
     std::vector<Type> children =
       transform_to_vec(tg.fanout(type), [&](Type fanout) { return copy_type(srcs, env, m, tg, fanout); });

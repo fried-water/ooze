@@ -75,39 +75,30 @@ struct TypeCache {
   Type fn_floating;
   Type unit;
   Type boolean;
-
-  // leaf and borrowed type
-  std::unordered_map<TypeID, std::pair<Type, Type>> native;
 };
 
 template <typename T>
-Type add_or_get_type(TypeGraph& g, std::unordered_map<TypeID, std::pair<Type, Type>>& types, knot::Type<T> t) {
+Type add_type(TypeGraph& g, knot::Type<T> t) {
   const TypeID id = type_id(decay(t));
+  const Type type = g.add_node(TypeTag::Leaf, id);
 
-  auto it = types.find(id);
-  if(it == types.end()) {
-    const Type type = g.add_node(TypeTag::Leaf, id);
-    const Type borrow = g.add_node(std::array{type}, TypeTag::Borrow, TypeID{});
-    it = types.emplace(id, std::pair(type, borrow)).first;
-  }
-
-  return is_const_ref(t) ? it->second.second : it->second.first;
+  return is_const_ref(t) ? g.add_node(std::array{type}, TypeTag::Borrow, TypeID{}) : type;
 }
 
 template <typename F>
-Type add_fn(TypeGraph& g, std::unordered_map<TypeID, std::pair<Type, Type>>& existing_types, knot::Type<F> f) {
+Type add_fn(TypeGraph& g, knot::Type<F> f) {
   std::vector<Type> types;
   types.reserve(size(args(f)));
-  visit(args(f), [&](auto t) { types.push_back(add_or_get_type(g, existing_types, t)); });
+  visit(args(f), [&](auto t) { types.push_back(add_type(g, t)); });
   const Type args = g.add_node(types, TypeTag::Tuple, TypeID{});
 
   if constexpr(const auto fn_ret = return_types(f); size(fn_ret) == 1) {
-    const Type result = add_or_get_type(g, existing_types, head(fn_ret));
+    const Type result = add_type(g, head(fn_ret));
     return g.add_node(std::array{args, result}, TypeTag::Fn, TypeID{});
   } else {
     types.clear();
     types.reserve(size(fn_ret));
-    visit(fn_ret, [&](auto t) { types.push_back(add_or_get_type(g, existing_types, t)); });
+    visit(fn_ret, [&](auto t) { types.push_back(add_type(g, t)); });
     const Type result = g.add_node(types, TypeTag::Tuple, TypeID{});
     return g.add_node(std::array{args, result}, TypeTag::Fn, TypeID{});
   }
@@ -121,9 +112,6 @@ inline TypeCache create_type_cache(TypeGraph& g) {
   tc.fn_floating = g.add_node(std::array{tc.floating, tc.floating}, TypeTag::Fn, TypeID{});
   tc.unit = g.add_node(TypeTag::Tuple, TypeID{});
   tc.boolean = g.add_node(TypeTag::Leaf, type_id(knot::Type<bool>{}));
-
-  tc.native.emplace(type_id(knot::Type<bool>{}),
-                    std::pair(tc.boolean, g.add_node(std::array{tc.boolean}, TypeTag::Borrow, TypeID{})));
 
   return tc;
 }

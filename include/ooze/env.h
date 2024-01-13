@@ -44,8 +44,7 @@ struct Env {
 
   template <typename F>
   ASTID add_function(std::string_view name, F&& f) {
-    return add_function(
-      name, add_fn(tg, type_cache.native, decay(knot::Type<F>{})), create_async_function(std::forward<F>(f)));
+    return add_function(name, add_fn(tg, decay(knot::Type<F>{})), create_async_function(std::forward<F>(f)));
   }
 
   template <typename T>

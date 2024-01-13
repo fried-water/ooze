@@ -386,13 +386,11 @@ std::vector<TypeCheckError> find_binding_usage_errors(
 }
 
 Type language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID id) {
-
   switch(ast.forest[id]) {
   case ASTTag::ExprLiteral: {
     const TypeID tid = std::visit(
       [](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, lookup_literal(ast, id));
-    const auto it = tc.native.find(tid);
-    return it != tc.native.end() ? it->second.first : g.add_node(TypeTag::Leaf, tid);
+    return g.add_node(TypeTag::Leaf, tid);
   }
 
   case ASTTag::ExprBorrow: return tc.borrow_floating;
@@ -610,6 +608,11 @@ ContextualResult<void, AST, TypeGraph> constraint_propagation(
   AST ast,
   TypeGraph tg,
   bool debug) {
+
+  if(debug) {
+    fmt::print("Initial type graph size: {} ({} edges)\n", tg.num_nodes(), tg.num_edges());
+  }
+
   std::vector<TypeCheckError> cp_errors;
   std::tie(tg, ast.types, cp_errors) = constraint_propagation(
     srcs, tc, native_types.names, propagations, ast.forest, ig, std::move(tg), std::move(ast.types), debug);
@@ -640,6 +643,10 @@ ContextualResult<void, AST, TypeGraph> constraint_propagation(
                              find_invalid_borrows(ast, tg),
                              find_returned_borrows(ast, tg),
                              find_binding_usage_errors(srcs, native_types.copyable, ast, tg, ig))));
+
+  if(debug) {
+    fmt::print("Final type graph size: {} ({} edges)\n", tg.num_nodes(), tg.num_edges());
+  }
 
   return void_or_errors(std::move(errors), std::move(ast), std::move(tg));
 }
