@@ -239,12 +239,12 @@ BOOST_AUTO_TEST_CASE(functions) {
     "  concat(&string, &string) -> string",
     fmt::format("  create_a() -> {}", pretty_print(e, a_type)),
     "  pow(i32) -> i32",
+    "  read(&string) -> byte_vector",
     "  read(&string) -> string",
-    "  read(&string) -> vector<byte>",
     fmt::format("  read_a(&{}) -> ()", pretty_print(e, a_type)),
     fmt::format("  take_a({}) -> ()", pretty_print(e, a_type)),
-    "  write(&string, &string) -> ()",
-    "  write(&string, &vector<byte>) -> ()"};
+    "  write(&string, &byte_vector) -> ()",
+    "  write(&string, &string) -> ()"};
 
   step_and_compare(expected, ":f", std::move(e), Bindings2{});
 }

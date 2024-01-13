@@ -43,7 +43,7 @@ Env create_primative_env() {
 
   add_tieable_type<std::string>(env, "string");
 
-  env.add_type<std::vector<std::byte>>("vector<byte>");
+  env.add_type<std::vector<std::byte>>("byte_vector");
 
   env.add_function("write", [](const std::string& file, const std::vector<std::byte>& bytes) {
     const auto r = write_binary_file(file, bytes);
