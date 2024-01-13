@@ -4,8 +4,6 @@
 
 namespace ooze {
 
-using namespace ast;
-
 namespace {
 
 void print_literal(std::ostream& os, const Literal& l) {

@@ -7,8 +7,6 @@
 
 namespace ooze {
 
-using namespace ast;
-
 namespace {
 
 struct MismatchedType {
