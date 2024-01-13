@@ -77,7 +77,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   };
 }
 
-ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
+ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
   Span<std::string_view> srcs,
   const TypeCache& tc,
   const TypeNames& type_names,
@@ -86,7 +86,7 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
   TypeGraph tg) {
   Map<ASTID, ASTID> binding_of;
 
-  std::vector<ContextualError2> errors;
+  std::vector<ContextualError> errors;
 
   for(ASTID id : ast.forest.ids()) {
     if(ast.forest[id] != ASTTag::ExprIdent) continue;
@@ -149,7 +149,7 @@ ContextualResult2<CallGraphData, AST, TypeGraph> create_call_graph_data(
 
 } // namespace
 
-ContextualResult2<void, TypeGraph>
+ContextualResult<void, TypeGraph>
 type_name_resolution(Span<std::string_view> srcs,
                      const TypeNames& type_names,
                      const std::vector<std::pair<TypeRef, SrcRef>>& type_srcs,
@@ -157,20 +157,20 @@ type_name_resolution(Span<std::string_view> srcs,
 
   assert(std::is_sorted(type_names.begin(), type_names.end()));
 
-  std::vector<ContextualError2> errors;
+  std::vector<ContextualError> errors;
 
   for(const auto& [t, src] : type_srcs) {
     if(const auto opt_id = find_id(type_names, sv(srcs, src)); opt_id) {
       tg.set<TypeID>(t, *opt_id);
     } else {
-      errors.push_back(ContextualError2{src, "undefined type"});
+      errors.push_back(ContextualError{src, "undefined type"});
     }
   }
 
   return void_or_errors(std::move(errors), std::move(tg));
 }
 
-ContextualResult2<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) {
+ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) {
   IdentGraphCtx ctx = {
     std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
       return ast.forest[id] == ASTTag::Assignment
@@ -184,14 +184,14 @@ ContextualResult2<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> src
   }
 
   return ctx.undeclared_bindings.empty()
-           ? ContextualResult2<Graph<ASTID>>{Graph<ASTID>(ctx.fanouts)}
-           : ContextualResult2<Graph<ASTID>>{Failure{transform_to_vec(ctx.undeclared_bindings, [&](ASTID id) {
-               return ContextualError2{
+           ? ContextualResult<Graph<ASTID>>{Graph<ASTID>(ctx.fanouts)}
+           : ContextualResult<Graph<ASTID>>{Failure{transform_to_vec(ctx.undeclared_bindings, [&](ASTID id) {
+               return ContextualError{
                  ast.srcs[id.get()], fmt::format("use of undeclared binding '{}'", sv(srcs, ast.srcs[id.get()]))};
              })}};
 }
 
-ContextualResult2<CallGraphData, AST, TypeGraph>
+ContextualResult<CallGraphData, AST, TypeGraph>
 sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, TypeGraph tg) {
   return apply_language_rules(srcs, tc, native_types.names, std::move(ast), std::move(tg))
     .and_then([&](AST ast, TypeGraph tg) {

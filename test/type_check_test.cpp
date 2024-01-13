@@ -66,7 +66,7 @@ template <typename Parser>
 void test_tc_error(Parser parser,
                    const Env& e,
                    std::string_view src,
-                   const std::vector<ContextualError2>& expected_errors,
+                   const std::vector<ContextualError>& expected_errors,
                    bool debug = false) {
   const auto errors = check_error(run_tc(parser, e, src, debug));
   if(expected_errors != errors) {
@@ -77,7 +77,7 @@ void test_tc_error(Parser parser,
 }
 
 void test_tc_error(
-  const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors, bool debug = false) {
+  const Env& e, std::string_view src, const std::vector<ContextualError>& expected_errors, bool debug = false) {
   test_tc_error(parse_function, e, src, expected_errors, debug);
 }
 
@@ -141,7 +141,7 @@ void test_alr(Parser p, std::string_view src, std::vector<std::string> exp) {
 }
 
 template <typename Parser>
-void test_alr_error(Parser p, std::string_view src, std::vector<ContextualError2> exp) {
+void test_alr_error(Parser p, std::string_view src, std::vector<ContextualError> exp) {
   BOOST_CHECK(exp == check_error(run_alr(p, create_primative_env(), src)));
 }
 

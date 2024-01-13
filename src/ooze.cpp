@@ -53,7 +53,7 @@ TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& 
 }
 
 template <typename Parser>
-ContextualResult2<CallGraphData, AST, TypeGraph>
+ContextualResult<CallGraphData, AST, TypeGraph>
 type_check(Parser p,
            Span<std::string_view> srcs,
            const TypeCache& tc,
@@ -246,7 +246,7 @@ StringResult<void> type_check_expr(const Env& env, std::string_view expr) {
   return type_check(parse_expr, srcs, env.type_cache, env.native_types, env.ast, env.tg)
     .map_state(nullify())
     .map(nullify())
-    .map_error([&](std::vector<ContextualError2> errors) { return contextualize(srcs, std::move(errors)); });
+    .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
 }
 
 StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
@@ -254,14 +254,14 @@ StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
   return type_check(parse_function, srcs, env.type_cache, env.native_types, env.ast, env.tg)
     .map_state(nullify())
     .map(nullify())
-    .map_error([&](std::vector<ContextualError2> errors) { return contextualize(srcs, std::move(errors)); });
+    .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
 }
 
 StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
   const std::string env_src = env.src;
   const auto srcs = flatten(make_sv_array(env_src), files);
 
-  return accumulate_errors<std::pair<TypeRef, SrcRef>, ContextualError2>(
+  return accumulate_errors<std::pair<TypeRef, SrcRef>, ContextualError>(
            [&srcs](SrcID src, AST ast, TypeGraph tg) {
              return parse(std::move(ast), std::move(tg), src, srcs[src.get()]);
            },
@@ -332,7 +332,7 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
     .and_then([&](CallGraphData cg, AST ast, TypeGraph tg) {
       const auto id = ASTID{i32(ast.forest.size() - 1)};
       if(ast.forest[id] == ASTTag::Assignment) {
-        return success(knot::Type<std::vector<ContextualError2>>{}, std::move(cg), std::move(ast), std::move(tg));
+        return success(knot::Type<std::vector<ContextualError>>{}, std::move(cg), std::move(ast), std::move(tg));
       } else {
         const TypeRef expr_type = ast.types[id.get()];
         const TypeRef borrow_type = tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});

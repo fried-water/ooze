@@ -32,8 +32,8 @@ namespace {
   }(_EXP_AST, _EXP_TYPES, _EXP_SRCS, _ACT)
 
 template <typename T, typename... Ts>
-void check_single_error(ContextualError2 expected, ContextualResult2<T, Ts...> result) {
-  const std::vector<ContextualError2> err = check_error(std::move(result));
+void check_single_error(ContextualError expected, ContextualResult<T, Ts...> result) {
+  const std::vector<ContextualError> err = check_error(std::move(result));
   BOOST_REQUIRE(err.size() == 1);
 
   if(expected != err.front()) {

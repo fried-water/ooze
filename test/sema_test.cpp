@@ -22,7 +22,7 @@ void test_nr(Env e, std::string_view src, const std::vector<TypeID>& exp) {
   }
 }
 
-void test_nr_error(Env e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
+void test_nr_error(Env e, std::string_view src, const std::vector<ContextualError>& expected_errors) {
   const auto errors = check_error(
     parse_and_name_resolution(parse_function, make_sv_array(e.src, src), e.native_types.names, {}, {}, SrcID{1}));
 
@@ -86,7 +86,7 @@ auto run_sema(Env e, std::string_view src) {
     });
 }
 
-void test_sema_error(Env e, std::string_view src, const std::vector<ContextualError2>& expected_errors) {
+void test_sema_error(Env e, std::string_view src, const std::vector<ContextualError>& expected_errors) {
   const auto srcs = make_sv_array(e.src, src);
   const auto [errors, ast, type] = check_error_state(
     parse_and_name_resolution(parse_function, srcs, e.native_types.names, std::move(e.ast), std::move(e.tg), SrcID{1})
@@ -321,8 +321,7 @@ BOOST_AUTO_TEST_CASE(sema_undeclared_function) {
 }
 
 BOOST_AUTO_TEST_CASE(sema_unresolved_fn) {
-  const auto exp_errors =
-    std::vector<ContextualError2>{{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
+  const auto exp_errors = std::vector<ContextualError>{{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
   BOOST_CHECK(exp_errors == check_error(run_sema(create_primative_env(), "fn f(x) -> _ = x")));
 }
 
@@ -332,7 +331,7 @@ BOOST_AUTO_TEST_CASE(ig_unbound) {
   const auto srcs = make_sv_array("x");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError2> exp_errors = {{{SrcID{0}, {0, 1}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {0, 1}}, "use of undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -340,7 +339,7 @@ BOOST_AUTO_TEST_CASE(ig_unbound_fn) {
   const auto srcs = make_sv_array("x()");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError2> exp_errors = {{{SrcID{0}, {0, 1}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {0, 1}}, "use of undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -377,7 +376,7 @@ BOOST_AUTO_TEST_CASE(ig_scope_and_unbound) {
   const auto srcs = make_sv_array("{ let x = 1; (x, y)}");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError2> exp_errors = {{{SrcID{0}, {17, 18}}, "use of undeclared binding 'y'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {17, 18}}, "use of undeclared binding 'y'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -397,7 +396,7 @@ BOOST_AUTO_TEST_CASE(ig_self_assign) {
   const auto srcs = make_sv_array("{ let x = x; x}");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError2> exp_errors = {{{SrcID{0}, {10, 11}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "use of undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -437,7 +436,7 @@ BOOST_AUTO_TEST_CASE(ig_fn_unbound) {
   const auto srcs = make_sv_array("() -> T = x");
   const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError2> exp_errors = {{{SrcID{0}, {10, 11}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "use of undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 

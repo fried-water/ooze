@@ -111,42 +111,42 @@ cluster_adjacent(const std::vector<std::vector<ASTPropagation>>& propagations, s
   return groups;
 }
 
-ContextualError2 generate_error(Span<std::string_view> srcs,
-                                const AST& ast,
-                                const TypeGraph& tg,
-                                const TypeNames& type_names,
-                                const TypeCheckError& error) {
+ContextualError generate_error(Span<std::string_view> srcs,
+                               const AST& ast,
+                               const TypeGraph& tg,
+                               const TypeNames& type_names,
+                               const TypeCheckError& error) {
   const TypeRef type = ast.types[error.id.get()];
   const SrcRef ref = ast.srcs[error.id.get()];
   return std::visit(
     Overloaded{
       [&](const MismatchedType& m) {
-        return ContextualError2{ref,
-                                fmt::format("expected {}, given {}",
-                                            pretty_print(srcs, tg, type_names, type),
-                                            pretty_print(srcs, tg, type_names, m.conflicting_type))};
+        return ContextualError{ref,
+                               fmt::format("expected {}, given {}",
+                                           pretty_print(srcs, tg, type_names, type),
+                                           pretty_print(srcs, tg, type_names, m.conflicting_type))};
       },
       [&](const UnableToDeduce&) {
-        return ContextualError2{
+        return ContextualError{
           ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(srcs, tg, type_names, type))};
       },
       [&](const ReturnBorrow&) {
-        return ContextualError2{ref, "cannot return a borrowed value"};
+        return ContextualError{ref, "cannot return a borrowed value"};
       },
       [&](const InvalidBorrow& b) {
-        return ContextualError2{ref, fmt::format("cannot borrow a {}", b.type)};
+        return ContextualError{ref, fmt::format("cannot borrow a {}", b.type)};
       },
       [&](const UnusedBinding&) {
-        return ContextualError2{
+        return ContextualError{
           ref, fmt::format("unused binding '{}'", sv(srcs, ref)), {"prefix with an _ to silence this error"}};
       },
       [&](const OverusedBinding& b) {
-        return ContextualError2{ref, fmt::format("binding '{}' used {} times", sv(srcs, ref), b.count)};
+        return ContextualError{ref, fmt::format("binding '{}' used {} times", sv(srcs, ref), b.count)};
       }},
     error.type);
 }
 
-std::vector<ContextualError2>
+std::vector<ContextualError>
 generate_errors(Span<std::string_view> srcs,
                 const AST& ast,
                 const TypeGraph& tg,
@@ -465,9 +465,9 @@ TypeRef unify(const TypeCache& tc, TypeGraph& g, TypeRef x, TypeRef y, bool recu
   }
 }
 
-ContextualResult2<void, AST, TypeGraph> apply_language_rules(
+ContextualResult<void, AST, TypeGraph> apply_language_rules(
   Span<std::string_view> srcs, const TypeCache& tc, const TypeNames& type_names, AST ast, TypeGraph tg) {
-  std::vector<ContextualError2> errors;
+  std::vector<ContextualError> errors;
 
   const auto apply_type = [&](ASTID id, TypeRef t) {
     const TypeRef unified = ast.types[id.get()].is_valid() ? unify(tc, tg, ast.types[id.get()], t, true) : t;
@@ -587,7 +587,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
   return propagations;
 }
 
-std::vector<ContextualError2> check_fully_resolved(
+std::vector<ContextualError> check_fully_resolved(
   Span<std::string_view> srcs,
   const std::vector<std::vector<ASTPropagation>>& propagations,
   const AST& ast,
@@ -601,7 +601,7 @@ std::vector<ContextualError2> check_fully_resolved(
                                                 })));
 }
 
-ContextualResult2<void, AST, TypeGraph> constraint_propagation(
+ContextualResult<void, AST, TypeGraph> constraint_propagation(
   Span<std::string_view> srcs,
   const TypeCache& tc,
   const NativeTypeInfo& native_types,
@@ -630,7 +630,7 @@ ContextualResult2<void, AST, TypeGraph> constraint_propagation(
     });
   };
 
-  std::vector<ContextualError2> errors = generate_errors(
+  std::vector<ContextualError> errors = generate_errors(
     srcs,
     ast,
     tg,

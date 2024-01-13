@@ -31,17 +31,17 @@ TypeRef unify(const TypeCache&, TypeGraph&, TypeRef, TypeRef, bool recurse);
 std::tuple<ASTID, TypeRef, int>
 overload_resolution(const TypeCache&, TypeGraph&, const Graph<ASTID>& ident_graph, const std::vector<TypeRef>&, ASTID);
 
-std::vector<ContextualError2> check_fully_resolved(
+std::vector<ContextualError> check_fully_resolved(
   Span<std::string_view>,
   const std::vector<std::vector<ASTPropagation>>&,
   const AST&,
   const TypeGraph&,
   const TypeNames&);
 
-ContextualResult2<void, AST, TypeGraph>
+ContextualResult<void, AST, TypeGraph>
 apply_language_rules(Span<std::string_view>, const TypeCache&, const TypeNames&, AST, TypeGraph);
 
-ContextualResult2<void, AST, TypeGraph> constraint_propagation(
+ContextualResult<void, AST, TypeGraph> constraint_propagation(
   Span<std::string_view>,
   const TypeCache&,
   const NativeTypeInfo& native_types,
