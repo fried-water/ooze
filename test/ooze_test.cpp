@@ -10,21 +10,22 @@ namespace ooze {
 
 namespace {
 
-auto await(Binding2 b) {
-  return std::pair(b.type, transform_to_vec(std::move(b.values), [](Binding b) { return take(std::move(b)).wait(); }));
+auto await(Binding b) {
+  return std::pair(b.type,
+                   transform_to_vec(std::move(b.values), [](AsyncValue v) { return take(std::move(v)).wait(); }));
 }
 
 StringResult<std::pair<TypeRef, std::vector<Any>>, Env> run(Env env, std::string_view script, std::string_view expr) {
   auto executor = make_seq_executor();
 
   return parse_scripts(std::move(env), make_sv_array(script))
-    .append_state(Bindings2{})
-    .and_then([&](Env env, Bindings2 bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
-    .map_state([](Env env, Bindings2 bindings) {
+    .append_state(Bindings{})
+    .and_then([&](Env env, Bindings bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
+    .map_state([](Env env, Bindings bindings) {
       BOOST_REQUIRE(bindings.empty());
       return env;
     })
-    .map([](Binding2 b, Env e) { return std::tuple(await(std::move(b)), std::move(e)); });
+    .map([](Binding b, Env e) { return std::tuple(await(std::move(b)), std::move(e)); });
 }
 
 template <typename T>
@@ -45,9 +46,9 @@ assign(Env env, std::string_view script, std::string_view expr) {
   auto executor = make_seq_executor();
 
   return parse_scripts(std::move(env), make_sv_array(script))
-    .append_state(Bindings2{})
-    .and_then([&](Env env, Bindings2 bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
-    .map([&](Binding2 output, Env env, Bindings2 bindings) {
+    .append_state(Bindings{})
+    .and_then([&](Env env, Bindings bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
+    .map([&](Binding output, Env env, Bindings bindings) {
       BOOST_REQUIRE(compare_dags(env.tg, output.type, env.type_cache.unit));
       BOOST_REQUIRE_EQUAL(0, output.values.size());
 
@@ -56,7 +57,7 @@ assign(Env env, std::string_view script, std::string_view expr) {
         results.emplace(std::move(name), await(std::move(binding)));
       }
 
-      return std::tuple(std::move(results), std::move(env), Bindings2{});
+      return std::tuple(std::move(results), std::move(env), Bindings{});
     })
     .map_state([](Env e, auto) { return e; });
 }
@@ -369,22 +370,22 @@ BOOST_AUTO_TEST_CASE(expr_or_error) {
 
 BOOST_AUTO_TEST_CASE(to_string) {
   auto executor = make_seq_executor();
-  BOOST_CHECK_EQUAL("1", check_result_value(run_to_string(executor, create_primative_env(), Bindings2{}, "1")));
+  BOOST_CHECK_EQUAL("1", check_result_value(run_to_string(executor, create_primative_env(), Bindings{}, "1")));
 }
 
 BOOST_AUTO_TEST_CASE(to_string_fn) {
   auto executor = make_seq_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
-  BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), Bindings2{}, "f()")));
+  BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), Bindings{}, "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(copy_binding) {
   auto executor = make_seq_executor();
 
   Env e = create_primative_env();
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 3"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
@@ -400,8 +401,8 @@ BOOST_AUTO_TEST_CASE(extract_binding) {
   auto executor = make_seq_executor();
 
   Env e = create_primative_env();
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 'abc'"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
@@ -419,8 +420,8 @@ BOOST_AUTO_TEST_CASE(assign_env_fn) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 3; });
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let f2 = f"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
@@ -434,8 +435,8 @@ BOOST_AUTO_TEST_CASE(assign_script_fn) {
 
   Env e = check_result(parse_scripts(create_primative_env(), make_sv_array("fn f() -> i32 = 3")));
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let f2 = f"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
@@ -449,8 +450,8 @@ BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {
 
   Env e = create_primative_env();
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 3"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
@@ -468,7 +469,7 @@ BOOST_AUTO_TEST_CASE(reuse_to_string_binding) {
   Env e = create_primative_env();
 
   std::string result;
-  Bindings2 bindings;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "let x = 1"));
   BOOST_CHECK_EQUAL("", result);
@@ -485,8 +486,8 @@ BOOST_AUTO_TEST_CASE(reuse_assign_binding_indirect) {
 
   Env e = create_primative_env();
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 1"));
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let y = clone(&x)"));
@@ -500,8 +501,8 @@ BOOST_AUTO_TEST_CASE(tuple_untuple) {
 
   Env e = create_primative_env();
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 3"));
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let y = 'abc'"));
@@ -517,8 +518,8 @@ BOOST_AUTO_TEST_CASE(overload_fn_binding) {
   Env e = create_primative_env();
   e.add_function("f", []() { return 1; });
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let f = 1"));
 
@@ -533,8 +534,8 @@ BOOST_AUTO_TEST_CASE(overwrite_binding) {
 
   Env e = create_primative_env();
 
-  Binding2 result;
-  Bindings2 bindings;
+  Binding result;
+  Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 3"));
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "let x = 4"));
@@ -548,7 +549,7 @@ BOOST_AUTO_TEST_CASE(print_fn) {
   e.add_function("f", []() { return 1; });
 
   // TODO improve this error
-  check_error(run_to_string(executor, std::move(e), Bindings2{}, "f"));
+  check_error(run_to_string(executor, std::move(e), Bindings{}, "f"));
 }
 
 BOOST_AUTO_TEST_CASE(native_constant_fn) {

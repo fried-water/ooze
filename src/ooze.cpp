@@ -52,7 +52,7 @@ TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& 
   }
 }
 
-std::tuple<std::vector<Binding>, Map<ASTID, std::vector<Binding>>> run_function(
+std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_function(
   Span<std::string_view> srcs,
   const AST& ast,
   const TypeGraph& tg,
@@ -60,7 +60,7 @@ std::tuple<std::vector<Binding>, Map<ASTID, std::vector<Binding>>> run_function(
   const std::unordered_set<TypeID>& copy_types,
   const std::unordered_map<ASTID, AsyncFn>& flat_functions,
   ExecutorRef ex,
-  Map<ASTID, std::vector<Binding>> bindings,
+  Map<ASTID, std::vector<AsyncValue>> bindings,
   ASTID expr_id) {
   assert(is_expr(ast.forest[expr_id]));
 
@@ -71,7 +71,7 @@ std::tuple<std::vector<Binding>, Map<ASTID, std::vector<Binding>>> run_function(
     const auto it = bindings.find(id);
     assert(it != bindings.end());
     borrowed = transform_to_vec(
-      it->second, [](Binding& b) { return borrow(b); }, std::move(borrowed));
+      it->second, [](AsyncValue& v) { return borrow(v); }, std::move(borrowed));
   }
 
   std::vector<Future> futures;
@@ -81,38 +81,35 @@ std::tuple<std::vector<Binding>, Map<ASTID, std::vector<Binding>>> run_function(
       assert(fn_it != flat_functions.end());
       futures.push_back(Future(Any(fn_it->second)));
     } else if(is_binding_copyable(tg, copy_types, ast.types[id.get()])) {
-      for(Binding& b : it->second) {
+      for(AsyncValue& b : it->second) {
         futures = transform_to_vec(
-          it->second, [](Binding& b) { return borrow(b).then([](const Any& a) { return a; }); }, std::move(futures));
+          it->second, [](AsyncValue& v) { return borrow(v).then([](const Any& a) { return a; }); }, std::move(futures));
       }
     } else {
       futures = transform_to_vec(
-        std::move(it->second), [](Binding b) { return take(std::move(b)); }, std::move(futures));
+        std::move(it->second), [](AsyncValue v) { return take(std::move(v)); }, std::move(futures));
       bindings.erase(it);
     }
   }
 
   AsyncFn fn = create_async_graph(std::move(fg));
 
-  return std::tuple(transform_to_vec(fn(ex, std::move(futures), std::move(borrowed)),
-                                     [](Future f) {
-                                       return Binding{floating_type<TypeID>(), std::move(f)};
-                                     }),
+  return std::tuple(transform_to_vec(fn(ex, std::move(futures), std::move(borrowed)), Construct<AsyncValue>{}),
                     std::move(bindings));
 }
 
 auto assign_values(const AST& ast,
                    const TypeGraph& tg,
-                   Map<ASTID, std::vector<Binding>> bindings,
-                   std::vector<Binding> values,
+                   Map<ASTID, std::vector<AsyncValue>> bindings,
+                   std::vector<AsyncValue> values,
                    ASTID pattern) {
   int offset = 0;
   for(const ASTID id : ast.forest.leaf_ids(pattern)) {
     const int size = size_of(tg, ast.types[id.get()]);
     if(ast.forest[id] == ASTTag::PatternIdent) {
       bindings.emplace(id,
-                       std::vector<Binding>(std::make_move_iterator(values.begin() + offset),
-                                            std::make_move_iterator(values.begin() + offset + size)));
+                       std::vector<AsyncValue>(std::make_move_iterator(values.begin() + offset),
+                                               std::make_move_iterator(values.begin() + offset + size)));
     }
     offset += size;
   }
@@ -127,14 +124,14 @@ auto run_or_assign(ExecutorRef ex,
                    const Map<ASTID, ASTID>& binding_of,
                    Map<TypeRef, TypeRef>& to_env_type,
                    Env env,
-                   Map<ASTID, std::vector<Binding>> bindings,
+                   Map<ASTID, std::vector<AsyncValue>> bindings,
                    ASTID id) {
   assert(ast.forest.is_root(id));
 
   const bool expr = is_expr(ast.forest[id]);
   const TypeRef type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
 
-  std::vector<Binding> values;
+  std::vector<AsyncValue> values;
   std::tie(values, bindings) = run_function(
     srcs,
     ast,
@@ -146,8 +143,8 @@ auto run_or_assign(ExecutorRef ex,
     std::move(bindings),
     expr ? id : ast.forest.child_ids(id).get<1>());
 
-  return expr ? std::tuple(Binding2{type, std::move(values)}, std::move(env), std::move(bindings))
-              : std::tuple(Binding2{type},
+  return expr ? std::tuple(Binding{type, std::move(values)}, std::move(env), std::move(bindings))
+              : std::tuple(Binding{type},
                            std::move(env),
                            assign_values(ast, tg, std::move(bindings), std::move(values), *ast.forest.first_child(id)));
 }
@@ -196,9 +193,9 @@ Env generate_functions(
   return env;
 }
 
-std::tuple<std::string, AST, Map<ASTID, std::vector<Binding>>>
-append_global_bindings(std::string env_src, AST ast, Bindings2 str_bindings) {
-  Map<ASTID, std::vector<Binding>> bindings;
+std::tuple<std::string, AST, Map<ASTID, std::vector<AsyncValue>>>
+append_global_bindings(std::string env_src, AST ast, Bindings str_bindings) {
+  Map<ASTID, std::vector<AsyncValue>> bindings;
   for(auto& [name, binding] : str_bindings) {
     bindings.emplace(add_global(ast, SrcRef{SrcID{0}, append_src(env_src, name)}, binding.type),
                      std::move(binding.values));
@@ -207,17 +204,17 @@ append_global_bindings(std::string env_src, AST ast, Bindings2 str_bindings) {
   return std::tuple(std::move(env_src), std::move(ast), std::move(bindings));
 }
 
-std::tuple<Env, Bindings2> to_str_bindings(
+std::tuple<Env, Bindings> to_str_bindings(
   Span<std::string_view> srcs,
   const AST& ast,
   const TypeGraph& tg,
   Map<TypeRef, TypeRef>& to_env_type,
   Env env,
-  Map<ASTID, std::vector<Binding>> bindings) {
-  Bindings2 str_bindings;
+  Map<ASTID, std::vector<AsyncValue>> bindings) {
+  Bindings str_bindings;
   for(auto& [id, values] : bindings) {
     str_bindings.emplace(std::string(sv(srcs, ast.srcs[id.get()])),
-                         Binding2{copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]), std::move(values)});
+                         Binding{copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]), std::move(values)});
   }
   return std::tuple(std::move(env), std::move(str_bindings));
 }
@@ -254,7 +251,7 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
     });
 }
 
-StringResult<Binding2, Env, Bindings2> run(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view expr) {
+StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view expr) {
   Map<TypeRef, TypeRef> to_env_type;
 
   auto [env_src, ast, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
@@ -271,8 +268,8 @@ StringResult<Binding2, Env, Bindings2> run(ExecutorRef ex, Env env, Bindings2 st
       return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::move(tg));
     })
     .append_state(std::move(env), std::move(bindings))
-    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<Binding>> bindings) {
-      Binding2 result;
+    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
+      Binding result;
       std::tie(result, env, bindings) = run_or_assign(
         ex,
         srcs,
@@ -285,16 +282,16 @@ StringResult<Binding2, Env, Bindings2> run(ExecutorRef ex, Env env, Bindings2 st
         ASTID{i32(ast.forest.size() - 1)});
       return std::tuple(std::move(result), std::move(ast), std::move(tg), std::move(env), std::move(bindings));
     })
-    .map_state([&](AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<Binding>> bindings) {
+    .map_state([&](AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       return to_str_bindings(srcs, ast, tg, to_env_type, std::move(env), std::move(bindings));
     })
-    .map_error([&](auto errors, Env env, Bindings2 bindings) {
+    .map_error([&](auto errors, Env env, Bindings bindings) {
       return std::tuple(contextualize(srcs, std::move(errors)), std::move(env), std::move(bindings));
     });
 }
 
-StringResult<std::string, Env, Bindings2>
-run_to_string(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view expr) {
+StringResult<std::string, Env, Bindings>
+run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view expr) {
   Map<TypeRef, TypeRef> to_env_type;
 
   auto [env_src, ast, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
@@ -332,8 +329,8 @@ run_to_string(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view 
       }
     })
     .append_state(std::move(env), std::move(bindings))
-    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<Binding>> bindings) {
-      Binding2 result;
+    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
+      Binding result;
       std::tie(result, env, bindings) = run_or_assign(
         ex,
         srcs,
@@ -346,10 +343,10 @@ run_to_string(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view 
         ASTID{i32(ast.forest.size() - 1)});
       return std::tuple(std::move(result), std::move(ast), std::move(tg), std::move(env), std::move(bindings));
     })
-    .map_state([&](AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<Binding>> bindings) {
+    .map_state([&](AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       return to_str_bindings(srcs, ast, tg, to_env_type, std::move(env), std::move(bindings));
     })
-    .map([](Binding2 b, Env env, Bindings2 bindings) {
+    .map([](Binding b, Env env, Bindings bindings) {
       assert(b.values.size() <= 1);
       assert(b.values.empty() || env.tg.get<TypeID>(b.type) == type_id(knot::Type<std::string>{}));
       return std::tuple(
@@ -357,7 +354,7 @@ run_to_string(ExecutorRef ex, Env env, Bindings2 str_bindings, std::string_view 
         std::move(env),
         std::move(bindings));
     })
-    .map_error([&](auto errors, Env env, Bindings2 bindings) {
+    .map_error([&](auto errors, Env env, Bindings bindings) {
       return std::tuple(contextualize(srcs, std::move(errors)), std::move(env), std::move(bindings));
     });
 

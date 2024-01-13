@@ -5,7 +5,7 @@
 #include "ooze/executor.h"
 #include "ooze/future.h"
 #include "ooze/result.h"
-#include "ooze/type.h"
+#include "ooze/type_flat.h"
 
 #include <string>
 #include <string_view>
@@ -17,21 +17,20 @@ namespace ooze {
 template <typename T, typename... Ts>
 using StringResult = Result<T, std::vector<std::string>, Ts...>;
 
-struct Binding {
-  Type<TypeID> type;
+struct AsyncValue {
   Future future;
   BorrowedFuture borrowed_future;
 };
 
-struct Binding2 {
+struct Binding {
   TypeRef type;
-  std::vector<Binding> values;
+  std::vector<AsyncValue> values;
 };
 
-using Bindings2 = std::unordered_map<std::string, Binding2>;
+using Bindings = std::unordered_map<std::string, Binding>;
 
 StringResult<void, Env> parse_scripts(Env, Span<std::string_view>);
-StringResult<Binding2, Env, Bindings2> run(ExecutorRef, Env, Bindings2, std::string_view);
-StringResult<std::string, Env, Bindings2> run_to_string(ExecutorRef, Env, Bindings2, std::string_view);
+StringResult<Binding, Env, Bindings> run(ExecutorRef, Env, Bindings, std::string_view);
+StringResult<std::string, Env, Bindings> run_to_string(ExecutorRef, Env, Bindings, std::string_view);
 
 } // namespace ooze

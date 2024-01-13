@@ -6,31 +6,22 @@ namespace ooze {
 
 enum class BindingState { Ready, Borrowed, NotReady };
 
-inline BindingState find_binding_state(const Binding& binding) {
-  const auto& [t, f, b] = binding;
+inline BindingState find_binding_state(const AsyncValue& v) {
+  const auto& [f, b] = v;
   return f.ready() || (b.valid() && b.unique())
            ? BindingState::Ready
            : (b.valid() ? BindingState::Borrowed : BindingState::NotReady);
 }
 
-inline Future take(Binding binding) { return std::move(binding.future); }
+inline Future take(AsyncValue v) { return std::move(v.future); }
 
-inline BorrowedFuture borrow(Binding& b) {
-  if(!b.borrowed_future.valid()) {
-    std::tie(b.borrowed_future, b.future) = borrow(std::move(b.future));
+inline BorrowedFuture borrow(AsyncValue& v) {
+  if(!v.borrowed_future.valid()) {
+    std::tie(v.borrowed_future, v.future) = borrow(std::move(v.future));
   }
-  return b.borrowed_future;
+  return v.borrowed_future;
 }
 
-inline Binding await(Binding b) { return Binding{std::move(b.type), take(std::move(b))}; }
-
-template <typename Bindings>
-StringResult<std::vector<BorrowedFuture>> borrow(Bindings& bindings, const std::string& name) {
-  if(const auto var_it = bindings.find(name); var_it == bindings.end()) {
-    return err(fmt::format("Binding {} not found", name));
-  } else {
-    return borrow(var_it->second);
-  }
-}
+inline AsyncValue await(AsyncValue v) { return {take(std::move(v))}; }
 
 } // namespace ooze

@@ -12,7 +12,7 @@ namespace {
 const TypeID I = type_id(knot::Type<i32>{});
 
 #define step_and_compare(_EXP, _STR, _ENV, _BND)                                                                       \
-  [&](const std::vector<std::string>& e, std::string_view str, Env env, Bindings2 b) {                                 \
+  [&](const std::vector<std::string>& e, std::string_view str, Env env, Bindings b) {                                  \
     auto [a, e1, b1] = step_repl(make_seq_executor(), std::move(env), std::move(b), str);                              \
     if(e != a) {                                                                                                       \
       fmt::print("E: {}\n", knot::debug(e));                                                                           \
@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE(run_expr) {
   Env e = create_primative_env();
   e.add_function("pow", [](int x) { return x * x; });
 
-  Bindings2 b;
+  Bindings b;
   std::tie(e, b) = step_and_compare({"3"}, "3", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"abc"}, "'abc'", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"9"}, "pow(3)", std::move(e), std::move(b));
@@ -49,7 +49,7 @@ BOOST_AUTO_TEST_CASE(move_only_binding) {
   e.add_function("make_ptr", [](int x) { return std::make_unique<int>(x); });
   e.add_function("take_ptr", [](std::unique_ptr<int> x) { return *x; });
 
-  Bindings2 b;
+  Bindings b;
   std::tie(e, b) = step_and_compare({}, "let x = make_ptr(5)", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"5"}, "take_ptr(x)", std::move(e), std::move(b));
 }
@@ -59,24 +59,24 @@ BOOST_AUTO_TEST_CASE(store_env_function) {
 
   e.add_function("f", []() { return 37; });
 
-  Bindings2 b;
+  Bindings b;
   std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
 
 BOOST_AUTO_TEST_CASE(store_script_function) {
   Env e = check_result(parse_scripts(create_primative_env(), make_sv_array("fn f() -> i32 = 37")));
-  Bindings2 b;
+  Bindings b;
 
   std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", create_empty_env(), Bindings2{}); }
+BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", create_empty_env(), Bindings{}); }
 
 BOOST_AUTO_TEST_CASE(single_binding) {
   Env e = create_empty_env();
-  Bindings2 b;
+  Bindings b;
 
   e.add_type<i32>("i32");
 
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(single_binding) {
 
 BOOST_AUTO_TEST_CASE(multi_binding) {
   Env e = create_empty_env();
-  Bindings2 b;
+  Bindings b;
 
   e.add_type<i32>("i32");
   e.add_type<std::string>("string");
@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(multi_binding) {
 
 BOOST_AUTO_TEST_CASE(tuple_binding) {
   Env e = create_empty_env();
-  Bindings2 b;
+  Bindings b;
 
   e.add_type<i32>("i32");
   e.add_type<std::string>("string");
@@ -118,7 +118,7 @@ BOOST_AUTO_TEST_CASE(tuple_binding) {
 
 BOOST_AUTO_TEST_CASE(unnamed_binding) {
   Env e = create_empty_env();
-  Bindings2 b;
+  Bindings b;
 
   std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE(unnamed_binding) {
 
 BOOST_AUTO_TEST_CASE(post_named_binding) {
   Env e = create_empty_env();
-  Bindings2 b;
+  Bindings b;
 
   std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
@@ -146,9 +146,8 @@ BOOST_AUTO_TEST_CASE(binding_not_ready) {
 
   auto [promise, future] = make_promise_future();
 
-  Bindings2 b;
-  b.emplace(
-    "x", Binding2{e.tg.add_node(TypeTag::Leaf, I), make_vector(Binding{floating_type<TypeID>(), std::move(future)})});
+  Bindings b;
+  b.emplace("x", Binding{e.tg.add_node(TypeTag::Leaf, I), make_vector(AsyncValue{std::move(future)})});
 
   const std::vector<std::string> exp_not_ready{"1 binding(s)", "  x: *i32"};
   std::tie(e, b) = step_and_compare(exp_not_ready, ":b", std::move(e), std::move(b));
@@ -163,9 +162,8 @@ BOOST_AUTO_TEST_CASE(binding_borrowed) {
   Env e = create_empty_env();
   e.add_type<i32>("i32");
 
-  Bindings2 b;
-  b.emplace("x",
-            Binding2{e.tg.add_node(TypeTag::Leaf, I), make_vector(Binding{floating_type<TypeID>(), Future(Any(0))})});
+  Bindings b;
+  b.emplace("x", Binding{e.tg.add_node(TypeTag::Leaf, I), make_vector(AsyncValue{Future(Any(0))})});
 
   auto borrowed = borrow(b["x"].values[0]);
 
@@ -180,7 +178,7 @@ BOOST_AUTO_TEST_CASE(binding_borrowed) {
 
 BOOST_AUTO_TEST_CASE(bindings_post_dump) {
   Env e = create_primative_env();
-  Bindings2 b;
+  Bindings b;
 
   std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
   std::tie(e, b) = step_and_compare({"5"}, "x", std::move(e), std::move(b));
@@ -195,7 +193,7 @@ BOOST_AUTO_TEST_CASE(no_to_string, *boost::unit_test::disabled()) {
 
   // TODO add some unique identifier (ptr? how should tuples be handled?)
   const std::vector<std::string> exp{"<value of i32>"};
-  step_and_compare(exp, "1", std::move(e), Bindings2{});
+  step_and_compare(exp, "1", std::move(e), Bindings{});
 }
 
 BOOST_AUTO_TEST_CASE(types) {
@@ -214,7 +212,7 @@ BOOST_AUTO_TEST_CASE(types) {
   const std::vector<std::string> expected{
     "2 type(s)", "  A                    [to_string: N]", "  i32                  [to_string: Y]"};
 
-  step_and_compare(expected, ":t", std::move(e), Bindings2{});
+  step_and_compare(expected, ":t", std::move(e), Bindings{});
 }
 
 BOOST_AUTO_TEST_CASE(functions) {
@@ -246,7 +244,7 @@ BOOST_AUTO_TEST_CASE(functions) {
     "  write(&string, &byte_vector) -> ()",
     "  write(&string, &string) -> ()"};
 
-  step_and_compare(expected, ":f", std::move(e), Bindings2{});
+  step_and_compare(expected, ":f", std::move(e), Bindings{});
 }
 
 BOOST_AUTO_TEST_SUITE_END()

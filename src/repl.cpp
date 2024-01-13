@@ -112,8 +112,7 @@ auto parse_command(std::string_view line) {
   });
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings2>
-run(ExecutorRef, Env env, Bindings2 bindings, const HelpCmd& help) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const HelpCmd& help) {
   return std::tuple(
     std::vector<std::string>{
       {":h - This message"},
@@ -126,7 +125,7 @@ run(ExecutorRef, Env env, Bindings2 bindings, const HelpCmd& help) {
     std::move(bindings));
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings2> run(ExecutorRef, Env env, Bindings2 bindings, BindingsCmd) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, BindingsCmd) {
   std::vector<std::string> ordered = sorted(transform_to_vec(bindings, [](const auto& p) { return p.first; }));
 
   std::vector<std::string> output;
@@ -138,7 +137,7 @@ std::tuple<std::vector<std::string>, Env, Bindings2> run(ExecutorRef, Env env, B
 
     const auto& binding = bindings.at(binding_name);
     const BindingState max_state = std::accumulate(
-      binding.values.begin(), binding.values.end(), BindingState::Ready, [](BindingState acc, const Binding& ele) {
+      binding.values.begin(), binding.values.end(), BindingState::Ready, [](BindingState acc, const AsyncValue& ele) {
         const BindingState ele_state = find_binding_state(ele);
         return i32(acc) > i32(ele_state) ? acc : ele_state;
       });
@@ -158,8 +157,7 @@ constexpr auto convert_errors = [](std::vector<std::string> errors, auto&&... ts
   return success(knot::Type<std::vector<std::string>>{}, std::move(errors), std::forward<decltype(ts)>(ts)...);
 };
 
-std::tuple<std::vector<std::string>, Env, Bindings2>
-run(ExecutorRef, Env env, Bindings2 bindings, const EvalCmd& eval) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const EvalCmd& eval) {
   return read_text_file(eval.file)
     .append_state(std::move(env))
     .and_then([](std::string script, Env env) { return parse_scripts(std::move(env), make_sv_array(script)); })
@@ -169,8 +167,7 @@ run(ExecutorRef, Env env, Bindings2 bindings, const EvalCmd& eval) {
     .value_and_state();
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings2>
-run(ExecutorRef, Env env, Bindings2 bindings, const FunctionsCmd&) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const FunctionsCmd&) {
   std::vector<std::pair<std::string, std::string>> functions;
 
   const std::array<std::string, 4> COLLAPSE{{"clone", "to_string", "serialize", "deserialize"}};
@@ -199,7 +196,7 @@ run(ExecutorRef, Env env, Bindings2 bindings, const FunctionsCmd&) {
   return std::tuple(std::move(output), std::move(env), std::move(bindings));
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings2> run(ExecutorRef, Env env, Bindings2 bindings, const TypesCmd&) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const TypesCmd&) {
   std::map<std::string, bool> types;
 
   for(const auto& [id, name] : env.type_names) {
@@ -222,8 +219,8 @@ std::tuple<std::vector<std::string>, Env, Bindings2> run(ExecutorRef, Env env, B
   return std::tuple(std::move(output), std::move(env), std::move(bindings));
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings2>
-run(ExecutorRef, Env env, Bindings2 bindings, const ReleaseCmd& cmd) {
+std::tuple<std::vector<std::string>, Env, Bindings>
+run(ExecutorRef, Env env, Bindings bindings, const ReleaseCmd& cmd) {
   if(const auto it = bindings.find(cmd.var); it != bindings.end()) {
     bindings.erase(it);
     return std::tuple(std::vector<std::string>{}, std::move(env), std::move(bindings));
@@ -232,20 +229,20 @@ run(ExecutorRef, Env env, Bindings2 bindings, const ReleaseCmd& cmd) {
   }
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings2>
-run(ExecutorRef executor, Env env, Bindings2 bindings, const AwaitCmd& cmd) {
+std::tuple<std::vector<std::string>, Env, Bindings>
+run(ExecutorRef executor, Env env, Bindings bindings, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
     for(auto& [name, binding] : bindings) {
-      for(Binding& b : binding.values) {
-        b = await(std::move(b));
+      for(AsyncValue& v : binding.values) {
+        v = await(std::move(v));
       }
     }
   } else {
     for(const std::string& binding : cmd.bindings) {
       if(const auto it = bindings.find(binding); it != bindings.end()) {
-        for(Binding& b : it->second.values) {
-          b = await(std::move(b));
+        for(AsyncValue& v : it->second.values) {
+          v = await(std::move(v));
         }
       } else {
         output.push_back(fmt::format("Binding {} not found", binding));
@@ -258,21 +255,21 @@ run(ExecutorRef executor, Env env, Bindings2 bindings, const AwaitCmd& cmd) {
 
 } // namespace
 
-std::tuple<std::vector<std::string>, Env, Bindings2>
-step_repl(ExecutorRef executor, Env env, Bindings2 bindings, std::string_view line) {
+std::tuple<std::vector<std::string>, Env, Bindings>
+step_repl(ExecutorRef executor, Env env, Bindings bindings, std::string_view line) {
   if(line.empty()) {
     return std::tuple(std::vector<std::string>{}, std::move(env), std::move(bindings));
   } else if(line[0] == ':') {
     return parse_command({line.data() + 1, line.size() - 1})
       .append_state(std::move(env), std::move(bindings))
-      .map(visited([&](const auto& cmd, Env env, Bindings2 bindings) {
+      .map(visited([&](const auto& cmd, Env env, Bindings bindings) {
         return run(executor, std::move(env), std::move(bindings), cmd);
       }))
       .or_else(convert_errors)
       .value_and_state();
   } else {
     return run_to_string(executor, std::move(env), std::move(bindings), line)
-      .map([](std::string out, Env env, Bindings2 bindings) {
+      .map([](std::string out, Env env, Bindings bindings) {
         return std::tuple(
           out.empty() ? std::vector<std::string>{} : make_vector(std::move(out)), std::move(env), std::move(bindings));
       })
@@ -281,7 +278,7 @@ step_repl(ExecutorRef executor, Env env, Bindings2 bindings, std::string_view li
   }
 }
 
-std::tuple<Env, Bindings2> run_repl(ExecutorRef executor, Env env, Bindings2 bindings) {
+std::tuple<Env, Bindings> run_repl(ExecutorRef executor, Env env, Bindings bindings) {
   fmt::print("Welcome to the ooze repl!\n");
   fmt::print("Try :h for help. Use Ctrl^D to exit.\n");
   fmt::print("> ");
@@ -318,10 +315,10 @@ int repl_main(int argc, const char** argv, Env e) {
   Executor executor = make_task_executor();
 
   const auto result =
-    parse_scripts(std::move(e), cmd->filenames).append_state(Bindings2{}).and_then([&](Env env, Bindings2 bindings) {
+    parse_scripts(std::move(e), cmd->filenames).append_state(Bindings{}).and_then([&](Env env, Bindings bindings) {
       if(cmd->run_main) {
         return run_to_string(executor, std::move(env), std::move(bindings), "main()")
-          .map([](std::string s, Env e, Bindings2 b) {
+          .map([](std::string s, Env e, Bindings b) {
             return std::tuple(make_vector(std::move(s)), std::move(e), std::move(b));
           });
       } else {
