@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#include "ooze/tree.h"
 #include "pretty_print.h"
 #include "type_check.h"
 
