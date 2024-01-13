@@ -282,37 +282,37 @@ parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {
 } // namespace
 
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_expr2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_expr(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(expr, std::move(ast), std::move(tg), id, src);
 }
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_repl2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_repl(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(choose(assignment(), expr), std::move(ast), std::move(tg), id, src);
 }
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_function2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_function(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(function(), std::move(ast), std::move(tg), id, src);
 }
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(root(), std::move(ast), std::move(tg), id, src);
 }
 
 // Exposed for unit testing
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_binding2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_binding(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(binding(), std::move(ast), std::move(tg), id, src);
 }
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_assignment2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_assignment(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(assignment(), std::move(ast), std::move(tg), id, src);
 }
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_type2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_type(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(type, std::move(ast), std::move(tg), id, src);
 }
 ContextualResult2<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
-parse_pattern2(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+parse_pattern(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(pattern, std::move(ast), std::move(tg), id, src);
 }
 

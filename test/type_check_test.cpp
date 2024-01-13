@@ -55,11 +55,11 @@ void compare_tc(R exp_result, R act_result) {
 }
 
 void test_tc(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse_function2, e, exp, debug)), check_result(run_tc(parse_function2, e, src)));
+  compare_tc(check_result(run_tc(parse_function, e, exp, debug)), check_result(run_tc(parse_function, e, src)));
 }
 
 void test_tc_fns(const Env& e, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse2, e, exp, debug)), check_result(run_tc(parse2, e, src)));
+  compare_tc(check_result(run_tc(parse, e, exp, debug)), check_result(run_tc(parse, e, src)));
 }
 
 template <typename Parser>
@@ -78,11 +78,11 @@ void test_tc_error(Parser parser,
 
 void test_tc_error(
   const Env& e, std::string_view src, const std::vector<ContextualError2>& expected_errors, bool debug = false) {
-  test_tc_error(parse_function2, e, src, expected_errors, debug);
+  test_tc_error(parse_function, e, src, expected_errors, debug);
 }
 
 TypeGraph type_graph_of(Span<std::string_view> srcs, const TypeNames& names, SrcID src, TypeGraph tg) {
-  return std::get<1>(check_result(parse_and_name_resolution(parse_type2, srcs, names, {}, std::move(tg), src)));
+  return std::get<1>(check_result(parse_and_name_resolution(parse_type, srcs, names, {}, std::move(tg), src)));
 };
 
 void test_unify(std::string_view exp, std::string_view x, std::string_view y, bool recurse = true) {
@@ -200,26 +200,26 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(alr)
 
 BOOST_AUTO_TEST_CASE(expr) {
-  test_alr(parse_expr2, "x", {"_"});
-  test_alr(parse_expr2, "1", {"i32"});
-  test_alr(parse_expr2, "&x", {"_", "&_"});
-  test_alr(parse_expr2, "()", {"()"});
-  test_alr(parse_expr2, "(1)", {"i32", "(_)"});
-  test_alr(parse_expr2, "f()", {"fn _ -> _", "()", "_"});
+  test_alr(parse_expr, "x", {"_"});
+  test_alr(parse_expr, "1", {"i32"});
+  test_alr(parse_expr, "&x", {"_", "&_"});
+  test_alr(parse_expr, "()", {"()"});
+  test_alr(parse_expr, "(1)", {"i32", "(_)"});
+  test_alr(parse_expr, "f()", {"fn _ -> _", "()", "_"});
 
-  test_alr(parse_expr2, "select x { y } else { z }", {"bool", "_", "_", "_"});
+  test_alr(parse_expr, "select x { y } else { z }", {"bool", "_", "_", "_"});
 
-  test_alr_error(parse_expr2, "1()", {{{SrcID{1}, {0, 1}}, "expected fn _ -> _, given i32"}});
+  test_alr_error(parse_expr, "1()", {{{SrcID{1}, {0, 1}}, "expected fn _ -> _, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(assign) {
-  test_alr(parse_assignment2, "let x = y", {"_", "_", "()"});
-  test_alr(parse_assignment2, "let x: _ = y", {"_", "_", "()"});
-  test_alr(parse_assignment2, "let x: i32 = y", {"i32", "_", "()"});
-  test_alr(parse_assignment2, "let (x): (i32) = y", {"_", "(i32)", "_", "()"});
+  test_alr(parse_assignment, "let x = y", {"_", "_", "()"});
+  test_alr(parse_assignment, "let x: _ = y", {"_", "_", "()"});
+  test_alr(parse_assignment, "let x: i32 = y", {"i32", "_", "()"});
+  test_alr(parse_assignment, "let (x): (i32) = y", {"_", "(i32)", "_", "()"});
 
-  test_alr_error(parse_assignment2, "let (): (i32) = y", {{{SrcID{1}, {4, 6}}, "expected (), given (i32)"}});
-  test_alr_error(parse_assignment2, "let (x): () = y", {{{SrcID{1}, {4, 7}}, "expected (_), given ()"}});
+  test_alr_error(parse_assignment, "let (): (i32) = y", {{{SrcID{1}, {4, 6}}, "expected (), given (i32)"}});
+  test_alr_error(parse_assignment, "let (x): () = y", {{{SrcID{1}, {4, 7}}, "expected (_), given ()"}});
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -384,7 +384,7 @@ BOOST_AUTO_TEST_CASE(fn_tuple) {
 
 BOOST_AUTO_TEST_CASE(fn_recursive) {
   const std::string_view src = "fn f(x: i32) -> i32 = f(x)";
-  auto [act_ast, act_tg] = check_result(run_tc(parse2, create_primative_env(), src));
+  auto [act_ast, act_tg] = check_result(run_tc(parse, create_primative_env(), src));
 }
 
 BOOST_AUTO_TEST_CASE(fn_multi) {
@@ -610,12 +610,12 @@ BOOST_AUTO_TEST_CASE(return_borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(return_borrow_root) {
-  test_tc_error(parse_expr2, create_primative_env(), "&1", {{{SrcID{1}, {0, 2}}, "cannot return a borrowed value"}});
-  test_tc_error(parse_expr2, create_primative_env(), "(&1)", {{{SrcID{1}, {1, 3}}, "cannot return a borrowed value"}});
+  test_tc_error(parse_expr, create_primative_env(), "&1", {{{SrcID{1}, {0, 2}}, "cannot return a borrowed value"}});
+  test_tc_error(parse_expr, create_primative_env(), "(&1)", {{{SrcID{1}, {1, 3}}, "cannot return a borrowed value"}});
 
   test_tc_error(
-    parse_assignment2, create_primative_env(), "let x = &1", {{{SrcID{1}, {8, 10}}, "cannot return a borrowed value"}});
-  test_tc_error(parse_assignment2,
+    parse_assignment, create_primative_env(), "let x = &1", {{{SrcID{1}, {8, 10}}, "cannot return a borrowed value"}});
+  test_tc_error(parse_assignment,
                 create_primative_env(),
                 "let (x) = (&1)",
                 {{{SrcID{1}, {11, 13}}, "cannot return a borrowed value"}});
@@ -698,8 +698,8 @@ BOOST_AUTO_TEST_CASE(unused_binding_scope) {
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding_root_assign) {
-  check_result(run_tc(parse_assignment2, create_primative_env(), "let x = 1"));
-  check_result(run_tc(parse_assignment2, create_primative_env(), "let (x, y) = (1, 1)"));
+  check_result(run_tc(parse_assignment, create_primative_env(), "let x = 1"));
+  check_result(run_tc(parse_assignment, create_primative_env(), "let (x, y) = (1, 1)"));
 }
 
 BOOST_AUTO_TEST_CASE(unused_binding_ignore) {

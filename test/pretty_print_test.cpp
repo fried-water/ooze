@@ -27,7 +27,7 @@ void test_type(std::string_view exp, std::string_view src) {
   const TypeNames names{{"T", TypeID{1}}};
 
   const auto [ast, tg] =
-    check_result(parse_type2({}, {}, SrcID{0}, src).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+    check_result(parse_type({}, {}, SrcID{0}, src).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
       return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
         return std::tuple(std::move(ast), std::move(tg));
       });
@@ -40,9 +40,9 @@ void test_type(std::string_view exp, std::string_view src) {
 BOOST_AUTO_TEST_SUITE(pp)
 
 BOOST_AUTO_TEST_CASE(pattern) {
-  test(parse_pattern2, "abc", "abc");
-  test(parse_pattern2, "_", "_");
-  test(parse_pattern2, "(abc, _)", "(abc, _)");
+  test(parse_pattern, "abc", "abc");
+  test(parse_pattern, "_", "_");
+  test(parse_pattern, "(abc, _)", "(abc, _)");
 }
 
 BOOST_AUTO_TEST_CASE(compound_type) {
@@ -85,55 +85,55 @@ BOOST_AUTO_TEST_CASE(native_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(expr) {
-  test(parse_expr2, "1", "1");
-  test(parse_expr2, "1i16", "1i16");
-  test(parse_expr2, "1.0f", "1.0f");
-  test(parse_expr2, "1.0", "1.0");
-  test(parse_expr2, "\"abc\"", "\"abc\"");
-  test(parse_expr2, "abc", "abc");
-  test(parse_expr2, "&abc", "&abc");
+  test(parse_expr, "1", "1");
+  test(parse_expr, "1i16", "1i16");
+  test(parse_expr, "1.0f", "1.0f");
+  test(parse_expr, "1.0", "1.0");
+  test(parse_expr, "\"abc\"", "\"abc\"");
+  test(parse_expr, "abc", "abc");
+  test(parse_expr, "&abc", "&abc");
 
-  test(parse_expr2, "(1, abc)", "(1, abc)");
+  test(parse_expr, "(1, abc)", "(1, abc)");
 
-  test(parse_expr2, "select x { y } else { z }", "select x { y } else { z }");
+  test(parse_expr, "select x { y } else { z }", "select x { y } else { z }");
 
-  test(parse_expr2, "f(1)", "f(1)");
+  test(parse_expr, "f(1)", "f(1)");
 }
 
 BOOST_AUTO_TEST_CASE(assignment) {
-  test(parse_assignment2, "let x = y", "let x = y");
-  test(parse_assignment2, "let x = y", "let x : _ = y");
-  test(parse_assignment2, "let x: T = y", "let x: T = y");
-  test(parse_assignment2, "let (x, y): (T, _) = (1, 2)", "let (x, y): (T, _) = (1, 2)");
+  test(parse_assignment, "let x = y", "let x = y");
+  test(parse_assignment, "let x = y", "let x : _ = y");
+  test(parse_assignment, "let x: T = y", "let x: T = y");
+  test(parse_assignment, "let (x, y): (T, _) = (1, 2)", "let (x, y): (T, _) = (1, 2)");
 }
 
 BOOST_AUTO_TEST_CASE(scope) {
-  test(parse_expr2, "abc", "{ abc }");
+  test(parse_expr, "abc", "{ abc }");
 
-  test(parse_expr2, "{\n  let x = y;\n  x\n}", "{ let x = y; x }");
-  test(parse_expr2, "{\n  let x = y;\n  let y = z;\n  y\n}", "{ let x = y; let y = z; y }");
-  test(parse_expr2, "{\n  let x = {\n    let y = z;\n    y\n  };\n  x\n}", "{ let x = { let y = z; y }; x }");
+  test(parse_expr, "{\n  let x = y;\n  x\n}", "{ let x = y; x }");
+  test(parse_expr, "{\n  let x = y;\n  let y = z;\n  y\n}", "{ let x = y; let y = z; y }");
+  test(parse_expr, "{\n  let x = {\n    let y = z;\n    y\n  };\n  x\n}", "{ let x = { let y = z; y }; x }");
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
-  test(parse_function2, "() -> T = x", "() -> T = x");
-  test(parse_function2, "(x) -> T = x", "(x) -> T = x");
-  test(parse_function2, "(x: T) -> T = x", "(x: T) -> T = x");
-  test(parse_function2, "(x: T, _) -> T = x", "(x: T, _) -> T = x");
-  test(parse_function2, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
+  test(parse_function, "() -> T = x", "() -> T = x");
+  test(parse_function, "(x) -> T = x", "(x) -> T = x");
+  test(parse_function, "(x: T) -> T = x", "(x: T) -> T = x");
+  test(parse_function, "(x: T, _) -> T = x", "(x: T, _) -> T = x");
+  test(parse_function, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
 }
 
 BOOST_AUTO_TEST_CASE(ast) {
-  test(parse2, "fn f() -> T = x", "fn f() -> T = x");
-  test(parse2, "fn f() -> T = x\n\nfn g() -> T = x", "fn f() -> T = x fn g() -> T = x");
+  test(parse, "fn f() -> T = x", "fn f() -> T = x");
+  test(parse, "fn f() -> T = x\n\nfn g() -> T = x", "fn f() -> T = x fn g() -> T = x");
 }
 
 BOOST_AUTO_TEST_CASE(fn_type) {
   const auto srcs = make_sv_array("fn(T) -> T");
   const TypeNames names{{"T", TypeID{1}}};
 
-  const TypeGraph tg = std::get<1>(
-    check_result(parse_type2({}, {}, SrcID{0}, srcs[0]).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+  const TypeGraph tg =
+    std::get<1>(check_result(parse_type({}, {}, SrcID{0}, srcs[0]).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
       return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
         return std::tuple(std::move(ast), std::move(tg));
       });
