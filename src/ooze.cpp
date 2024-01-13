@@ -15,10 +15,10 @@ namespace ooze {
 
 namespace {
 
-bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& copy_types, TypeRef type) {
+bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& copy_types, Type type) {
   bool is_copyable = true;
 
-  preorder(tg, type, [&](TypeRef t) {
+  preorder(tg, type, [&](Type t) {
     switch(tg.get<TypeTag>(t)) {
     case TypeTag::Leaf:
       is_copyable = is_copyable && copy_types.find(tg.get<TypeID>(t)) != copy_types.end();
@@ -35,7 +35,7 @@ bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& 
   return is_copyable;
 }
 
-TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& m, const TypeGraph& tg, TypeRef type) {
+Type copy_type(Span<std::string_view> srcs, Env& env, Map<Type, Type>& m, const TypeGraph& tg, Type type) {
   if(const auto it = m.find(type); it != m.end()) {
     return it->second;
   } else if(tg.get<TypeTag>(type) == TypeTag::Leaf) {
@@ -43,10 +43,10 @@ TypeRef copy_type(Span<std::string_view> srcs, Env& env, Map<TypeRef, TypeRef>& 
     const auto it = env.type_cache.native.find(type_id);
     return it != env.type_cache.native.end() ? it->second.first : env.tg.add_node(TypeTag::Leaf, type_id);
   } else {
-    std::vector<TypeRef> children =
-      transform_to_vec(tg.fanout(type), [&](TypeRef fanout) { return copy_type(srcs, env, m, tg, fanout); });
+    std::vector<Type> children =
+      transform_to_vec(tg.fanout(type), [&](Type fanout) { return copy_type(srcs, env, m, tg, fanout); });
 
-    const TypeRef new_type = env.tg.add_node(children, tg.get<TypeTag>(type), tg.get<TypeID>(type));
+    const Type new_type = env.tg.add_node(children, tg.get<TypeTag>(type), tg.get<TypeID>(type));
     m.emplace(type, new_type);
     return new_type;
   }
@@ -141,14 +141,14 @@ auto run_or_assign(ExecutorRef ex,
                    const AST& ast,
                    const TypeGraph& tg,
                    const Map<ASTID, ASTID>& binding_of,
-                   Map<TypeRef, TypeRef>& to_env_type,
+                   Map<Type, Type>& to_env_type,
                    Env env,
                    Map<ASTID, std::vector<AsyncValue>> bindings,
                    ASTID id) {
   assert(ast.forest.is_root(id));
 
   const bool expr = is_expr(ast.forest[id]);
-  const TypeRef type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
+  const Type type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
 
   std::vector<AsyncValue> values;
   std::tie(values, bindings) = run_function(
@@ -170,10 +170,10 @@ auto run_or_assign(ExecutorRef ex,
 
 Env generate_functions(
   Span<std::string_view> srcs, Env env, const AST& ast, const TypeGraph& tg, const CallGraphData& cg) {
-  Map<TypeRef, TypeRef> to_env_type;
+  Map<Type, Type> to_env_type;
 
   // type graph was copied from env initially, so all those nodes should be identical
-  for(TypeRef t : id_range(TypeRef{env.tg.num_nodes()})) {
+  for(Type t : id_range(Type{env.tg.num_nodes()})) {
     to_env_type.emplace(t, t);
   }
 
@@ -199,7 +199,7 @@ Env generate_functions(
         return Any(fn_it->second);
       });
 
-      const TypeRef env_fn_type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
+      const Type env_fn_type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
 
       to_env_id.emplace(
         id,
@@ -228,7 +228,7 @@ std::tuple<Env, Bindings> to_str_bindings(
   Span<std::string_view> srcs,
   const AST& ast,
   const TypeGraph& tg,
-  Map<TypeRef, TypeRef>& to_env_type,
+  Map<Type, Type>& to_env_type,
   Env env,
   Map<ASTID, std::vector<AsyncValue>> bindings) {
   Bindings str_bindings;
@@ -261,7 +261,7 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
   const std::string env_src = env.src;
   const auto srcs = flatten(make_sv_array(env_src), files);
 
-  return accumulate_errors<std::pair<TypeRef, SrcRef>, ContextualError>(
+  return accumulate_errors<std::pair<Type, SrcRef>, ContextualError>(
            [&srcs](SrcID src, AST ast, TypeGraph tg) {
              return parse(std::move(ast), std::move(tg), src, srcs[src.get()]);
            },
@@ -288,7 +288,7 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
 }
 
 StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view expr) {
-  Map<TypeRef, TypeRef> to_env_type;
+  Map<Type, Type> to_env_type;
 
   auto [env_src, ast, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
 
@@ -320,7 +320,7 @@ StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_b
 
 StringResult<std::string, Env, Bindings>
 run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view expr) {
-  Map<TypeRef, TypeRef> to_env_type;
+  Map<Type, Type> to_env_type;
 
   auto [env_src, ast, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
   const SrcRef to_string_ref = {SrcID{0}, append_src(env_src, "to_string")};
@@ -334,11 +334,11 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
       if(ast.forest[id] == ASTTag::Assignment) {
         return success(knot::Type<std::vector<ContextualError>>{}, std::move(cg), std::move(ast), std::move(tg));
       } else {
-        const TypeRef expr_type = ast.types[id.get()];
-        const TypeRef borrow_type = tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});
-        const TypeRef tuple_type = tg.add_node(std::array{borrow_type}, TypeTag::Tuple, TypeID{});
-        const TypeRef string_type = tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::string>{}));
-        const TypeRef fn_type = tg.add_node(std::array{tuple_type, string_type}, TypeTag::Fn, TypeID{});
+        const Type expr_type = ast.types[id.get()];
+        const Type borrow_type = tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});
+        const Type tuple_type = tg.add_node(std::array{borrow_type}, TypeTag::Tuple, TypeID{});
+        const Type string_type = tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::string>{}));
+        const Type fn_type = tg.add_node(std::array{tuple_type, string_type}, TypeTag::Fn, TypeID{});
 
         const ASTID borrow_id = append_root(ast, ASTTag::ExprBorrow, SrcRef{}, borrow_type, std::array{id});
         const ASTID tuple_id = append_root(ast, ASTTag::ExprTuple, SrcRef{}, tuple_type, std::array{borrow_id});

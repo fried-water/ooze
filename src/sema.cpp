@@ -152,7 +152,7 @@ ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
 ContextualResult<void, TypeGraph>
 type_name_resolution(Span<std::string_view> srcs,
                      const TypeNames& type_names,
-                     const std::vector<std::pair<TypeRef, SrcRef>>& type_srcs,
+                     const std::vector<std::pair<Type, SrcRef>>& type_srcs,
                      TypeGraph tg) {
 
   assert(std::is_sorted(type_names.begin(), type_names.end()));

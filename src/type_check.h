@@ -26,10 +26,10 @@ struct ASTPropagation {
 std::vector<std::vector<ASTPropagation>>
 calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, ASTID>&);
 
-TypeRef unify(const TypeCache&, TypeGraph&, TypeRef, TypeRef, bool recurse);
+Type unify(const TypeCache&, TypeGraph&, Type, Type, bool recurse);
 
-std::tuple<ASTID, TypeRef, int>
-overload_resolution(const TypeCache&, TypeGraph&, const Graph<ASTID>& ident_graph, const std::vector<TypeRef>&, ASTID);
+std::tuple<ASTID, Type, int>
+overload_resolution(const TypeCache&, TypeGraph&, const Graph<ASTID>& ident_graph, const std::vector<Type>&, ASTID);
 
 std::vector<ContextualError> check_fully_resolved(
   Span<std::string_view>,

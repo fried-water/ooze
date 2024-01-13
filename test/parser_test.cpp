@@ -9,7 +9,7 @@ namespace {
 #define check_pass(_EXP_AST, _EXP_TYPES, _EXP_SRCS, _ACT)                                                              \
   [](const AST& exp_ast,                                                                                               \
      const TypeGraph& exp_tg,                                                                                          \
-     const std::vector<std::pair<TypeRef, SrcRef>>& exp_type_srcs,                                                     \
+     const std::vector<std::pair<Type, SrcRef>>& exp_type_srcs,                                                        \
      auto result) {                                                                                                    \
     BOOST_REQUIRE(result.has_value());                                                                                 \
                                                                                                                        \
@@ -51,13 +51,13 @@ std::vector<SrcRef> slices(std::string_view src, const std::vector<std::string_v
   });
 }
 
-std::vector<std::pair<TypeRef, SrcRef>>
+std::vector<std::pair<Type, SrcRef>>
 type_refs(std::string_view src, const std::vector<std::pair<i32, std::string_view>>& svs) {
   return transform_to_vec(svs, [&](auto p) {
     const auto& [type, sv] = p;
     const auto pos = src.find(sv);
     BOOST_REQUIRE_NE(std::string_view::npos, pos);
-    return std::pair(TypeRef{type}, SrcRef{SrcID::Invalid(), Slice{int(pos), int(pos + sv.size())}});
+    return std::pair(Type{type}, SrcRef{SrcID::Invalid(), Slice{int(pos), int(pos + sv.size())}});
   });
 }
 
@@ -74,7 +74,7 @@ Forest<ASTTag, ASTID> ast_forest(std::vector<std::vector<ASTTag>> vs) {
 }
 
 TypeGraph make_tg(std::vector<TypeTag> tags, std::vector<std::vector<i32>> edges = {}) {
-  Graph<TypeRef> g;
+  Graph<Type> g;
 
   if(edges.empty()) {
     for(int i = 0; i < tags.size(); i++) {
@@ -84,7 +84,7 @@ TypeGraph make_tg(std::vector<TypeTag> tags, std::vector<std::vector<i32>> edges
   for(const auto& fanout : edges) {
     g.add_node();
     for(i32 t : fanout) {
-      g.add_fanout_to_last_node(TypeRef(t));
+      g.add_fanout_to_last_node(Type(t));
     }
   }
 
@@ -93,7 +93,7 @@ TypeGraph make_tg(std::vector<TypeTag> tags, std::vector<std::vector<i32>> edges
   return std::move(g).append_column(std::move(tags), std::vector<TypeID>(size));
 }
 
-std::vector<TypeRef> types(size_t s) { return std::vector<TypeRef>(s); }
+std::vector<Type> types(size_t s) { return std::vector<Type>(s); }
 
 } // namespace
 
@@ -341,21 +341,21 @@ BOOST_AUTO_TEST_CASE(binding_no_type) {
 
 BOOST_AUTO_TEST_CASE(binding_ident) {
   const std::string_view src = "x: T";
-  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), {TypeRef{0}}};
+  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), {Type{0}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf});
   check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_binding({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_floating) {
   const std::string_view src = "x: _";
-  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), {TypeRef{0}}};
+  const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), {Type{0}}};
   const TypeGraph tg = make_tg({TypeTag::Floating}, {});
   check_pass(ast, tg, {}, parse_binding({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(binding_tuple) {
   const std::string_view src = "(): ()";
-  const AST ast = {ast_forest({{ASTTag::PatternTuple}}), as_invalid_refs({{0, 2}}), {TypeRef{0}}};
+  const AST ast = {ast_forest({{ASTTag::PatternTuple}}), as_invalid_refs({{0, 2}}), {Type{0}}};
   const TypeGraph tg = make_tg({TypeTag::Tuple});
   check_pass(ast, tg, {}, parse_binding({}, {}, {}, src));
 }
@@ -363,7 +363,7 @@ BOOST_AUTO_TEST_CASE(binding_tuple) {
 BOOST_AUTO_TEST_CASE(binding_tuple_arg) {
   const std::string_view src = "(x): (T)";
   const AST ast = {
-    ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", "(x)"}), {TypeRef{-1}, TypeRef{1}}};
+    ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", "(x)"}), {Type{-1}, Type{1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple}, {{}, {0}});
   check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_binding({}, {}, {}, src));
 }
@@ -372,7 +372,7 @@ BOOST_AUTO_TEST_CASE(assignment) {
   const std::string_view src = "let x: T = y";
   const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent}, {ASTTag::Assignment, ASTTag::ExprIdent}}),
                    slices(src, {"x", "y", "let x: T = y"}),
-                   {TypeRef{0}, TypeRef{-1}, TypeRef{-1}}};
+                   {Type{0}, Type{-1}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf});
   check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_assignment({}, {}, {}, src));
 }
@@ -407,7 +407,7 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign_type) {
                                {ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                                {ASTTag::ExprWith, ASTTag::ExprIdent}}),
                    slices(src, {"x", "y", "let x: T = y", "z", "let x: T = y; z"}),
-                   {TypeRef{0}, TypeRef{-1}, TypeRef{-1}, TypeRef{-1}, TypeRef{-1}}};
+                   {Type{0}, Type{-1}, Type{-1}, Type{-1}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf});
   check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_expr({}, {}, {}, src));
 }
@@ -429,7 +429,7 @@ BOOST_AUTO_TEST_CASE(fn) {
   const std::string_view src = "() -> T = x";
   const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
                    slices(src, {"()", "x", "() -> T = x"}),
-                   {TypeRef{-1}, TypeRef{0}, TypeRef{-1}}};
+                   {Type{-1}, Type{0}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf});
   check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_function({}, {}, {}, src));
 }
@@ -439,7 +439,7 @@ BOOST_AUTO_TEST_CASE(fn_one_arg) {
   const AST ast = {
     ast_forest({{ASTTag::Fn, ASTTag::PatternTuple, ASTTag::PatternIdent}, {ASTTag::Fn, ASTTag::ExprIdent}}),
     slices(src, {"x", "(x: T1)", "y", "(x: T1) -> T2 = y"}),
-    {TypeRef{0}, TypeRef{-1}, TypeRef{1}, TypeRef{-1}}};
+    {Type{0}, Type{-1}, Type{1}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}});
   check_pass(ast, tg, type_refs(src, {{0, "T1"}, {1, "T2"}}), parse_function({}, {}, {}, src));
 }
@@ -448,7 +448,7 @@ BOOST_AUTO_TEST_CASE(fn_return_fn) {
   const std::string_view src = "() -> fn() -> T = x";
   const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
                    as_invalid_refs({{0, 2}, {18, 19}, {0, 19}}),
-                   {TypeRef{-1}, TypeRef{2}, TypeRef{-1}}};
+                   {Type{-1}, Type{2}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {}, {0, 1}});
   check_pass(ast, tg, type_refs(src, {{1, "T"}}), parse_function({}, {}, {}, src));
 }
@@ -461,7 +461,7 @@ BOOST_AUTO_TEST_CASE(ast_fn) {
                                {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
                                {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}}),
                    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}}),
-                   {TypeRef{-1}, TypeRef{-1}, TypeRef{0}, TypeRef{-1}, TypeRef{-1}}};
+                   {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf});
   check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse({}, {}, {}, src));
 }
@@ -480,20 +480,11 @@ BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
   const AST ast = {
     std::move(f),
     as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}, {19, 20}, {20, 22}, {30, 31}, {20, 31}, {16, 31}}),
-    {TypeRef{-1},
-     TypeRef{-1},
-     TypeRef{0},
-     TypeRef{-1},
-     TypeRef{-1},
-     TypeRef{-1},
-     TypeRef{-1},
-     TypeRef{1},
-     TypeRef{-1},
-     TypeRef{-1}}};
+    {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}, Type{-1}, Type{1}, Type{-1}, Type{-1}}};
 
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}});
-  const std::vector<std::pair<TypeRef, SrcRef>> type_srcs = {
-    {TypeRef{0}, SrcRef{SrcID{}, {10, 11}}}, {TypeRef{1}, SrcRef{SrcID{}, {26, 27}}}};
+  const std::vector<std::pair<Type, SrcRef>> type_srcs = {
+    {Type{0}, SrcRef{SrcID{}, {10, 11}}}, {Type{1}, SrcRef{SrcID{}, {26, 27}}}};
   check_pass(ast, tg, type_srcs, parse({}, {}, {}, src));
 }
 
@@ -522,7 +513,7 @@ BOOST_AUTO_TEST_CASE(repl_assignment) {
 BOOST_AUTO_TEST_CASE(parse_consecutive) {
   AST ast;
   TypeGraph tg;
-  std::vector<std::pair<TypeRef, SrcRef>> type_srcs;
+  std::vector<std::pair<Type, SrcRef>> type_srcs;
   std::tie(type_srcs, ast, tg) = check_result(parse({}, {}, SrcID{0}, "fn f() -> T = x"));
   std::tie(type_srcs, ast, tg) = check_result(parse(std::move(ast), std::move(tg), SrcID{0}, "fn g() -> T = y"));
 

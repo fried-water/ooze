@@ -35,7 +35,7 @@ struct Env {
 
   std::unordered_map<ASTID, AsyncFn> flat_functions;
 
-  ASTID add_function(std::string_view name, TypeRef type, AsyncFn fn) {
+  ASTID add_function(std::string_view name, Type type, AsyncFn fn) {
     const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
     const ASTID id = add_global(ast, ref, type);
     flat_functions.emplace(id, std::move(fn));

@@ -15,7 +15,7 @@ namespace {
 struct State {
   AST ast;
   TypeGraph tg;
-  std::vector<std::pair<TypeRef, SrcRef>> type_srcs;
+  std::vector<std::pair<Type, SrcRef>> type_srcs;
   SrcID src_id;
   std::string_view src;
 };
@@ -108,7 +108,7 @@ auto tuple(P p) {
 
 struct ASTAppender {
   ASTTag _tag;
-  TypeRef _type;
+  Type _type;
 
   ASTID operator()(State& s, Span<Token> tokens, Slice ref) const { return (*this)(s, tokens, ref, Span<ASTID>{}); }
 
@@ -127,15 +127,15 @@ struct ASTAppender {
 struct TypeAppender {
   TypeTag _tag;
 
-  TypeRef operator()(State& s, Span<Token> tokens, Slice ref) const { return (*this)(s, tokens, ref, Span<TypeRef>{}); }
+  Type operator()(State& s, Span<Token> tokens, Slice ref) const { return (*this)(s, tokens, ref, Span<Type>{}); }
 
   template <typename... IDs>
-  TypeRef operator()(State& s, Span<Token> tokens, Slice ref, TypeRef id, IDs... ids) const {
+  Type operator()(State& s, Span<Token> tokens, Slice ref, Type id, IDs... ids) const {
     return (*this)(s, tokens, ref, std::array{id, ids...});
   }
 
-  TypeRef operator()(State& s, Span<Token> tokens, Slice ref, Span<TypeRef> ids) const {
-    const TypeRef n = s.tg.add_node(ids, _tag, {});
+  Type operator()(State& s, Span<Token> tokens, Slice ref, Span<Type> ids) const {
+    const Type n = s.tg.add_node(ids, _tag, {});
     if(_tag == TypeTag::Leaf) {
       s.type_srcs.emplace_back(n, SrcRef{s.src_id, char_slice(tokens, ref)});
     }
@@ -153,7 +153,7 @@ ParseResult<ASTID> pattern(State& s, Span<Token> tokens, ParseLocation loc) {
                 ident())(s, tokens, loc);
 }
 
-ParseResult<TypeRef> type(State& s, Span<Token> tokens, ParseLocation loc) {
+ParseResult<Type> type(State& s, Span<Token> tokens, ParseLocation loc) {
   const auto tuple_type = []() { return transform(tuple(type), TypeAppender{TypeTag::Tuple}); };
 
   const auto leaf_type = [](TokenType type, TypeTag tag) {
@@ -169,8 +169,8 @@ ParseResult<TypeRef> type(State& s, Span<Token> tokens, ParseLocation loc) {
 
 auto binding() {
   return transform(
-    seq(pattern, maybe(seq(symbol(":"), type))), [&](State& s, ASTID pattern, std::optional<TypeRef> opt_type) {
-      s.ast.types[pattern.get()] = opt_type.value_or(TypeRef{});
+    seq(pattern, maybe(seq(symbol(":"), type))), [&](State& s, ASTID pattern, std::optional<Type> opt_type) {
+      s.ast.types[pattern.get()] = opt_type.value_or(Type{});
       return pattern;
     });
 }
@@ -248,7 +248,7 @@ auto function() {
                        symbol("->"),
                        type,
                        choose(scope(), seq(symbol("="), expr))),
-                   [](State& s, Span<Token> tokens, Slice ref, ASTID pattern, TypeRef type, ASTID expr) {
+                   [](State& s, Span<Token> tokens, Slice ref, ASTID pattern, Type type, ASTID expr) {
                      s.ast.types[expr.get()] = type;
                      return ASTAppender{ASTTag::Fn}(s, tokens, ref, pattern, expr);
                    });
@@ -257,7 +257,7 @@ auto function() {
 auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::Assignment})); }
 
 template <typename Parser>
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {
   const auto [tokens, lex_end] = lex(src);
 
@@ -281,37 +281,37 @@ parse_ast(Parser p, AST ast, TypeGraph tg, SrcID src_id, std::string_view src) {
 
 } // namespace
 
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_expr(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(expr, std::move(ast), std::move(tg), id, src);
 }
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_repl(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(choose(assignment(), expr), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_function(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(function(), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(root(), std::move(ast), std::move(tg), id, src);
 }
 
 // Exposed for unit testing
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_binding(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(binding(), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_assignment(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(assignment(), std::move(ast), std::move(tg), id, src);
 }
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_type(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(type, std::move(ast), std::move(tg), id, src);
 }
-ContextualResult<std::vector<std::pair<TypeRef, SrcRef>>, AST, TypeGraph>
+ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse_pattern(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(pattern, std::move(ast), std::move(tg), id, src);
 }

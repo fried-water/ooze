@@ -41,8 +41,8 @@ void compare_tc(R exp_result, R act_result) {
   BOOST_REQUIRE(act_ast.forest == exp_ast.forest);
 
   for(ASTID id : exp_ast.forest.ids()) {
-    const TypeRef exp_type = exp_ast.types[id.get()];
-    const TypeRef act_type = act_ast.types[id.get()];
+    const Type exp_type = exp_ast.types[id.get()];
+    const Type act_type = act_ast.types[id.get()];
 
     if(!compare_dags(exp_tg, act_tg, exp_type, act_type)) {
       fmt::print("ID {}\n", id.get());
@@ -90,16 +90,16 @@ void test_unify(std::string_view exp, std::string_view x, std::string_view y, bo
   const auto srcs = make_sv_array(e.src, x, y, exp);
 
   e.tg = type_graph_of(srcs, e.native_types.names, SrcID{1}, std::move(e.tg));
-  const TypeRef xid{e.tg.num_nodes() - 1};
+  const Type xid{e.tg.num_nodes() - 1};
 
   e.tg = type_graph_of(srcs, e.native_types.names, SrcID{2}, std::move(e.tg));
-  const TypeRef yid{e.tg.num_nodes() - 1};
+  const Type yid{e.tg.num_nodes() - 1};
 
   e.tg = type_graph_of(srcs, e.native_types.names, SrcID{3}, std::move(e.tg));
-  const TypeRef exp_type = TypeRef{e.tg.num_nodes() - 1};
+  const Type exp_type = Type{e.tg.num_nodes() - 1};
 
-  const TypeRef unified_type = unify(e.type_cache, e.tg, xid, yid, recurse);
-  BOOST_REQUIRE(unified_type != TypeRef::Invalid());
+  const Type unified_type = unify(e.type_cache, e.tg, xid, yid, recurse);
+  BOOST_REQUIRE(unified_type != Type::Invalid());
   BOOST_CHECK(compare_dags(e.tg, exp_type, unified_type));
 }
 
@@ -108,12 +108,12 @@ void test_unify_error(std::string_view x, std::string_view y, bool recurse = tru
   const auto srcs = make_sv_array(e.src, x, y);
 
   e.tg = type_graph_of(srcs, e.native_types.names, SrcID{1}, std::move(e.tg));
-  const TypeRef xid{e.tg.num_nodes() - 1};
+  const Type xid{e.tg.num_nodes() - 1};
 
   e.tg = type_graph_of(srcs, e.native_types.names, SrcID{2}, std::move(e.tg));
-  const TypeRef yid{e.tg.num_nodes() - 1};
+  const Type yid{e.tg.num_nodes() - 1};
 
-  BOOST_REQUIRE(unify(e.type_cache, e.tg, xid, yid, recurse) == TypeRef::Invalid());
+  BOOST_REQUIRE(unify(e.type_cache, e.tg, xid, yid, recurse) == Type::Invalid());
 }
 
 template <typename Parser>

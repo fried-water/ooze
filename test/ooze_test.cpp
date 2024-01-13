@@ -15,7 +15,7 @@ auto await(Binding b) {
                    transform_to_vec(std::move(b.values), [](AsyncValue v) { return take(std::move(v)).wait(); }));
 }
 
-StringResult<std::pair<TypeRef, std::vector<Any>>, Env> run(Env env, std::string_view script, std::string_view expr) {
+StringResult<std::pair<Type, std::vector<Any>>, Env> run(Env env, std::string_view script, std::string_view expr) {
   auto executor = make_seq_executor();
 
   return parse_scripts(std::move(env), make_sv_array(script))
@@ -30,7 +30,7 @@ StringResult<std::pair<TypeRef, std::vector<Any>>, Env> run(Env env, std::string
 
 template <typename T>
 void check_binding(
-  const Env& e, const std::pair<TypeRef, std::vector<Any>>& binding, std::string_view exp_type, const T& exp_value) {
+  const Env& e, const std::pair<Type, std::vector<Any>>& binding, std::string_view exp_type, const T& exp_value) {
   BOOST_CHECK_EQUAL(exp_type, pretty_print(make_sv_array(e.src), e.tg, e.native_types.names, binding.first));
   compare(exp_value, binding.second);
 }
@@ -41,7 +41,7 @@ void check_run(Env env, std::string_view script, std::string_view expr, std::str
   check_binding(renv, p, exp_type, exp_value);
 }
 
-StringResult<std::unordered_map<std::string, std::pair<TypeRef, std::vector<Any>>>, Env>
+StringResult<std::unordered_map<std::string, std::pair<Type, std::vector<Any>>>, Env>
 assign(Env env, std::string_view script, std::string_view expr) {
   auto executor = make_seq_executor();
 
@@ -52,7 +52,7 @@ assign(Env env, std::string_view script, std::string_view expr) {
       BOOST_REQUIRE(compare_dags(env.tg, output.type, env.type_cache.unit));
       BOOST_REQUIRE_EQUAL(0, output.values.size());
 
-      std::unordered_map<std::string, std::pair<TypeRef, std::vector<Any>>> results;
+      std::unordered_map<std::string, std::pair<Type, std::vector<Any>>> results;
       for(auto& [name, binding] : bindings) {
         results.emplace(std::move(name), await(std::move(binding)));
       }

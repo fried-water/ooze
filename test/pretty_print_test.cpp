@@ -32,7 +32,7 @@ void test_type(std::string_view exp, std::string_view src) {
         return std::tuple(std::move(ast), std::move(tg));
       });
     }));
-  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, tg, names, TypeRef(tg.num_nodes() - 1)));
+  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, tg, names, Type(tg.num_nodes() - 1)));
 }
 
 } // namespace
@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(unnamed_type) {
   const auto int_type = type_id(knot::Type<int>{});
 
   TypeGraph g;
-  const TypeRef id = g.add_node(TypeTag::Leaf, int_type);
+  const Type id = g.add_node(TypeTag::Leaf, int_type);
 
   BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", type_id(knot::Type<int>{}).id), pretty_print({{}}, g, {}, id));
 }
@@ -74,9 +74,9 @@ BOOST_AUTO_TEST_CASE(native_fn) {
   AST ast;
   TypeGraph tg;
 
-  const TypeRef t = tg.add_node(TypeTag::Leaf, TypeID{1});
-  const TypeRef tuple_t = tg.add_node({t}, TypeTag::Tuple, TypeID{});
-  const TypeRef fn_t = tg.add_node({tuple_t, t}, TypeTag::Fn, TypeID{});
+  const Type t = tg.add_node(TypeTag::Leaf, TypeID{1});
+  const Type tuple_t = tg.add_node({t}, TypeTag::Tuple, TypeID{});
+  const Type fn_t = tg.add_node({tuple_t, t}, TypeTag::Fn, TypeID{});
 
   const ASTID global = *ast.forest.parent(add_global(ast, SrcRef{SrcID{0}, {0, 1}}, fn_t));
 
@@ -139,7 +139,7 @@ BOOST_AUTO_TEST_CASE(fn_type) {
       });
     })));
 
-  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, tg, names, TypeRef(tg.num_nodes() - 1)));
+  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, tg, names, Type(tg.num_nodes() - 1)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

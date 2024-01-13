@@ -10,8 +10,8 @@ namespace ooze {
 namespace {
 
 std::vector<PassBy> pass_bys_of(
-  const std::unordered_set<TypeID>& copy_types, const TypeGraph& g, TypeRef t, std::vector<PassBy> pass_bys = {}) {
-  preorder(g, t, [&](TypeRef t) {
+  const std::unordered_set<TypeID>& copy_types, const TypeGraph& g, Type t, std::vector<PassBy> pass_bys = {}) {
+  preorder(g, t, [&](Type t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf:
       pass_bys.push_back(copy_types.find(g.get<TypeID>(t)) != copy_types.end() ? PassBy::Copy : PassBy::Move);
@@ -28,10 +28,10 @@ std::vector<PassBy> pass_bys_of(
   return pass_bys;
 }
 
-std::vector<bool> borrows_of(const TypeGraph& g, const TypeRef& t) {
+std::vector<bool> borrows_of(const TypeGraph& g, const Type& t) {
   std::vector<bool> borrows;
 
-  preorder(g, t, [&](TypeRef t) {
+  preorder(g, t, [&](Type t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf: borrows.push_back(false); return false;
     case TypeTag::Fn: borrows.push_back(false); return false;

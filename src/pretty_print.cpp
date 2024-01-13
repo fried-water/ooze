@@ -25,7 +25,7 @@ void print_literal(std::ostream& os, const Literal& l) {
 }
 
 void pretty_print(
-  std::ostream& os, Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, TypeRef t) {
+  std::ostream& os, Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, Type t) {
   const auto children = g.fanout(t);
 
   switch(g.get<TypeTag>(t)) {
@@ -45,7 +45,7 @@ void pretty_print(
     os << '(';
     if(!children.empty()) {
       pretty_print(os, srcs, g, type_names, children.front());
-      std::for_each(children.begin() + 1, children.end(), [&](TypeRef ele) {
+      std::for_each(children.begin() + 1, children.end(), [&](Type ele) {
         pretty_print(os << ", ", srcs, g, type_names, ele);
       });
     }
@@ -63,7 +63,7 @@ void pretty_print(std::ostream& os,
                   int indentation = 0) {
   const auto print_binding = [&](std::ostream& os, ASTID pattern_id) {
     pretty_print(os, srcs, ast, tg, type_names, pattern_id, indentation);
-    if(TypeRef t = ast.types[pattern_id.get()]; t.is_valid() && tg.get<TypeTag>(t) != TypeTag::Floating) {
+    if(Type t = ast.types[pattern_id.get()]; t.is_valid() && tg.get<TypeTag>(t) != TypeTag::Floating) {
       pretty_print(os << ": ", srcs, tg, type_names, t);
     }
   };
@@ -128,7 +128,7 @@ void pretty_print(std::ostream& os,
     }
     os << ')';
 
-    if(const TypeRef t = ast.types[expr.get()]; t.is_valid()) {
+    if(const Type t = ast.types[expr.get()]; t.is_valid()) {
       pretty_print(os << " -> ", srcs, tg, type_names, t);
     } else {
       os << " -> _";
@@ -187,14 +187,13 @@ std::string pretty_print(Span<std::string_view> srcs,
   return std::move(os).str();
 }
 
-std::string pretty_print(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, TypeRef t) {
+std::string pretty_print(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, Type t) {
   std::ostringstream os;
   pretty_print(os, srcs, g, type_names, t);
   return std::move(os).str();
 }
 
-std::string
-pretty_print_fn_type(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, TypeRef t) {
+std::string pretty_print_fn_type(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, Type t) {
   assert(g.get<TypeTag>(t) == TypeTag::Fn);
 
   std::ostringstream os;

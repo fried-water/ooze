@@ -170,7 +170,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 
   for(const ASTID id : env.ast.forest.root_ids()) {
     const ASTID ident = *env.ast.forest.first_child(id);
-    const TypeRef type = env.ast.types[ident.get()];
+    const Type type = env.ast.types[ident.get()];
     if(env.tg.get<TypeTag>(type) == TypeTag::Fn) {
       const std::string_view name = sv(srcs, env.ast.srcs[ident.get()]);
       functions.emplace_back(name, pretty_print_fn_type(srcs, env.tg, env.native_types.names, type));

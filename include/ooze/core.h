@@ -23,7 +23,7 @@ struct AsyncValue {
 };
 
 struct Binding {
-  TypeRef type;
+  Type type;
   std::vector<AsyncValue> values;
 };
 

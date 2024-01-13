@@ -57,7 +57,7 @@ using ASTID = StrongID<struct ASTSpace>;
 struct AST {
   Forest<ASTTag, ASTID> forest;
   std::vector<SrcRef> srcs;
-  std::vector<TypeRef> types;
+  std::vector<Type> types;
   std::vector<std::pair<ASTID, Literal>> literals;
 
   KNOT_COMPAREABLE(AST);
@@ -100,16 +100,16 @@ inline bool is_global(const Forest<ASTTag, ASTID>& f, ASTID id) {
   return f.is_root(id) && f[id] == ASTTag::Assignment;
 }
 
-inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, TypeRef type, Span<ASTID> children = {}) {
+inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID> children = {}) {
   ast.srcs.push_back(ref);
   ast.types.push_back(type);
   return ast.forest.append_root_post_order(tag, children);
 }
 
-inline ASTID add_global(AST& ast, SrcRef ref, TypeRef type) {
+inline ASTID add_global(AST& ast, SrcRef ref, Type type) {
   const ASTID ident_id = append_root(ast, ASTTag::PatternIdent, ref, type);
   const ASTID fn_id = append_root(ast, ASTTag::EnvValue, ref, type);
-  append_root(ast, ASTTag::Assignment, SrcRef{}, TypeRef{}, std::array{ident_id, fn_id});
+  append_root(ast, ASTTag::Assignment, SrcRef{}, Type{}, std::array{ident_id, fn_id});
   return ident_id;
 }
 

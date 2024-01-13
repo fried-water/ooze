@@ -35,13 +35,13 @@ struct std::hash<ooze::TypeID> {
 
 namespace ooze {
 
-using TypeRef = StrongID<struct TypeSpace>;
+using Type = StrongID<struct TypeSpace>;
 
 enum class TypeTag { Leaf, Floating, Borrow, Fn, Tuple };
 
 constexpr auto names(knot::Type<TypeTag>) { return knot::Names("Type", {"Leaf", "Floating", "Borrow", "Fn", "Tuple"}); }
 
-using TypeGraph = Graph<TypeRef, TypeTag, TypeID>;
+using TypeGraph = Graph<Type, TypeTag, TypeID>;
 
 using TypeNames = std::vector<std::pair<std::string, TypeID>>;
 
@@ -70,24 +70,24 @@ struct NativeTypeInfo {
 };
 
 struct TypeCache {
-  TypeRef floating;
-  TypeRef borrow_floating;
-  TypeRef fn_floating;
-  TypeRef unit;
-  TypeRef boolean;
+  Type floating;
+  Type borrow_floating;
+  Type fn_floating;
+  Type unit;
+  Type boolean;
 
   // leaf and borrowed type
-  std::unordered_map<TypeID, std::pair<TypeRef, TypeRef>> native;
+  std::unordered_map<TypeID, std::pair<Type, Type>> native;
 };
 
 template <typename T>
-TypeRef add_or_get_type(TypeGraph& g, std::unordered_map<TypeID, std::pair<TypeRef, TypeRef>>& types, knot::Type<T> t) {
+Type add_or_get_type(TypeGraph& g, std::unordered_map<TypeID, std::pair<Type, Type>>& types, knot::Type<T> t) {
   const TypeID id = type_id(decay(t));
 
   auto it = types.find(id);
   if(it == types.end()) {
-    const TypeRef type = g.add_node(TypeTag::Leaf, id);
-    const TypeRef borrow = g.add_node(std::array{type}, TypeTag::Borrow, TypeID{});
+    const Type type = g.add_node(TypeTag::Leaf, id);
+    const Type borrow = g.add_node(std::array{type}, TypeTag::Borrow, TypeID{});
     it = types.emplace(id, std::pair(type, borrow)).first;
   }
 
@@ -95,20 +95,20 @@ TypeRef add_or_get_type(TypeGraph& g, std::unordered_map<TypeID, std::pair<TypeR
 }
 
 template <typename F>
-TypeRef add_fn(TypeGraph& g, std::unordered_map<TypeID, std::pair<TypeRef, TypeRef>>& existing_types, knot::Type<F> f) {
-  std::vector<TypeRef> types;
+Type add_fn(TypeGraph& g, std::unordered_map<TypeID, std::pair<Type, Type>>& existing_types, knot::Type<F> f) {
+  std::vector<Type> types;
   types.reserve(size(args(f)));
   visit(args(f), [&](auto t) { types.push_back(add_or_get_type(g, existing_types, t)); });
-  const TypeRef args = g.add_node(types, TypeTag::Tuple, TypeID{});
+  const Type args = g.add_node(types, TypeTag::Tuple, TypeID{});
 
   if constexpr(const auto fn_ret = return_types(f); size(fn_ret) == 1) {
-    const TypeRef result = add_or_get_type(g, existing_types, head(fn_ret));
+    const Type result = add_or_get_type(g, existing_types, head(fn_ret));
     return g.add_node(std::array{args, result}, TypeTag::Fn, TypeID{});
   } else {
     types.clear();
     types.reserve(size(fn_ret));
     visit(fn_ret, [&](auto t) { types.push_back(add_or_get_type(g, existing_types, t)); });
-    const TypeRef result = g.add_node(types, TypeTag::Tuple, TypeID{});
+    const Type result = g.add_node(types, TypeTag::Tuple, TypeID{});
     return g.add_node(std::array{args, result}, TypeTag::Fn, TypeID{});
   }
 }
@@ -128,10 +128,10 @@ inline TypeCache create_type_cache(TypeGraph& g) {
   return tc;
 }
 
-inline int size_of(const TypeGraph& g, const TypeRef& t) {
+inline int size_of(const TypeGraph& g, const Type& t) {
   int s = 0;
 
-  preorder(g, t, [&](TypeRef t) {
+  preorder(g, t, [&](Type t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf:
     case TypeTag::Fn: s += 1; return false;
