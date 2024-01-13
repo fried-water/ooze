@@ -5,7 +5,7 @@
 #include "ooze/executor.h"
 #include "ooze/future.h"
 #include "ooze/result.h"
-#include "ooze/type_flat.h"
+#include "ooze/type.h"
 
 #include <string>
 #include <string_view>

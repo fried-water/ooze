@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/type_flat.h"
+#include "ooze/type.h"
 
 #include <exception>
 

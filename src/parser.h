@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/ast_flat.h"
+#include "ooze/ast.h"
 #include "user_msg.h"
 
 namespace ooze {

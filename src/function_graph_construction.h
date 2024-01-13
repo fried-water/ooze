@@ -1,7 +1,6 @@
 #pragma once
 
-#include "ooze/ast_flat.h"
-#include "ooze/env.h"
+#include "ooze/ast.h"
 #include "ooze/function_graph.h"
 #include "user_msg.h"
 
