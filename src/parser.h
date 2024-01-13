@@ -1,7 +1,8 @@
 #pragma once
 
-#include "ooze/ast.h"
 #include "user_msg.h"
+
+#include "ooze/ast.h"
 
 namespace ooze {
 

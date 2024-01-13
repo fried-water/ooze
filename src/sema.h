@@ -1,8 +1,9 @@
 #pragma once
 
+#include "user_msg.h"
+
 #include "ooze/ast.h"
 #include "ooze/src_map.h"
-#include "user_msg.h"
 
 namespace ooze {
 

@@ -59,16 +59,16 @@ IncludeCategories:
     Priority:        0
   - Regex:           '"test.h"'
     Priority:        0
-  - Regex:           '"executor/.*.h"'
-    Priority:        1
-  - Regex:           '".*.h"'
+  - Regex:           '"ooze/.*.h"'
     Priority:        2
+  - Regex:           '".*.h"'
+    Priority:        1
   - Regex:           '<.*.h>'
     Priority:        3
   - Regex:           '<.*.hpp>'
-    Priority:        4
+    Priority:        3
   - Regex:           '<.*>'
-    Priority:        5
+    Priority:        4
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: false
 IndentPPDirectives: None

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "algorithm.h"
+
 #include "ooze/functional.h"
 #include "ooze/primitives.h"
 #include "ooze/result.h"

@@ -1,9 +1,10 @@
 #include "test.h"
 
 #include "bindings.h"
-#include "ooze/executor/sequential_executor.h"
 #include "pretty_print.h"
 #include "repl.h"
+
+#include "ooze/executor/sequential_executor.h"
 
 namespace ooze {
 

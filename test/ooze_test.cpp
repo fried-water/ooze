@@ -2,9 +2,10 @@
 
 #include "async_test.h"
 #include "bindings.h"
+#include "pretty_print.h"
+
 #include "ooze/core.h"
 #include "ooze/executor/sequential_executor.h"
-#include "pretty_print.h"
 
 namespace ooze {
 

@@ -2,11 +2,12 @@
 
 #include "bindings.h"
 #include "io.h"
-#include "ooze/core.h"
-#include "ooze/executor/task_executor.h"
 #include "parser_combinators.h"
 #include "pretty_print.h"
 #include "repl.h"
+
+#include "ooze/core.h"
+#include "ooze/executor/task_executor.h"
 
 #include <iostream>
 #include <map>

@@ -3,13 +3,14 @@
 #include "async_functions.h"
 #include "bindings.h"
 #include "function_graph_construction.h"
-#include "ooze/core.h"
 #include "parser.h"
 #include "parser_combinators.h"
 #include "pretty_print.h"
 #include "sema.h"
 #include "type_check.h"
 #include "user_msg.h"
+
+#include "ooze/core.h"
 
 namespace ooze {
 
