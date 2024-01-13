@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "frontend_helpers.h"
+#include "ooze/env.h"
 #include "parser.h"
 #include "pretty_print.h"
 #include "sema.h"
