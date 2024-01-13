@@ -1,6 +1,6 @@
 #include "test.h"
 
-#include "parser_flat.h"
+#include "parser.h"
 #include "pretty_print.h"
 #include "sema.h"
 

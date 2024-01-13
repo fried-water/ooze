@@ -1,8 +1,8 @@
 #include "pch.h"
 
 #include "lexer.h"
+#include "parser.h"
 #include "parser_combinators.h"
-#include "parser_flat.h"
 
 #include <charconv>
 

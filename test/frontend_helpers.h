@@ -1,6 +1,6 @@
 #pragma once
 
-#include "parser_flat.h"
+#include "parser.h"
 #include "sema.h"
 
 namespace ooze {
