@@ -1,21 +1,10 @@
 #pragma once
 
-#include "ooze/ast.h"
 #include "ooze/ast_flat.h"
-#include "ooze/env.h"
 #include "ooze/src_map.h"
 #include "user_msg.h"
 
 namespace ooze {
-
-ContextualResult<TypedFunction> type_name_resolution(const Env&, const UnTypedFunction&);
-ContextualResult<TypedExpr> type_name_resolution(const Env&, const UnTypedExpr&);
-ContextualResult<TypedPattern> type_name_resolution(const Env&, const UnTypedPattern&);
-ContextualResult<TypedAssignment> type_name_resolution(const Env&, const UnTypedAssignment&);
-ContextualResult<Type<TypeID>> type_name_resolution(const Env&, const Type<NamedType>&);
-
-TypedPattern inferred_inputs(const TypedExpr&, Set<std::string> active);
-ContextualResult<CheckedFunction> overload_resolution(const Env&, const TypedFunction&);
 
 ContextualResult2<void, TypeGraph> type_name_resolution(
   Span<std::string_view>, const TypeNames&, const std::vector<std::pair<TypeRef, SrcRef>>&, TypeGraph);
