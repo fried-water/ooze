@@ -156,7 +156,7 @@ auto run_or_assign(ExecutorRef ex,
     ast,
     tg,
     binding_of,
-    env.copy_types,
+    env.native_types.copyable,
     env.flat_functions,
     ex,
     std::move(bindings),
@@ -186,7 +186,8 @@ Env generate_functions(
     if(ast.forest[*fn_id] == ASTTag::Fn) {
       const auto fn_id = ast.forest.next_sibling(id);
       assert(fn_id && ast.forest[*fn_id] == ASTTag::Fn);
-      auto [global_values, global_borrows, fg] = create_graph(ast, tg, env.copy_types, cg.binding_of, *fn_id);
+      auto [global_values, global_borrows, fg] =
+        create_graph(ast, tg, env.native_types.copyable, cg.binding_of, *fn_id);
 
       assert(global_borrows.empty());
 
