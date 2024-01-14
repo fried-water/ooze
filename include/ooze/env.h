@@ -18,12 +18,6 @@
 
 namespace ooze {
 
-inline Slice append_src(std::string& src, std::string_view name) {
-  const auto ref = Slice{i32(src.size()), i32(src.size() + name.size())};
-  src.insert(src.end(), name.begin(), name.end());
-  return ref;
-}
-
 struct Env {
   std::string src;
 

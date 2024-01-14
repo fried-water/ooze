@@ -77,7 +77,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   };
 }
 
-ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
+ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph> global_binding_resolution(
   Span<std::string_view> srcs,
   const TypeCache& tc,
   const TypeNames& type_names,
@@ -117,34 +117,45 @@ ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
     }
   }
 
-  std::vector<std::vector<ASTID>> call_graph_vec(ast.forest.size());
+  return value_or_errors(std::move(binding_of), std::move(errors), std::move(ast), std::move(tg));
+}
 
-  for(const auto [id, overload] : binding_of) {
-    const ASTID root = ast.forest.root(id);
-    if(ast.forest[root] == ASTTag::Assignment && is_global(ast.forest, overload)) {
-      call_graph_vec[ast.forest.first_child(root)->get()].push_back(overload);
-    }
-  }
+ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
+  Span<std::string_view> srcs,
+  const TypeCache& tc,
+  const TypeNames& type_names,
+  const Graph<ASTID>& ident_graph,
+  AST ast,
+  TypeGraph tg) {
 
-  for(auto& v : call_graph_vec) {
-    v = unique(sorted(std::move(v)));
-  }
+  return global_binding_resolution(srcs, tc, type_names, ident_graph, std::move(ast), std::move(tg))
+    .and_then([&](Map<ASTID, ASTID> binding_of, AST ast, TypeGraph tg) {
+      std::vector<std::vector<ASTID>> call_graph_vec(ast.forest.size());
 
-  Graph<ASTID> call_graph = Graph<ASTID>(call_graph_vec);
+      for(const auto [id, overload] : binding_of) {
+        const ASTID root = ast.forest.root(id);
+        if(ast.forest[root] == ASTTag::Assignment && is_global(ast.forest, overload)) {
+          call_graph_vec[ast.forest.first_child(root)->get()].push_back(overload);
+        }
+      }
 
-  auto leaf_fns = transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID root) {
-    if(ast.forest[root] == ASTTag::Assignment) {
-      // TODO check leaves?
-      const auto pattern = *ast.forest.first_child(root);
-      return !call_graph.has_fanout(pattern) ? std::optional(pattern) : std::nullopt;
-    }
-    return std::optional<ASTID>();
-  });
+      for(auto& v : call_graph_vec) {
+        v = unique(sorted(std::move(v)));
+      }
 
-  return value_or_errors(CallGraphData{std::move(call_graph), std::move(leaf_fns), std::move(binding_of)},
-                         std::move(errors),
-                         std::move(ast),
-                         std::move(tg));
+      auto call_graph = Graph<ASTID>(call_graph_vec);
+
+      return topographical_ordering(invert(call_graph))
+        .map([&](std::vector<ASTID> ordering) {
+          return CallGraphData{std::move(call_graph),
+                               filter_to_vec(std::move(ordering), [&](ASTID id) { return is_global(ast.forest, id); }),
+                               std::move(binding_of)};
+        })
+        .map_error([&](std::vector<ASTID> ordering) {
+          return std::vector{ContextualError{ast.srcs[ordering.front().get()], "detected recursive cycle"}};
+        })
+        .append_state(std::move(ast), std::move(tg));
+    });
 }
 
 } // namespace

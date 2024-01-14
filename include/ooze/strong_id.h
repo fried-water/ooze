@@ -79,6 +79,29 @@ auto id_range(StrongID<Space, T, Invalid> min, StrongID<Space, T, Invalid> max) 
   return IterRange{StrongIDIter{min}, StrongIDIter{max}};
 }
 
+template <typename T = int>
+class IntIter : public ForwardIter<IntIter<T>, T, T> {
+  T _id;
+
+public:
+  IntIter() = default;
+  IntIter(T id) : _id{id} {}
+
+  auto deref() const { return _id; }
+  bool eq(const IntIter& rhs) const { return _id == rhs._id; }
+  void increment() { ++_id; }
+};
+
+template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+auto id_range(T max) {
+  return IterRange{IntIter{T(0)}, IntIter{max}};
+}
+
+template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+auto id_range(T min, T max) {
+  return IterRange{IntIter{min}, IntIter{max}};
+}
+
 } // namespace ooze
 
 template <typename Space, typename T, T Invalid>

@@ -2,11 +2,10 @@
 
 #include "ooze/iter.h"
 #include "ooze/primitives.h"
+#include "ooze/result.h"
 #include "ooze/span.h"
 #include "ooze/strong_id.h"
 
-#include <deque>
-#include <unordered_set>
 #include <vector>
 
 namespace ooze {
@@ -179,26 +178,38 @@ Graph<ID, Ts...> invert(const Graph<ID, Ts...>& g) {
   return Graph<ID, Ts...>(inverted, static_cast<const std::vector<Ts>&>(g)...);
 }
 
+// Return a topographical ordering if the graph is acyclic or all nodes in any cycles
 template <typename ID, typename... Ts>
-std::vector<ID> bfs_traversal(const Graph<ID, Ts...>& g, const std::vector<ID>& initial_ids) {
+Result<std::vector<ID>, std::vector<ID>> topographical_ordering(const Graph<ID, Ts...>& g) {
   std::vector<ID> traversal;
-  std::unordered_set<ID> visited;
+  std::vector<int> fanins(g.num_nodes(), 0);
 
-  std::deque<ID> to_visit(initial_ids.begin(), initial_ids.end());
-
-  while(!to_visit.empty()) {
-    const ID id = to_visit.front();
-    to_visit.pop_front();
-
-    if(visited.insert(id).second) {
-      traversal.push_back(id);
-
-      const auto fanout = g.fanout(id);
-      to_visit.insert(to_visit.end(), fanout.begin(), fanout.end());
+  for(ID id : g.nodes()) {
+    for(ID fanout : g.fanout(id)) {
+      fanins[as_integral(fanout)]++;
     }
   }
 
-  return traversal;
+  std::vector<ID> to_visit = filter_to_vec(g.nodes(), [&](ID id) { return fanins[as_integral(id)] == 0; });
+
+  while(!to_visit.empty()) {
+    const ID id = to_visit.back();
+    to_visit.pop_back();
+    traversal.push_back(id);
+
+    const auto fanout = g.fanout(id);
+    for(ID fanout : g.fanout(id)) {
+      fanins[as_integral(fanout)]--;
+      if(fanins[as_integral(fanout)] == 0) {
+        to_visit.push_back(fanout);
+      }
+    }
+  }
+
+  return traversal.size() == g.num_nodes()
+           ? Result<std::vector<ID>, std::vector<ID>>{std::move(traversal)}
+           : Result<std::vector<ID>, std::vector<ID>>{
+               Failure{filter_to_vec(g.nodes(), [&](ID id) { return fanins[as_integral(id)] > 0; })}};
 }
 
 } // namespace ooze

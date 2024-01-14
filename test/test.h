@@ -39,6 +39,15 @@
     return std::move(r).error_and_state();                                                                             \
   }(expr)
 
+#define check_eq(MSG, EXP, ACT)                                                                                        \
+  [](std::string_view msg, const auto& exp, const auto& act) {                                                         \
+    if(act != exp) {                                                                                                   \
+      fmt::print("Exp {}: {}\n", msg, knot::debug(exp));                                                               \
+      fmt::print("Act {}: {}\n", msg, knot::debug(act));                                                               \
+      BOOST_CHECK(exp == act);                                                                                         \
+    }                                                                                                                  \
+  }(MSG, EXP, ACT)
+
 #define check_range(expected, actual)                                                                                  \
   [](const auto& e, const auto& a) {                                                                                   \
     BOOST_REQUIRE_EQUAL(std::distance(e.begin(), e.end()), std::distance(a.begin(), a.end()));                         \

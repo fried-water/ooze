@@ -94,10 +94,14 @@ inline bool is_pattern(ASTTag tag) {
 }
 
 inline bool is_global(const Forest<ASTTag, ASTID>& f, ASTID id) {
-  while(!f.is_root(id) && is_pattern(f[id])) {
-    id = *f.parent(id);
+  if(f[id] == ASTTag::PatternIdent) {
+    while(!f.is_root(id) && is_pattern(f[id])) {
+      id = *f.parent(id);
+    }
+    return f.is_root(id) && f[id] == ASTTag::Assignment;
+  } else {
+    return false;
   }
-  return f.is_root(id) && f[id] == ASTTag::Assignment;
 }
 
 inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID> children = {}) {

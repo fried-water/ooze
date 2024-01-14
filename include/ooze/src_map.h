@@ -29,6 +29,12 @@ inline constexpr std::string_view sv(Span<std::string_view> m, SrcRef ref) {
   return ref.file.is_valid() ? sv(m[ref.file.get()], ref.slice) : "";
 }
 
+inline Slice append_src(std::string& src, std::string_view name) {
+  const auto ref = Slice{i32(src.size()), i32(src.size() + name.size())};
+  src.insert(src.end(), name.begin(), name.end());
+  return ref;
+}
+
 // TODO line / character numbers?
 
 } // namespace ooze
