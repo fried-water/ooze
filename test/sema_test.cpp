@@ -6,13 +6,15 @@
 #include "sema.h"
 #include "type_check.h"
 
-#include "ooze/env.h"
-
 namespace ooze {
 
 namespace {
 
-NativeTypeInfo basic_types() { return {{{"f32", type_id(knot::Type<f32>{})}, {"i32", type_id(knot::Type<i32>{})}}}; }
+NativeTypeInfo basic_types() {
+  return {{{"f32", type_id(knot::Type<f32>{})},
+           {"i32", type_id(knot::Type<i32>{})},
+           {"string", type_id(knot::Type<std::string>{})}}};
+}
 
 using EnvValues = std::vector<std::pair<std::string, std::string>>;
 
@@ -32,16 +34,9 @@ std::tuple<std::string, AST, TypeGraph> create_env(const EnvValues& values, cons
   return std::tuple(std::move(src), std::move(ast), std::move(tg));
 }
 
-void test_nr(Env e, std::string_view src, const std::vector<TypeID>& exp) {
-  auto [ast, tg] = check_result(
-    parse_and_name_resolution(parse_function, make_sv_array(e.src, src), e.native_types.names, {}, {}, SrcID{1}));
-  check_eq("types", exp, std::get<2>(std::move(tg).decompose()));
-}
-
-void test_nr_error(Env e, std::string_view src, const std::vector<ContextualError>& expected_errors) {
-  const auto errors = check_error(
-    parse_and_name_resolution(parse_function, make_sv_array(e.src, src), e.native_types.names, {}, {}, SrcID{1}));
-  check_eq("errors", expected_errors, errors);
+auto run_nr(const NativeTypeInfo& types, std::string_view src) {
+  return parse_and_name_resolution(parse_function, make_sv_array(src), types.names, {}, {}, SrcID{0})
+    .map_state([](AST, TypeGraph tg) { return std::get<2>(std::move(tg).decompose()); });
 }
 
 template <typename Result>
@@ -99,40 +94,54 @@ auto run_sema(const EnvValues& functions, const NativeTypeInfo& native_types, st
 
 BOOST_AUTO_TEST_SUITE(nr)
 
-BOOST_AUTO_TEST_CASE(fn_return) { test_nr(create_primative_env(), "() -> i32 = x", {type_id(knot::Type<i32>{})}); }
+const TypeID I = type_id(knot::Type<i32>{});
+const TypeID F = type_id(knot::Type<f32>{});
+const TypeID S = type_id(knot::Type<std::string>{});
+
+BOOST_AUTO_TEST_CASE(fn_return) {
+  const auto act = check_result(run_nr(basic_types(), "() -> i32 = x"));
+  check_eq("types", (std::vector<TypeID>{I}), act);
+}
 
 BOOST_AUTO_TEST_CASE(arg) {
-  test_nr(create_primative_env(), "(x: i32) -> () = ()", {type_id(knot::Type<i32>{}), TypeID::Invalid()});
+  const auto act = check_result(run_nr(basic_types(), "(x: i32) -> () = ()"));
+  check_eq("types", (std::vector<TypeID>{I, TypeID::Invalid()}), act);
 }
 
 BOOST_AUTO_TEST_CASE(let) {
-  test_nr(create_primative_env(), "() -> () { let x : i32 = y; x }", {TypeID::Invalid(), type_id(knot::Type<i32>{})});
+  const auto act = check_result(run_nr(basic_types(), "() -> () { let x : i32 = y; x }"));
+  check_eq("types", (std::vector<TypeID>{TypeID::Invalid(), I}), act);
 }
 
 BOOST_AUTO_TEST_CASE(multi) {
-  test_nr(create_primative_env(),
-          "(x: i32) -> f32 { let x : string = y; x }",
-          {type_id(knot::Type<i32>{}), type_id(knot::Type<f32>{}), type_id(knot::Type<std::string>{})});
+  const auto act = check_result(run_nr(basic_types(), "(x: i32) -> f32 { let x : string = y; x }"));
+  check_eq("types", (std::vector<TypeID>{I, F, S}), act);
 }
 
 BOOST_AUTO_TEST_CASE(undefined_return) {
-  test_nr_error(create_empty_env(), "() -> abc = x", {{{SrcID{1}, {6, 9}}, "undefined type"}});
+  const auto act = check_error(run_nr({}, "(x) -> T = x"));
+  const std::vector<ContextualError> exp = {{{SrcID{0}, {7, 8}}, "undefined type"}};
+  check_eq("errors", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(undefined_arg) {
-  test_nr_error(create_empty_env(), "(x: abc) -> () = ()", {{{SrcID{1}, {4, 7}}, "undefined type"}});
+  const auto act = check_error(run_nr({}, "(x: T) -> () = ()"));
+  const std::vector<ContextualError> exp = {{{SrcID{0}, {4, 5}}, "undefined type"}};
+  check_eq("errors", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(undefined_let) {
-  test_nr_error(create_empty_env(), "() -> () { let x : abc = y; x }", {{{SrcID{1}, {19, 22}}, "undefined type"}});
+  const auto act = check_error(run_nr({}, "() -> () { let x: T = y; x }"));
+  const std::vector<ContextualError> exp = {{{SrcID{0}, {18, 19}}, "undefined type"}};
+  check_eq("errors", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(undefined_multi) {
-  test_nr_error(create_primative_env(),
-                "(x: a) -> b { let x : c = y; x }",
-                {{{SrcID{1}, {4, 5}}, "undefined type"},
-                 {{SrcID{1}, {10, 11}}, "undefined type"},
-                 {{SrcID{1}, {22, 23}}, "undefined type"}});
+  const auto act = check_error(run_nr({}, "(x: A) -> B { let x: C = y; x }"));
+  const std::vector<ContextualError> exp = {
+    {{SrcID{0}, {4, 5}}, "undefined type"},
+    {{SrcID{0}, {10, 11}}, "undefined type"},
+    {{SrcID{0}, {22, 23}}, "undefined type"}};
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -466,17 +475,15 @@ BOOST_AUTO_TEST_CASE(fn_nested) {
 }
 
 BOOST_AUTO_TEST_CASE(call_global) {
-  Env e;
-  e.add_function("f", []() {});
-  const auto srcs = make_sv_array(e.src, "fn g() -> _ = f()");
-  const AST ast = std::get<1>(check_result(parse(std::move(e.ast), std::move(e.tg), SrcID{1}, srcs[1])));
-  const Graph<ASTID> ident_graph = check_result(calculate_ident_graph(srcs, ast));
+  auto [env_src, ast, tg] = create_env({{"f", "fn() -> ()"}}, {});
+  const auto srcs = make_sv_array(env_src, "fn g() -> _ = f()");
+  ast = std::get<1>(check_result(parse(std::move(ast), std::move(tg), SrcID{1}, srcs[1])));
 
   std::vector<std::vector<ASTID>> fanout(10);
   fanout[0] = {ASTID{5}};
   fanout[5] = {ASTID{0}};
 
-  BOOST_CHECK(Graph<ASTID>(std::move(fanout)) == ident_graph);
+  check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));
 }
 
 BOOST_AUTO_TEST_CASE(overloaded) {
@@ -506,13 +513,18 @@ BOOST_AUTO_TEST_CASE(recursive) {
   BOOST_CHECK(Graph<ASTID>(std::move(fanout)) == ident_graph);
 }
 
-BOOST_AUTO_TEST_CASE(unused_global) {
-  Env e = create_primative_env();
-  const auto srcs = make_sv_array(e.src, "fn f() -> _ = ()");
-  const AST ast = std::get<1>(check_result(parse(std::move(e.ast), std::move(e.tg), SrcID{1}, srcs[1])));
-  const Graph<ASTID> ident_graph = check_result(calculate_ident_graph(srcs, ast));
+BOOST_AUTO_TEST_CASE(unused_fn) {
+  auto [env_src, ast, tg] = create_env({{"f", "fn() -> ()"}}, {});
+  const auto srcs = make_sv_array(env_src);
+  auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
+  check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));
+}
 
-  BOOST_CHECK(Graph<ASTID>(std::vector<std::vector<ASTID>>(ast.forest.size())) == ident_graph);
+BOOST_AUTO_TEST_CASE(unused_script_fn) {
+  const auto srcs = make_sv_array("fn f() -> () = ()");
+  const AST ast = std::get<1>(check_result(parse({}, {}, SrcID{0}, srcs[0])));
+  auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
+  check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
