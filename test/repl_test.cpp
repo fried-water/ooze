@@ -73,10 +73,10 @@ BOOST_AUTO_TEST_CASE(store_script_function) {
   std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
 }
 
-BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", create_empty_env(), Bindings{}); }
+BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", Env{}, Bindings{}); }
 
 BOOST_AUTO_TEST_CASE(single_binding) {
-  Env e = create_empty_env();
+  Env e;
   Bindings b;
 
   e.add_type<i32>("i32");
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(single_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(multi_binding) {
-  Env e = create_empty_env();
+  Env e;
   Bindings b;
 
   e.add_type<i32>("i32");
@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(multi_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(tuple_binding) {
-  Env e = create_empty_env();
+  Env e;
   Bindings b;
 
   e.add_type<i32>("i32");
@@ -118,7 +118,7 @@ BOOST_AUTO_TEST_CASE(tuple_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(unnamed_binding) {
-  Env e = create_empty_env();
+  Env e;
   Bindings b;
 
   std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE(unnamed_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(post_named_binding) {
-  Env e = create_empty_env();
+  Env e;
   Bindings b;
 
   std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
@@ -142,7 +142,7 @@ BOOST_AUTO_TEST_CASE(post_named_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(binding_not_ready) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   auto [promise, future] = make_promise_future();
@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(binding_not_ready) {
 }
 
 BOOST_AUTO_TEST_CASE(binding_borrowed) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   Bindings b;
@@ -189,7 +189,7 @@ BOOST_AUTO_TEST_CASE(bindings_post_dump) {
 }
 
 BOOST_AUTO_TEST_CASE(no_to_string, *boost::unit_test::disabled()) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   // TODO add some unique identifier (ptr? how should tuples be handled?)
@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(types) {
   struct A {};
   struct B {};
 
-  Env e = create_empty_env();
+  Env e;
   e.add_type<std::string>("string");
 
   add_tieable_type<int>(e, "i32");

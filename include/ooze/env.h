@@ -23,7 +23,6 @@ struct Env {
 
   AST ast;
   TypeGraph tg;
-  TypeCache type_cache;
 
   NativeTypeInfo native_types;
 
@@ -92,7 +91,6 @@ void add_tieable_type(Env& e, const std::string& name) {
   }
 }
 
-Env create_empty_env();
 Env create_primative_env();
 
 } // namespace ooze

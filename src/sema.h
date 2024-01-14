@@ -1,9 +1,11 @@
 #pragma once
 
+#include "type_cache.h"
 #include "user_msg.h"
 
 #include "ooze/ast.h"
 #include "ooze/src_map.h"
+#include "ooze/type.h"
 
 namespace ooze {
 

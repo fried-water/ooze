@@ -70,14 +70,6 @@ struct NativeTypeInfo {
   std::unordered_set<TypeID> copyable;
 };
 
-struct TypeCache {
-  Type floating;
-  Type borrow_floating;
-  Type fn_floating;
-  Type unit;
-  Type boolean;
-};
-
 template <typename T>
 Type add_type(TypeGraph& g, knot::Type<T> t) {
   const TypeID id = type_id(decay(t));
@@ -103,18 +95,6 @@ Type add_fn(TypeGraph& g, knot::Type<F> f) {
     const Type result = g.add_node(types, TypeTag::Tuple, TypeID{});
     return g.add_node(std::array{args, result}, TypeTag::Fn, TypeID{});
   }
-}
-
-inline TypeCache create_type_cache(TypeGraph& g) {
-  TypeCache tc;
-
-  tc.floating = g.add_node(TypeTag::Floating, TypeID{});
-  tc.borrow_floating = g.add_node(std::array{tc.floating}, TypeTag::Borrow, TypeID{});
-  tc.fn_floating = g.add_node(std::array{tc.floating, tc.floating}, TypeTag::Fn, TypeID{});
-  tc.unit = g.add_node(TypeTag::Tuple, TypeID{});
-  tc.boolean = g.add_node(TypeTag::Leaf, type_id(knot::Type<bool>{}));
-
-  return tc;
 }
 
 inline int size_of(const TypeGraph& g, const Type& t) {

@@ -50,7 +50,8 @@ assign(Env env, std::string_view script, std::string_view expr) {
     .append_state(Bindings{})
     .and_then([&](Env env, Bindings bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
     .map([&](Binding output, Env env, Bindings bindings) {
-      BOOST_REQUIRE(compare_dags(env.tg, output.type, env.type_cache.unit));
+      BOOST_REQUIRE(TypeTag::Tuple == env.tg.get<TypeTag>(output.type));
+      BOOST_REQUIRE_EQUAL(0, env.tg.fanout(output.type).size());
       BOOST_REQUIRE_EQUAL(0, output.values.size());
 
       std::unordered_map<std::string, std::pair<Type, std::vector<Any>>> results;
@@ -107,7 +108,7 @@ AsyncFn global_fn(const Env& e, std::string_view name) {
 BOOST_AUTO_TEST_SUITE(ooze)
 
 BOOST_AUTO_TEST_CASE(basic) {
-  Env env = create_empty_env();
+  Env env;
   env.add_type<i32>("i32");
   env.add_function("sum", [](int x, int y) { return x + y; });
 
@@ -116,7 +117,7 @@ BOOST_AUTO_TEST_CASE(basic) {
 }
 
 BOOST_AUTO_TEST_CASE(no_args) {
-  Env env = create_empty_env();
+  Env env;
   env.add_type<i32>("i32");
 
   constexpr std::string_view script = "fn f() -> i32 = 17";
@@ -124,7 +125,7 @@ BOOST_AUTO_TEST_CASE(no_args) {
 }
 
 BOOST_AUTO_TEST_CASE(identity) {
-  Env env = create_empty_env();
+  Env env;
   env.add_type<i32>("i32");
 
   constexpr std::string_view script = "fn f(x: i32) -> i32 = x";
@@ -207,7 +208,7 @@ BOOST_AUTO_TEST_CASE(already_move) {
 }
 
 BOOST_AUTO_TEST_CASE(clone) {
-  Env env = create_empty_env();
+  Env env;
   env.add_type<std::string>("string");
   check_run(std::move(env), "", "clone(&'abc')", "string", std::string("abc"));
 }
@@ -215,7 +216,7 @@ BOOST_AUTO_TEST_CASE(clone) {
 BOOST_AUTO_TEST_CASE(expr_rebind) {
   constexpr std::string_view script = "fn f(x: i32) -> i32 { let x = double(x); let x = double(x); x }";
 
-  Env env = create_empty_env();
+  Env env;
   env.add_type<i32>("i32");
   env.add_function("double", [](int x) { return x + x; });
 
@@ -248,7 +249,7 @@ BOOST_AUTO_TEST_CASE(ooze_out_of_order) {
     "fn f() -> _ = g()\n"
     "fn g() -> i32 = 1\n";
 
-  Env env = create_empty_env();
+  Env env;
   env.add_type<i32>("i32");
 
   check_run(create_primative_env(), script, "f()", "i32", std::tuple(1));
@@ -554,27 +555,27 @@ BOOST_AUTO_TEST_CASE(print_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(native_constant_fn) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
   e.add_function("f", []() { return 3; });
   check_any(3, invoke1(global_fn(e, "f"), {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(native_identity_fn) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
   e.add_function("f", [](i32 x) { return x; });
   check_any(7, invoke1(global_fn(e, "f"), std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(native_clone_fn) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
   check_any(7, invoke1(global_fn(e, "clone"), {}, std::tuple(7)));
 }
 
 BOOST_AUTO_TEST_CASE(script_constant_fn) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f() -> i32 = 3")));
@@ -583,7 +584,7 @@ BOOST_AUTO_TEST_CASE(script_constant_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(script_identity_fn) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: i32) -> i32 = x")));
@@ -592,7 +593,7 @@ BOOST_AUTO_TEST_CASE(script_identity_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(script_call_native) {
-  Env e = create_empty_env();
+  Env e;
 
   e.add_type<i32>("i32");
   e.add_function("c", [](const i32& x) { return x; });
@@ -603,7 +604,7 @@ BOOST_AUTO_TEST_CASE(script_call_native) {
 }
 
 BOOST_AUTO_TEST_CASE(script_call_script) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: i32) -> i32 = x", "fn g(x: i32) -> i32 = f(x)")));
@@ -612,7 +613,7 @@ BOOST_AUTO_TEST_CASE(script_call_script) {
 }
 
 BOOST_AUTO_TEST_CASE(script_parse_error_env_same) {
-  Env e = create_empty_env();
+  Env e;
   e.add_type<i32>("i32");
 
   auto [errors, e2] = check_error_state(parse_scripts(e, make_sv_array("fn f() -> i32 = ")));

@@ -18,14 +18,8 @@ namespace {
 
 } // namespace
 
-Env create_empty_env() {
-  Env env;
-  env.type_cache = create_type_cache(env.tg);
-  return env;
-}
-
 Env create_primative_env() {
-  Env env = create_empty_env();
+  Env env;
 
   add_tieable_type<bool>(env, "bool");
 
