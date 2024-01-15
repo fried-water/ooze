@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "function_graph_inner.h"
+#include "function_graph.h"
 
 namespace ooze {
 
@@ -70,9 +70,7 @@ std::vector<Oterm> ConstructingGraph::add(AsyncFn fn, Span<Oterm> inputs, Span<P
   return make_oterms(int(fns.size()), num_outputs);
 }
 
-std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g_outer, Span<Oterm> inputs) {
-  const FunctionGraph::State& g = *g_outer.state;
-
+std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> inputs) {
   const int offset = int(owned_fwds.size()) - 1;
 
   std::vector<Oterm> outputs(g.output_count);
@@ -117,13 +115,13 @@ FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs)
 
   add_edges(outputs, pbs);
 
-  return FunctionGraph{std::make_shared<const FunctionGraph::State>(FunctionGraph::State{
+  return FunctionGraph{
     std::move(input_borrows),
     int(outputs.size()),
     knot::map<std::vector<std::vector<ValueForward>>>(std::move(owned_fwds), to_fwd),
     knot::map<std::vector<ValueForward>>(std::move(input_borrowed_fwds), to_fwd),
     std::move(input_counts),
-    std::move(fns)})};
+    std::move(fns)};
 }
 
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<bool> input_borrows) {

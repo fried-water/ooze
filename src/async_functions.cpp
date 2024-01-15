@@ -1,8 +1,8 @@
 #include "pch.h"
 
 #include "async_functions.h"
-#include "function_graph_inner.h"
 
+#include "ooze/any_function.h"
 #include "ooze/borrowed_future.h"
 #include "ooze/executor.h"
 #include "ooze/future.h"
@@ -266,10 +266,8 @@ AsyncFn create_async(AnyFunction fn, std::vector<bool> input_borrows, int output
   };
 }
 
-AsyncFn create_async_graph(FunctionGraph fg) {
-  return [fg = std::move(fg)](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    const FunctionGraph::State& g = *fg.state;
-
+AsyncFn create_async_graph(FunctionGraph g) {
+  return [g = std::move(g)](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
     InputState s;
     s.inputs.reserve(g.input_counts.size() + 1);
     s.borrowed_inputs.reserve(g.input_counts.size());

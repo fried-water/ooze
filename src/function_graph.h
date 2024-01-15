@@ -1,9 +1,6 @@
 #pragma once
 
-#include "async_functions.h"
-
-#include "ooze/any_function.h"
-#include "ooze/function_graph.h"
+#include "ooze/async_fn.h"
 
 #include <exception>
 
@@ -38,7 +35,7 @@ struct ValueForward {
   KNOT_ORDERED(ValueForward);
 };
 
-struct FunctionGraph::State {
+struct FunctionGraph {
   std::vector<bool> input_borrows;
   int output_count = 0;
 

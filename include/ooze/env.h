@@ -3,7 +3,6 @@
 #include "ooze/any_function.h"
 #include "ooze/ast.h"
 #include "ooze/async_fn.h"
-#include "ooze/function_graph.h"
 #include "ooze/src_map.h"
 #include "ooze/traits.h"
 

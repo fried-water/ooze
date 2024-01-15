@@ -1,8 +1,9 @@
 #include "test.h"
 
 #include "async_functions.h"
-#include "function_graph_inner.h"
+#include "function_graph.h"
 
+#include "ooze/any_function.h"
 #include "ooze/executor/task_executor.h"
 
 #include <chrono>
