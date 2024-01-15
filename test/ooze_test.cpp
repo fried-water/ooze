@@ -244,7 +244,7 @@ BOOST_AUTO_TEST_CASE(select) {
   check_run(create_primative_env(), script, "f(false)", "i32", std::tuple(2));
 }
 
-BOOST_AUTO_TEST_CASE(ooze_out_of_order) {
+BOOST_AUTO_TEST_CASE(out_of_order) {
   constexpr std::string_view script =
     "fn f() -> _ = g()\n"
     "fn g() -> i32 = 1\n";
@@ -252,7 +252,7 @@ BOOST_AUTO_TEST_CASE(ooze_out_of_order) {
   Env env;
   env.add_type<i32>("i32");
 
-  check_run(create_primative_env(), script, "f()", "i32", std::tuple(1));
+  check_run(std::move(env), script, "f()", "i32", std::tuple(1));
 }
 
 BOOST_AUTO_TEST_CASE(generic, *boost::unit_test::disabled()) {
