@@ -289,9 +289,7 @@ BOOST_AUTO_TEST_CASE(apply_fn_deduce_arg_ref) {
   test_tc(basic_test_env(), "(f: fn(_) -> i32, x:i32) -> _ = f(&x)", "(f: fn(&i32) -> i32, x: i32) -> i32 = f(&x)");
 }
 
-BOOST_AUTO_TEST_CASE(global_fn) {
-  test_tc(create_test_env({}, {{"f", "fn() -> ()"}}), "() -> () = f()", "() -> () = f()");
-}
+BOOST_AUTO_TEST_CASE(global_fn) { test_tc(create_test_env({}, {"f: fn() -> ()"}), "() -> () = f()", "() -> () = f()"); }
 
 BOOST_AUTO_TEST_CASE(global_fn_deduce) {
   test_tc_fns(basic_test_env(),
@@ -330,9 +328,7 @@ BOOST_AUTO_TEST_CASE(fn_identity) {
   test_tc(basic_test_env(), "(x: fn(i32) -> i32) -> _ = x", "(x: fn(i32) -> i32) -> fn(i32) -> i32 = x");
 }
 
-BOOST_AUTO_TEST_CASE(fn_return) {
-  test_tc(basic_test_env({{"f", "fn() -> i32"}}), "() -> _ = f", "() -> fn() -> i32 = f");
-}
+BOOST_AUTO_TEST_CASE(fn_return) { test_tc(basic_test_env("f: fn() -> i32"), "() -> _ = f", "() -> fn() -> i32 = f"); }
 
 BOOST_AUTO_TEST_CASE(fn_arg) { test_tc(basic_test_env(), "(f) -> i32 = f()", "(f : fn() -> i32) -> i32 = f()"); }
 
@@ -363,9 +359,8 @@ BOOST_AUTO_TEST_CASE(fn_select_from_cond) {
 }
 
 BOOST_AUTO_TEST_CASE(fn_assign) {
-  test_tc(basic_test_env({{"f", "fn() -> i32"}}),
-          "() -> i32 = { let x = f; x() }",
-          "() -> i32 = { let x : fn() -> i32 = f; x() }");
+  test_tc(
+    basic_test_env("f: fn() -> i32"), "() -> i32 = { let x = f; x() }", "() -> i32 = { let x : fn() -> i32 = f; x() }");
 }
 
 BOOST_AUTO_TEST_CASE(fn_tuple) {
@@ -432,7 +427,7 @@ BOOST_AUTO_TEST_CASE(fn_multi_or_global) {
     "fn g(x: i32) -> i32 = f(x)\n"
     "fn g(x: f32) -> f32 = f(x)\n";
 
-  test_tc_fns(basic_test_env({{"f", "fn(f32) -> f32"}}), src, exp);
+  test_tc_fns(basic_test_env("f: fn(f32) -> f32"), src, exp);
 }
 
 BOOST_AUTO_TEST_CASE(scope) {
@@ -462,19 +457,19 @@ BOOST_AUTO_TEST_CASE(scope) {
 BOOST_AUTO_TEST_CASE(function_identity) { test_tc(basic_test_env(), "(x) -> _ = x", "(x) -> _ = x"); }
 
 BOOST_AUTO_TEST_CASE(function_call) {
-  test_tc(create_test_env({}, {{"f", "fn() -> ()"}}), "() -> _ = f()", "() -> () = f()");
+  test_tc(create_test_env({}, {"f: fn() -> ()"}), "() -> _ = f()", "() -> () = f()");
 }
 
 BOOST_AUTO_TEST_CASE(function_nested) {
-  test_tc(basic_test_env({{"f", "fn(i32) -> i32"}}), "(x) -> _ = f(f(x))", "(x: i32) -> i32 = f(f(x))");
+  test_tc(basic_test_env("f: fn(i32) -> i32"), "(x) -> _ = f(f(x))", "(x: i32) -> i32 = f(f(x))");
 }
 
 BOOST_AUTO_TEST_CASE(function_arg) {
-  test_tc(basic_test_env({{"f", "fn(i32) -> ()"}}), "(x) -> () = f(x)", "(x: i32) -> () = f(x)");
+  test_tc(basic_test_env("f: fn(i32) -> ()"), "(x) -> () = f(x)", "(x: i32) -> () = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(function_overloaded) {
-  const EnvValues fns = {{"f", "fn(i32) -> i32"}, {"f", "fn(f32) -> f32"}};
+  const auto fns = make_sv_array("f: fn(i32) -> i32", "f: fn(f32) -> f32");
 
   test_tc(basic_test_env(fns), "(x: i32) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
   test_tc(basic_test_env(fns), "(x) -> i32 = f(x)", "(x: i32) -> i32 = f(x)");
@@ -484,22 +479,21 @@ BOOST_AUTO_TEST_CASE(function_overloaded) {
 }
 
 BOOST_AUTO_TEST_CASE(prop_single_function) {
-  test_tc(basic_test_env({{"f", "fn(i32) -> i32"}}), "(x) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
+  test_tc(basic_test_env("f: fn(i32) -> i32"), "(x) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload_borrow) {
-  const EnvValues fns = {{"f", "fn(&i32) -> ()"}, {"f", "fn(i32) -> ()"}};
-  test_tc(basic_test_env(fns), "(x: &_) -> () = f(x)", "(x: &i32) -> () = f(x)");
+  test_tc(basic_test_env("f: fn(&i32) -> ()", "f: fn(i32) -> ()"), "(x: &_) -> () = f(x)", "(x: &i32) -> () = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload_input) {
-  const EnvValues fns = {{"f", "fn(i32) -> i32"}, {"f", "fn(f32) -> i32"}};
+  const auto fns = make_sv_array("f: fn(i32) -> i32", "f: fn(f32) -> i32");
   test_tc(basic_test_env(fns), "(x: i32) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
   test_tc(basic_test_env(fns), "(x: f32) -> _ = f(x)", "(x: f32) -> i32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload_output) {
-  const EnvValues fns = {{"f", "fn(i32) -> i32"}, {"f", "fn(i32) -> f32"}};
+  const auto fns = make_sv_array("f: fn(i32) -> i32", "f: fn(i32) -> f32");
   test_tc(basic_test_env(fns), "(x) -> i32 = f(x)", "(x: i32) -> i32 = f(x)");
   test_tc(basic_test_env(fns), "(x) -> f32 = f(x)", "(x: i32) -> f32 = f(x)");
 }
@@ -510,14 +504,14 @@ BOOST_AUTO_TEST_CASE(constant) {
 }
 
 BOOST_AUTO_TEST_CASE(fn_up) {
-  const EnvValues fns = {{"f", "fn(i32) -> i32"}, {"f", "fn(f32) -> f32"}};
+  const auto fns = make_sv_array("f: fn(i32) -> i32", "f: fn(f32) -> f32");
 
   test_tc(basic_test_env(fns), "(x) -> i32 = f(x)", "(x: i32) -> i32 = f(x)");
   test_tc(basic_test_env(fns), "(x) -> f32 = f(x)", "(x: f32) -> f32 = f(x)");
 }
 
 BOOST_AUTO_TEST_CASE(fn_down) {
-  const EnvValues fns = {{"f", "fn(i32) -> i32"}, {"f", "fn(f32) -> f32"}};
+  const auto fns = make_sv_array("f: fn(i32) -> i32", "f: fn(f32) -> f32");
 
   test_tc(basic_test_env(fns), "(x: i32) -> _ = f(x)", "(x: i32) -> i32 = f(x)");
   test_tc(basic_test_env(fns), "(x: f32) -> _ = f(x)", "(x: f32) -> f32 = f(x)");
@@ -528,16 +522,12 @@ BOOST_AUTO_TEST_CASE(borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(param_borrow) {
-  test_tc(basic_test_env({{"f", "fn(&i32) -> ()"}}), "(x) -> () = f(&x)", "(x: i32) -> () = f(&x)");
+  test_tc(basic_test_env("f: fn(&i32) -> ()"), "(x) -> () = f(&x)", "(x: i32) -> () = f(&x)");
 }
 
 BOOST_AUTO_TEST_CASE(nested_fn_overload) {
-  const EnvValues fns = {
-    {"f", "fn(i32) -> ()"},
-    {"f", "fn(f32) -> ()"},
-    {"g", "fn(i32) -> i32"},
-    {"h", "fn() -> i32"},
-    {"h", "fn() -> f32"}};
+  const auto fns =
+    make_sv_array("f: fn(i32) -> ()", "f: fn(f32) -> ()", "g: fn(i32) -> i32", "h: fn() -> i32", "h: fn() -> f32");
 
   test_tc(basic_test_env(fns), "() -> _ = f(g(h()))", "() -> () = f(g(h()))");
 }
@@ -665,11 +655,11 @@ BOOST_AUTO_TEST_CASE(binding_reuse_both) {
 }
 
 BOOST_AUTO_TEST_CASE(binding_ref_reuse) {
-  test_tc(basic_test_env({{"f", "fn(&i32, &i32) -> ()"}}), "(x: &_) -> _ = f(x, x)", "(x: &_) -> _ = f(x, x)");
+  test_tc(basic_test_env("f: fn(&i32, &i32) -> ()"), "(x: &_) -> _ = f(x, x)", "(x: &_) -> _ = f(x, x)");
 }
 
 BOOST_AUTO_TEST_CASE(binding_ref_value_reuse) {
-  test_tc(basic_test_env({{"f", "fn(&i32, i32) -> ()"}}), "(x: _) -> _ = f(&x, x)", "(x: _) -> _ = f(&x, x)");
+  test_tc(basic_test_env("f: fn(&i32, i32) -> ()"), "(x: _) -> _ = f(&x, x)", "(x: _) -> _ = f(&x, x)");
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse_copy) {
@@ -690,62 +680,55 @@ BOOST_AUTO_TEST_CASE(function_ident_reuse) {
 
 BOOST_AUTO_TEST_CASE(wrong_arg_count) {
   test_tc_error(
-    basic_test_env({{"f", "fn(i32) -> i32"}}), "() -> i32 = f()", {{{SrcID{1}, {13, 15}}, "expected (), given (i32)"}});
+    basic_test_env("f: fn(i32) -> i32"), "() -> i32 = f()", {{{SrcID{1}, {13, 15}}, "expected (), given (i32)"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_arg) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> i32"}}),
-                "(x: f32) -> i32 = f(x)",
-                {{{SrcID{1}, {1, 2}}, "expected f32, given i32"}});
+  test_tc_error(
+    basic_test_env("f: fn(i32) -> i32"), "(x: f32) -> i32 = f(x)", {{{SrcID{1}, {1, 2}}, "expected f32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_bind_count) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> i32"}}),
+  test_tc_error(basic_test_env("f: fn(i32) -> i32"),
                 "(x: i32) -> i32 { let () = f(x); x }",
                 {{{SrcID{1}, {22, 24}}, "expected (), given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_return_count) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> i32"}}),
-                "(x: i32) -> () = f(x)",
-                {{{SrcID{1}, {17, 21}}, "expected (), given i32"}});
+  test_tc_error(
+    basic_test_env("f: fn(i32) -> i32"), "(x: i32) -> () = f(x)", {{{SrcID{1}, {17, 21}}, "expected (), given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(multi_overload_match) {
-  const EnvValues fns = {{"f", "fn() -> i32"}, {"f", "fn() -> f32"}};
-
-  test_tc_error(basic_test_env(fns),
+  test_tc_error(basic_test_env("f: fn() -> i32", "f: fn() -> f32"),
                 "() -> (i32, f32) { let x = f(); (x, x) }",
                 {{{SrcID{1}, {23, 24}}, "expected i32, given f32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_arg_type) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> i32"}}),
-                "(x: f32) -> i32 = f(x)",
-                {{{SrcID{1}, {1, 2}}, "expected f32, given i32"}});
+  test_tc_error(
+    basic_test_env("f: fn(i32) -> i32"), "(x: f32) -> i32 = f(x)", {{{SrcID{1}, {1, 2}}, "expected f32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_bind_type) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> i32"}}),
+  test_tc_error(basic_test_env("f: fn(i32) -> i32"),
                 "(x: i32) -> i32 { let x: f32 = f(x); x }",
                 {{{SrcID{1}, {22, 23}}, "expected f32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_return_type) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> i32"}}),
-                "(x: i32) -> f32 = f(x)",
-                {{{SrcID{1}, {18, 22}}, "expected f32, given i32"}});
+  test_tc_error(
+    basic_test_env("f: fn(i32) -> i32"), "(x: i32) -> f32 = f(x)", {{{SrcID{1}, {18, 22}}, "expected f32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_value_type) {
-  test_tc_error(basic_test_env({{"f", "fn(i32) -> ()"}}),
-                "(x: &i32) -> () = f(x)",
-                {{{SrcID{1}, {1, 2}}, "expected &i32, given i32"}});
+  test_tc_error(
+    basic_test_env("f: fn(i32) -> ()"), "(x: &i32) -> () = f(x)", {{{SrcID{1}, {1, 2}}, "expected &i32, given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(empty_tuple_as_arg) {
   test_tc_error(
-    basic_test_env({{"f", "fn(i32) -> ()"}}), "() -> () = f(())", {{{SrcID{1}, {13, 15}}, "expected (), given i32"}});
+    basic_test_env("f: fn(i32) -> ()"), "() -> () = f(())", {{{SrcID{1}, {13, 15}}, "expected (), given i32"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_type) {

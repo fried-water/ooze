@@ -124,16 +124,14 @@ BOOST_AUTO_TEST_SUITE(sm)
 
 BOOST_AUTO_TEST_CASE(empty) { check_sema(check_result(run_sema({}, "")), {}, {}, {}); }
 
-BOOST_AUTO_TEST_CASE(env_fn) {
-  check_sema(check_result(run_sema(basic_test_env({{"f", "fn() -> i32"}}), "")), {}, {0}, {});
-}
+BOOST_AUTO_TEST_CASE(env_fn) { check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "")), {}, {0}, {}); }
 
 BOOST_AUTO_TEST_CASE(constant_fn) {
-  check_sema(check_result(run_sema(basic_test_env({}), "fn f() -> i32 = 1")), {}, {0}, {});
+  check_sema(check_result(run_sema(basic_test_env(), "fn f() -> i32 = 1")), {}, {0}, {});
 }
 
 BOOST_AUTO_TEST_CASE(identity) {
-  check_sema(check_result(run_sema(basic_test_env({}), "fn f(x: i32) -> i32 = x")), {}, {0}, {1});
+  check_sema(check_result(run_sema(basic_test_env(), "fn f(x: i32) -> i32 = x")), {}, {0}, {1});
 }
 
 BOOST_AUTO_TEST_CASE(call_fn) {
@@ -146,26 +144,25 @@ BOOST_AUTO_TEST_CASE(call_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(call_env_fn) {
-  check_sema(
-    check_result(run_sema(basic_test_env({{"f", "fn() -> i32"}}), "fn g() -> i32 = f()")), {{1, {0}}}, {0, 1}, {0});
+  check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "fn g() -> i32 = f()")), {{1, {0}}}, {0, 1}, {0});
 }
 
 BOOST_AUTO_TEST_CASE(call_env_identity_fn) {
-  check_sema(check_result(run_sema(basic_test_env({{"f", "fn(i32) -> i32"}}), "fn g(x: i32) -> i32 = f(x)")),
+  check_sema(check_result(run_sema(basic_test_env("f: fn(i32) -> i32"), "fn g(x: i32) -> i32 = f(x)")),
              {{1, {0}}}, // g -> f
              {0, 1},
              {0, 2}); // f(), x
 }
 
 BOOST_AUTO_TEST_CASE(nested_fn) {
-  check_sema(check_result(run_sema(basic_test_env({{"f", "fn(i32) -> i32"}}), "fn g(x: i32) -> i32 = f(f(x))")),
+  check_sema(check_result(run_sema(basic_test_env("f: fn(i32) -> i32"), "fn g(x: i32) -> i32 = f(f(x))")),
              {{1, {0}}}, // g -> f
              {0, 1},     // f(), g
              {0, 0, 2}); // f(), f(), x
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload) {
-  const EnvValues fns = {{"f", "fn(i32) -> i32"}, {"f", "fn(f32) -> f32"}};
+  const auto fns = make_sv_array("f: fn(i32) -> i32", "f: fn(f32) -> f32");
 
   check_sema(check_result(run_sema(basic_test_env(fns), "fn g(x: i32) -> i32 = f(x)")),
              {{2, {0}}}, // g -> f(i32)
@@ -184,14 +181,14 @@ BOOST_AUTO_TEST_CASE(fn_overload) {
 }
 
 BOOST_AUTO_TEST_CASE(param_borrow) {
-  check_sema(check_result(run_sema(basic_test_env({{"f", "fn(&i32) -> ()"}}), "fn g(x: i32) -> () = f(&x)")),
+  check_sema(check_result(run_sema(basic_test_env("f: fn(&i32) -> ()"), "fn g(x: i32) -> () = f(&x)")),
              {{1, {0}}}, // g -> f
              {0, 1},     // f, g
              {0, 2});    // f, x
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload_borrow) {
-  const EnvValues fns = {{"f", "fn(i32) -> ()"}, {"f", "fn(&i32) -> ()"}};
+  const auto fns = make_sv_array("f: fn(i32) -> ()", "f: fn(&i32) -> ()");
   check_sema(check_result(run_sema(basic_test_env(fns), "fn g(x: &i32) -> () = f(x)")),
              {{2, {1}}}, // g -> f(&i32)
              {1, 2, 0},  // f(&i32), g, f(i32)
@@ -204,7 +201,7 @@ BOOST_AUTO_TEST_CASE(fn_overload_borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload_input) {
-  const EnvValues fns = {{"f", "fn(i32) -> ()"}, {"f", "fn(f32) -> ()"}};
+  const auto fns = make_sv_array("f: fn(i32) -> ()", "f: fn(f32) -> ()");
 
   check_sema(check_result(run_sema(basic_test_env(fns), "fn g(x: i32) -> () = f(x)")),
              {{2, {0}}}, // g -> f(i32)
@@ -223,7 +220,7 @@ BOOST_AUTO_TEST_CASE(fn_overload_input) {
 }
 
 BOOST_AUTO_TEST_CASE(fn_overload_output) {
-  const EnvValues fns = {{"f", "fn() -> i32"}, {"f", "fn() -> f32"}};
+  const auto fns = make_sv_array("f: fn() -> i32", "f: fn() -> f32");
 
   check_sema(check_result(run_sema(basic_test_env(fns), "fn g() -> i32 = f()")),
              {{2, {0}}}, // g -> f i32
@@ -242,12 +239,8 @@ BOOST_AUTO_TEST_CASE(fn_overload_output) {
 }
 
 BOOST_AUTO_TEST_CASE(nested_fn_overload) {
-  const EnvValues fns = {
-    {"f", "fn(i32) -> ()"},
-    {"f", "fn(f32) -> ()"},
-    {"g", "fn(i32) -> i32"},
-    {"h", "fn() -> i32"},
-    {"h", "fn() -> f32"}};
+  const auto fns =
+    make_sv_array("f: fn(i32) -> ()", "f: fn(f32) -> ()", "g: fn(i32) -> i32", "h: fn() -> i32", "h: fn() -> f32");
 
   check_sema(check_result(run_sema(basic_test_env(fns), "fn x() -> () = f(g(h()))")),
              {{5, {0, 2, 3}}}, // x -> f(i32), g(i32), h() -> i32
@@ -256,16 +249,14 @@ BOOST_AUTO_TEST_CASE(nested_fn_overload) {
 }
 
 BOOST_AUTO_TEST_CASE(return_fn) {
-  const EnvValues fns = {{"f", "fn() -> i32"}};
-  check_sema(check_result(run_sema(basic_test_env(fns), "fn g() -> _ = f")),
+  check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "fn g() -> _ = f")),
              {{1, {0}}}, // g -> f()
              {0, 1},
              {0}); // f()
 }
 
 BOOST_AUTO_TEST_CASE(fn_assign) {
-  const EnvValues fns = {{"f", "fn() -> i32"}};
-  check_sema(check_result(run_sema(basic_test_env(fns), "fn g() -> i32 { let x = f; x() }")),
+  check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "fn g() -> i32 { let x = f; x() }")),
              {{1, {0}}}, // g -> f()
              {0, 1},
              {0, 2}); //  f(), x
@@ -279,7 +270,7 @@ BOOST_AUTO_TEST_CASE(unresolved_fn) {
 BOOST_AUTO_TEST_CASE(unresolved_env_fn) {
   const std::vector<ContextualError> exp_errors = {
     {{SrcID{0}, {0, 1}}, "unable to fully deduce type, deduced: fn() -> _"}};
-  check_eq("errors", exp_errors, check_error(run_sema(create_test_env({}, {{"f", "fn() -> _"}}), "")));
+  check_eq("errors", exp_errors, check_error(run_sema(create_test_env({}, {"f: fn() -> _"}), "")));
 }
 
 BOOST_AUTO_TEST_CASE(borrow_partial) {
@@ -448,7 +439,7 @@ BOOST_AUTO_TEST_CASE(fn_nested) {
 }
 
 BOOST_AUTO_TEST_CASE(call_global) {
-  auto [types, env_src, ast, tg] = create_test_env({}, {{"f", "fn() -> ()"}});
+  auto [types, env_src, ast, tg] = create_test_env({}, {"f: fn() -> ()"});
   const auto srcs = make_sv_array(env_src, "fn g() -> _ = f()");
   ast = std::get<1>(check_result(parse(std::move(ast), std::move(tg), SrcID{1}, srcs[1])));
 
@@ -487,7 +478,7 @@ BOOST_AUTO_TEST_CASE(recursive) {
 }
 
 BOOST_AUTO_TEST_CASE(unused_fn) {
-  auto [types, env_src, ast, tg] = create_test_env({}, {{"f", "fn() -> ()"}});
+  auto [types, env_src, ast, tg] = create_test_env({}, {"f: fn() -> ()"});
   const auto srcs = make_sv_array(env_src);
   auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
   check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));

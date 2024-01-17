@@ -24,8 +24,6 @@ inline NativeTypeInfo basic_types() {
           {type_id(knot::Type<bool>{}), type_id(knot::Type<f32>{}), type_id(knot::Type<i32>{})}};
 }
 
-using EnvValues = std::vector<std::pair<std::string, std::string>>;
-
 struct TestEnv {
   NativeTypeInfo types;
   std::string src;
@@ -33,22 +31,38 @@ struct TestEnv {
   TypeGraph tg;
 };
 
-inline TestEnv create_test_env(NativeTypeInfo types = {}, EnvValues values = {}) {
+inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view> globals = {}) {
   std::string src;
   AST ast;
   TypeGraph tg;
 
   std::vector<std::pair<Type, SrcRef>> type_srcs;
 
-  for(const auto& [name, type] : values) {
-    std::tie(type_srcs, ast, tg) = check_result(parse_type(std::move(ast), std::move(tg), SrcID{0}, type));
-    tg = check_result(type_name_resolution(make_sv_array(type), types.names, type_srcs, std::move(tg)));
-    add_global(ast, SrcRef{SrcID{0}, append_src(src, name)}, Type{tg.num_nodes() - 1});
+  for(std::string_view binding : globals) {
+    const auto srcs = make_sv_array(binding);
+    std::tie(type_srcs, ast, tg) = check_result(parse_binding(std::move(ast), std::move(tg), SrcID{0}, binding));
+    tg = check_result(type_name_resolution(srcs, types.names, type_srcs, std::move(tg)));
+
+    const ASTID pattern_id{i32(ast.forest.size() - 1)};
+
+    BOOST_REQUIRE(ASTTag::PatternIdent == ast.forest[pattern_id]);
+
+    ast.srcs[pattern_id.get()] = SrcRef{SrcID{0}, append_src(src, sv(srcs, ast.srcs[pattern_id.get()]))};
+    const ASTID value_id = append_root(ast, ASTTag::EnvValue, ast.srcs[pattern_id.get()], ast.types[pattern_id.get()]);
+    append_root(ast, ASTTag::Assignment, SrcRef{}, Type{}, std::array{pattern_id, value_id});
   }
 
   return {std::move(types), std::move(src), std::move(ast), std::move(tg)};
 }
 
-inline TestEnv basic_test_env(EnvValues values = {}) { return create_test_env(basic_types(), std::move(values)); }
+template <typename... Bindings>
+TestEnv basic_test_env(Bindings... globals) {
+  return create_test_env(basic_types(), make_sv_array(globals...));
+}
+
+template <size_t N>
+TestEnv basic_test_env(std::array<std::string_view, N> globals) {
+  return create_test_env(basic_types(), globals);
+}
 
 } // namespace ooze
