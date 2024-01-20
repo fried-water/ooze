@@ -1,9 +1,8 @@
 #include "test.h"
 
-#include "async_functions.h"
-#include "function_graph.h"
+#include "constructing_graph.h"
+#include "runtime.h"
 
-#include "ooze/any_function.h"
 #include "ooze/executor/task_executor.h"
 
 #include <chrono>
@@ -14,11 +13,13 @@ namespace ooze {
 
 namespace {
 
-FunctionGraph create_graph(int depth) {
+std::pair<Inst, Program> create_graph(int depth) {
+  Program program;
+
   std::unordered_map<std::pair<int, int>, Oterm, knot::Hash> edges;
 
-  const auto identity = create_async_function([](int x) { return x; });
-  const auto sum = create_async_function([](const int& x, int y) { return x + y; });
+  const Inst identity = program.add([](int x) { return x; });
+  const Inst sum = program.add([](const int& x, int y) { return x + y; });
 
   auto [cg, input] = make_graph({false});
   int num_inputs = 1 << depth;
@@ -37,7 +38,9 @@ FunctionGraph create_graph(int depth) {
     }
   }
 
-  return std::move(cg).finalize({edges.at(std::pair(0, 0))}, {PassBy::Copy});
+  const Inst g = program.add(std::move(cg).finalize({edges.at(std::pair(0, 0))}, {PassBy::Copy}));
+
+  return std::pair(g, std::move(program));
 }
 
 } // namespace
@@ -51,7 +54,9 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
   fmt::print("Creating graph of size {}\n", graph_size);
 
   auto t0 = std::chrono::steady_clock::now();
-  auto g = create_graph(depth);
+  auto [inst, program] = create_graph(depth);
+
+  auto shared_prog = std::make_shared<const Program>(std::move(program));
 
   fmt::print("Creating graph took {}ms\n",
              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
@@ -61,7 +66,7 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
     auto t0 = std::chrono::steady_clock::now();
     int result = -1;
     for(int i = 0; i < num_executions; i++) {
-      result = any_cast<int>(std::move(create_async_graph(g)(ex, make_vector(Future(1)), {})[0]).wait());
+      result = any_cast<int>(std::move(execute(shared_prog, inst, ex, make_vector(Future(1)), {})[0]).wait());
     }
 
     const auto ms =

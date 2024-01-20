@@ -1,8 +1,7 @@
 #include "pch.h"
 
-#include "async_functions.h"
+#include "runtime.h"
 
-#include "ooze/any_function.h"
 #include "ooze/borrowed_future.h"
 #include "ooze/executor.h"
 #include "ooze/future.h"
@@ -49,7 +48,7 @@ auto make_multi_promise_future(int count) {
 }
 
 struct InvocationBlock {
-  AnyFunction f;
+  std::function<std::vector<Any>(Span<Any*>)> f;
 
   std::atomic<int> ref_count;
 
@@ -59,8 +58,10 @@ struct InvocationBlock {
 
   std::vector<Promise> promises;
 
-  InvocationBlock(
-    AnyFunction f_, std::vector<BorrowedFuture> borrowed_inputs, std::vector<Promise> promises, size_t input_count)
+  InvocationBlock(std::function<std::vector<Any>(Span<Any*>)> f_,
+                  std::vector<BorrowedFuture> borrowed_inputs,
+                  std::vector<Promise> promises,
+                  size_t input_count)
       : f(std::move(f_))
       , ref_count(input_count)
       , input_vals(input_count)
@@ -70,6 +71,7 @@ struct InvocationBlock {
 };
 
 struct Block {
+  std::shared_ptr<const Program> p;
   ExecutorRef e;
   std::atomic<int> ref_count;
   std::vector<Future> owned_inputs;
@@ -78,12 +80,12 @@ struct Block {
 };
 
 struct IfBlock : Block {
-  AsyncFn if_graph;
-  AsyncFn else_graph;
+  Inst if_inst;
+  Inst else_inst;
 };
 
 struct ConvergeBlock : Block {
-  std::variant<AsyncFn, Future> fn;
+  std::variant<Inst, Future> fn;
 };
 
 struct SelectBlock {
@@ -181,7 +183,8 @@ void invoke_async_converge(Future cond, ConvergeBlock* b) {
     if(any_cast<bool>(cond)) {
       forward_results_then_delete(std::move(b->owned_inputs), b);
     } else {
-      std::vector<Future> res = std::get<AsyncFn>(b->fn)(b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+      std::vector<Future> res =
+        execute(b->p, std::get<Inst>(b->fn), b->e, std::move(b->owned_inputs), b->borrowed_inputs);
       b->owned_inputs.clear();
       b->owned_inputs.insert(
         b->owned_inputs.begin(), std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
@@ -197,8 +200,9 @@ void invoke_async_converge_future(Future cond, ConvergeBlock* b) {
     } else {
       Future future = std::move(std::get<Future>(b->fn));
       std::move(future).then([b](Any any) {
-        b->fn = any_cast<AsyncFn>(std::move(any));
-        std::vector<Future> res = std::get<AsyncFn>(b->fn)(b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+        b->fn = any_cast<Inst>(std::move(any));
+        std::vector<Future> res =
+          execute(b->p, std::get<Inst>(b->fn), b->e, std::move(b->owned_inputs), b->borrowed_inputs);
         b->owned_inputs.clear();
         b->owned_inputs.insert(
           b->owned_inputs.begin(), std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
@@ -208,17 +212,17 @@ void invoke_async_converge_future(Future cond, ConvergeBlock* b) {
   });
 }
 
-} // namespace
-
-AsyncFn create_async_value(Any any) {
-  return [any = std::move(any)](ExecutorRef, auto, auto) { return make_vector(Future(any)); };
-}
-
-AsyncFn create_async(AnyFunction fn, std::vector<bool> input_borrows, int output_count) {
-  return [fn = std::move(fn), input_borrows = std::move(input_borrows), output_count](
-           ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
+std::vector<Future>
+execute(const AnyFunction& fn,
+        const std::vector<bool>& input_borrows,
+        int output_count,
+        ExecutorRef ex,
+        std::vector<Future> inputs,
+        std::vector<BorrowedFuture> borrowed_inputs) {
+  if(input_borrows.empty()) {
+    return transform_to_vec(fn(std::array<Any*, 0>{}), Construct<Future>());
+  } else {
     auto [promises, futures] = make_multi_promise_future(output_count);
-
     InvocationBlock* b = new InvocationBlock(fn, std::move(borrowed_inputs), std::move(promises), input_borrows.size());
 
     auto invoke = [ex](InvocationBlock* b) mutable {
@@ -236,10 +240,6 @@ AsyncFn create_async(AnyFunction fn, std::vector<bool> input_borrows, int output
         delete b;
       });
     };
-
-    if(input_borrows.size() == 0) {
-      invoke(b);
-    }
 
     int owned_offset = 0;
     int borrowed_offset = 0;
@@ -263,120 +263,161 @@ AsyncFn create_async(AnyFunction fn, std::vector<bool> input_borrows, int output
     }
 
     return std::move(futures);
-  };
+  }
 }
 
-AsyncFn create_async_graph(FunctionGraph g) {
-  return [g = std::move(g)](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    InputState s;
-    s.inputs.reserve(g.input_counts.size() + 1);
-    s.borrowed_inputs.reserve(g.input_counts.size());
+std::vector<Future> execute(std::shared_ptr<const Program> p,
+                            const FunctionGraph& g,
+                            ExecutorRef ex,
+                            std::vector<Future> inputs,
+                            std::vector<BorrowedFuture> borrowed_inputs) {
+  InputState s;
+  s.inputs.reserve(g.input_counts.size() + 1);
+  s.borrowed_inputs.reserve(g.input_counts.size());
 
-    for(const auto& [owned, borrowed] : g.input_counts) {
-      s.inputs.push_back(std::vector<Future>(owned));
-      s.borrowed_inputs.push_back(std::vector<BorrowedFuture>(borrowed));
+  for(const auto& [owned, borrowed] : g.input_counts) {
+    s.inputs.push_back(std::vector<Future>(owned));
+    s.borrowed_inputs.push_back(std::vector<BorrowedFuture>(borrowed));
+  }
+
+  s.inputs.push_back(std::vector<Future>(g.output_count));
+  // can't return borrowed_inputs
+
+  s = propagate(std::move(s), g.owned_fwds.front(), std::move(inputs));
+  s = propagate(std::move(s), g.input_borrowed_fwds, std::move(borrowed_inputs));
+
+  for(int i = 0; i < int(g.fns.size()); i++) {
+    std::vector<Future> results = execute(p, g.fns[i], ex, std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+    s = propagate(std::move(s), g.owned_fwds[i + 1], std::move(results));
+  }
+
+  return std::move(s.inputs.back());
+}
+
+std::vector<Future> execute_functional(std::shared_ptr<const Program> p,
+                                       int output_count,
+                                       ExecutorRef ex,
+                                       std::vector<Future> inputs,
+                                       std::vector<BorrowedFuture> borrowed_inputs) {
+  auto [promises, futures] = make_multi_promise_future(output_count);
+
+  Future fn = std::move(inputs[0]);
+  inputs.erase(inputs.begin());
+
+  Block* b =
+    new Block{std::move(p), ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
+  std::move(fn).then([b](Any fn) mutable {
+    forward_results_then_delete(
+      execute(std::move(b->p), any_cast<Inst>(fn), b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs)), b);
+  });
+
+  return std::move(futures);
+}
+
+std::vector<Future>
+execute_if(std::shared_ptr<const Program> p,
+           int output_count,
+           Inst if_inst,
+           Inst else_inst,
+           ExecutorRef ex,
+           std::vector<Future> inputs,
+           std::vector<BorrowedFuture> borrowed_inputs) {
+  auto [promises, futures] = make_multi_promise_future(output_count);
+
+  Future cond = std::move(inputs[0]);
+  inputs.erase(inputs.begin());
+
+  IfBlock* b =
+    new IfBlock{{std::move(p), ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)},
+                if_inst,
+                else_inst};
+
+  std::move(cond).then([b](Any cond) {
+    const Inst i = any_cast<bool>(cond) ? b->if_inst : b->else_inst;
+    forward_results_then_delete(
+      execute(std::move(b->p), i, b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs)), b);
+  });
+
+  return std::move(futures);
+}
+
+std::vector<Future> execute_select(std::vector<Future> inputs) {
+  const int output_count = int(inputs.size()) / 2;
+
+  auto [promises, futures] = make_multi_promise_future(output_count);
+
+  Future cond = std::move(inputs[0]);
+  inputs.erase(inputs.begin());
+
+  SelectBlock* b = new SelectBlock{output_count, std::move(inputs), std::move(promises)};
+
+  std::move(cond).then([b](Any cond) mutable {
+    if(any_cast<bool>(cond)) {
+      b->futures.erase(b->futures.begin() + b->futures.size() / 2, b->futures.end());
+    } else {
+      b->futures.erase(b->futures.begin(), b->futures.begin() + b->futures.size() / 2);
     }
+    forward_results_then_delete(std::move(b->futures), b);
+  });
 
-    s.inputs.push_back(std::vector<Future>(g.output_count));
-    // can't return borrowed_inputs
+  return std::move(futures);
+}
 
-    s = propagate(std::move(s), g.owned_fwds.front(), std::move(inputs));
-    s = propagate(std::move(s), g.input_borrowed_fwds, std::move(borrowed_inputs));
+std::vector<Future> execute_converge(std::shared_ptr<const Program> p,
+                                     ExecutorRef ex,
+                                     std::vector<Future> inputs,
+                                     std::vector<BorrowedFuture> borrowed_inputs) {
+  const int output_count = int(inputs.size()) - 2;
+  auto [promises, futures] = make_multi_promise_future(output_count);
 
-    for(int i = 0; i < int(g.fns.size()); i++) {
-      std::vector<Future> results = g.fns[i](ex, std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
-      s = propagate(std::move(s), g.owned_fwds[i + 1], std::move(results));
+  Future fn = std::move(inputs[0]);
+  Future cond = std::move(inputs[1]);
+  inputs.erase(inputs.begin(), inputs.begin() + 2);
+
+  invoke_async_converge_future(
+    std::move(cond),
+    new ConvergeBlock{
+      {std::move(p), ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)},
+      std::move(fn)});
+
+  return std::move(futures);
+}
+
+} // namespace
+
+std::vector<Future> execute(std::shared_ptr<const Program> p,
+                            Inst inst,
+                            ExecutorRef ex,
+                            std::vector<Future> inputs,
+                            std::vector<BorrowedFuture> borrowed_inputs) {
+
+  switch(p->inst[inst.get()]) {
+  case InstOp::Value: return make_vector(Future(p->values[p->inst_data[inst.get()]]));
+  case InstOp::Fn: {
+    const auto& [fn, input_borrows, output_count] = p->fns[p->inst_data[inst.get()]];
+    return execute(fn, input_borrows, output_count, ex, std::move(inputs), std::move(borrowed_inputs));
+  }
+  case InstOp::Graph:
+    return execute(p, p->graphs[p->inst_data[inst.get()]], ex, std::move(inputs), std::move(borrowed_inputs));
+  case InstOp::Functional:
+    return execute_functional(p, p->inst_data[inst.get()], ex, std::move(inputs), std::move(borrowed_inputs));
+  case InstOp::If: {
+    const auto [if_inst, else_inst, output_count] = p->ifs[p->inst_data[inst.get()]];
+    return execute_if(p, output_count, if_inst, else_inst, ex, std::move(inputs), std::move(borrowed_inputs));
+  }
+  case InstOp::Select: return execute_select(std::move(inputs));
+  case InstOp::Converge: return execute_converge(p, ex, std::move(inputs), std::move(borrowed_inputs));
+  case InstOp::Curry: {
+    const auto [curry_inst, slice] = p->currys[p->inst_data[inst.get()]];
+    for(i32 i = slice.begin; i < slice.end; i++) {
+      inputs.push_back(Future(p->values[i]));
     }
+    return execute(std::move(p), curry_inst, ex, std::move(inputs), std::move(borrowed_inputs));
+  }
+  }
 
-    return std::move(s.inputs.back());
-  };
-}
-
-AsyncFn create_async_functional(int output_count) {
-  return [=](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    auto [promises, futures] = make_multi_promise_future(output_count);
-
-    Future fn = std::move(inputs[0]);
-    inputs.erase(inputs.begin());
-
-    Block* b = new Block{ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
-    std::move(fn).then([b](Any fn) {
-      forward_results_then_delete(any_cast<AsyncFn>(fn)(b->e, std::move(b->owned_inputs), b->borrowed_inputs), b);
-    });
-
-    return std::move(futures);
-  };
-}
-
-AsyncFn create_async_if(int output_count, AsyncFn if_graph, AsyncFn else_graph) {
-  return [=](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    auto [promises, futures] = make_multi_promise_future(output_count);
-
-    Future cond = std::move(inputs[0]);
-    inputs.erase(inputs.begin());
-
-    IfBlock* b = new IfBlock{
-      {ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)}, if_graph, else_graph};
-
-    std::move(cond).then([b](Any cond) {
-      forward_results_then_delete(
-        any_cast<bool>(cond) ? b->if_graph(b->e, std::move(b->owned_inputs), b->borrowed_inputs)
-                             : b->else_graph(b->e, std::move(b->owned_inputs), b->borrowed_inputs),
-        b);
-    });
-
-    return std::move(futures);
-  };
-}
-
-AsyncFn create_async_select() {
-  return [](ExecutorRef, std::vector<Future> inputs, std::vector<BorrowedFuture>) {
-    const int output_count = int(inputs.size()) / 2;
-
-    auto [promises, futures] = make_multi_promise_future(output_count);
-
-    Future cond = std::move(inputs[0]);
-    inputs.erase(inputs.begin());
-
-    SelectBlock* b = new SelectBlock{output_count, std::move(inputs), std::move(promises)};
-
-    std::move(cond).then([b](Any cond) mutable {
-      if(any_cast<bool>(cond)) {
-        b->futures.erase(b->futures.begin() + b->futures.size() / 2, b->futures.end());
-      } else {
-        b->futures.erase(b->futures.begin(), b->futures.begin() + b->futures.size() / 2);
-      }
-      forward_results_then_delete(std::move(b->futures), b);
-    });
-
-    return std::move(futures);
-  };
-}
-
-AsyncFn create_async_converge() {
-  return [](ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    const int output_count = int(inputs.size()) - 2;
-    auto [promises, futures] = make_multi_promise_future(output_count);
-
-    Future fn = std::move(inputs[0]);
-    Future cond = std::move(inputs[1]);
-    inputs.erase(inputs.begin(), inputs.begin() + 2);
-
-    invoke_async_converge_future(
-      std::move(cond),
-      new ConvergeBlock{{ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)},
-                        std::move(fn)});
-
-    return std::move(futures);
-  };
-}
-
-AsyncFn curry(AsyncFn fn, std::vector<Any> values) {
-  return [fn = std::move(fn), values = std::move(values)](
-           ExecutorRef ex, std::vector<Future> inputs, std::vector<BorrowedFuture> borrowed_inputs) {
-    for(Any a : values) inputs.push_back(Future(std::move(a)));
-    return fn(ex, std::move(inputs), std::move(borrowed_inputs));
-  };
+  assert(false);
+  return {};
 }
 
 } // namespace ooze

@@ -8,7 +8,6 @@ find_package(tbb REQUIRED)
 add_executable(ooze_test
   test_main.cpp
   any_test.cpp
-  async_test.cpp
   borrowed_future_test.cpp
   forest_test.cpp
   future_test.cpp
@@ -21,6 +20,7 @@ add_executable(ooze_test
   pretty_print_test.cpp
   repl_test.cpp
   result_test.cpp
+  runtime_test.cpp
   sema_test.cpp
   stress_test.cpp
   type_check_test.cpp)

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "ooze/any_function.h"
 #include "ooze/ast.h"
-#include "ooze/async_fn.h"
+#include "ooze/inst.h"
+#include "ooze/program.h"
 #include "ooze/src_map.h"
 #include "ooze/traits.h"
 
@@ -25,18 +25,20 @@ struct Env {
 
   NativeTypeInfo native_types;
 
-  std::unordered_map<ASTID, AsyncFn> flat_functions;
+  Program program;
 
-  ASTID add_function(std::string_view name, Type type, AsyncFn fn) {
+  std::unordered_map<ASTID, Inst> functions;
+
+  ASTID add_function(std::string_view name, Type type, Inst fn) {
     const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
     const ASTID id = add_global(ast, ref, type);
-    flat_functions.emplace(id, std::move(fn));
+    functions.emplace(id, std::move(fn));
     return id;
   }
 
   template <typename F>
   ASTID add_function(std::string_view name, F&& f) {
-    return add_function(name, add_fn(tg, decay(knot::Type<F>{})), create_async_function(std::forward<F>(f)));
+    return add_function(name, add_fn(tg, decay(knot::Type<F>{})), program.add(std::forward<F>(f)));
   }
 
   template <typename T>

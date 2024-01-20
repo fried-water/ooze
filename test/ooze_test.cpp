@@ -1,8 +1,8 @@
 #include "test.h"
 
-#include "async_test.h"
 #include "bindings.h"
 #include "pretty_print.h"
+#include "runtime_test.h"
 
 #include "ooze/core.h"
 #include "ooze/executor/sequential_executor.h"
@@ -65,10 +65,18 @@ assign(Env env, std::string_view script, std::string_view expr) {
 }
 
 template <typename... Ts, typename... Bs>
-Any invoke1(AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
-  std::vector<Any> results = invoke(std::move(fn), std::move(ts), std::move(bs));
-  BOOST_REQUIRE_EQUAL(1, results.size());
-  return std::move(results[0]);
+Any execute1(Env e, std::string_view name, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
+  for(const auto& [id, fn] : e.functions) {
+    if(sv(make_sv_array(e.src), e.ast.srcs[id.get()]) == name) {
+      std::vector<Any> results =
+        execute(std::make_shared<const Program>(std::move(e.program)), fn, std::move(ts), std::move(bs));
+      BOOST_REQUIRE_EQUAL(1, results.size());
+      return std::move(results[0]);
+    }
+  }
+
+  BOOST_REQUIRE(false);
+  return {};
 }
 
 #define check_any_tree(_EXP, _EXPR)                                                                                    \
@@ -91,17 +99,6 @@ Any invoke1(AsyncFn fn, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
     return it->second;                                                                                                 \
   }                                                                                                                    \
   (_NAME, _MAP)
-
-AsyncFn global_fn(const Env& e, std::string_view name) {
-  for(const auto& [id, fn] : e.flat_functions) {
-    if(sv(make_sv_array(e.src), e.ast.srcs[id.get()]) == name) {
-      return fn;
-    }
-  }
-
-  BOOST_REQUIRE(false);
-  return {};
-}
 
 } // namespace
 
@@ -558,20 +555,20 @@ BOOST_AUTO_TEST_CASE(native_constant_fn) {
   Env e;
   e.add_type<i32>("i32");
   e.add_function("f", []() { return 3; });
-  check_any(3, invoke1(global_fn(e, "f"), {}, {}));
+  check_any(3, execute1(std::move(e), "f", {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(native_identity_fn) {
   Env e;
   e.add_type<i32>("i32");
   e.add_function("f", [](i32 x) { return x; });
-  check_any(7, invoke1(global_fn(e, "f"), std::tuple(7), {}));
+  check_any(7, execute1(std::move(e), "f", std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(native_clone_fn) {
   Env e;
   e.add_type<i32>("i32");
-  check_any(7, invoke1(global_fn(e, "clone"), {}, std::tuple(7)));
+  check_any(7, execute1(std::move(e), "clone", {}, std::tuple(7)));
 }
 
 BOOST_AUTO_TEST_CASE(script_constant_fn) {
@@ -580,7 +577,7 @@ BOOST_AUTO_TEST_CASE(script_constant_fn) {
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f() -> i32 = 3")));
 
-  check_any(3, invoke1(global_fn(e, "f"), {}, {}));
+  check_any(3, execute1(std::move(e), "f", {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(script_identity_fn) {
@@ -589,7 +586,7 @@ BOOST_AUTO_TEST_CASE(script_identity_fn) {
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: i32) -> i32 = x")));
 
-  check_any(7, invoke1(global_fn(e, "f"), std::tuple(7), {}));
+  check_any(7, execute1(std::move(e), "f", std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(script_call_native) {
@@ -600,7 +597,7 @@ BOOST_AUTO_TEST_CASE(script_call_native) {
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: &i32) -> i32 = c(x)")));
 
-  check_any(7, invoke1(global_fn(e, "f"), {}, std::tuple(7)));
+  check_any(7, execute1(std::move(e), "f", {}, std::tuple(7)));
 }
 
 BOOST_AUTO_TEST_CASE(script_call_script) {
@@ -609,7 +606,7 @@ BOOST_AUTO_TEST_CASE(script_call_script) {
 
   e = check_result(parse_scripts(std::move(e), make_sv_array("fn f(x: i32) -> i32 = x", "fn g(x: i32) -> i32 = f(x)")));
 
-  check_any(7, invoke1(global_fn(e, "g"), std::tuple(7), {}));
+  check_any(7, execute1(std::move(e), "g", std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(script_parse_error_env_same) {

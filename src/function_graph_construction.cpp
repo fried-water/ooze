@@ -1,9 +1,7 @@
 #include "pch.h"
 
-#include "async_functions.h"
+#include "constructing_graph.h"
 #include "function_graph_construction.h"
-
-#include <numeric>
 
 namespace ooze {
 
@@ -75,6 +73,7 @@ auto find_globals(const AST& ast, const TypeGraph& tg, const Map<ASTID, ASTID>& 
 }
 
 struct GraphContext {
+  Program p;
   ConstructingGraph cg;
   Map<ASTID, std::vector<Oterm>> bindings;
 };
@@ -134,7 +133,7 @@ std::pair<GraphContext, std::vector<Oterm>> add_select_expr(
   pass_bys = pass_bys_of(copy_types, tg, ast.types[else_id.get()], std::move(pass_bys));
 
   std::vector<Oterm> terms =
-    ctx.cg.add(create_async_select(),
+    ctx.cg.add(ctx.p.add(SelectInst{}),
                flatten(std::move(cond_terms), std::move(if_terms), std::move(else_terms)),
                pass_bys,
                size_of(tg, ast.types[id.get()]));
@@ -165,7 +164,7 @@ add_call_expr(const AST& ast,
   pass_bys = pass_bys_of(copy_types, tg, ast.types[arg.get()], std::move(pass_bys));
 
   const int output_count = size_of(tg, ast.types[id.get()]);
-  std::vector<Oterm> terms = ctx.cg.add(create_async_functional(output_count), arg_terms, pass_bys, output_count);
+  std::vector<Oterm> terms = ctx.cg.add(ctx.p.add(FunctionalInst{output_count}), arg_terms, pass_bys, output_count);
   return {std::move(ctx), std::move(terms)};
 }
 
@@ -184,8 +183,8 @@ add_expr(const AST& ast,
   case ASTTag::Assignment:
   case ASTTag::EnvValue: assert(false); return {};
   case ASTTag::ExprLiteral: {
-    std::vector<Oterm> terms = std::visit(
-      [&](const auto& v) { return ctx.cg.add(create_async_value(Any(v)), {}, {}, 1); }, lookup_literal(ast, id));
+    std::vector<Oterm> terms =
+      std::visit([&](const auto& v) { return ctx.cg.add(ctx.p.add(Any(v)), {}, {}, 1); }, lookup_literal(ast, id));
     return {std::move(ctx), std::move(terms)};
   }
   case ASTTag::ExprCall: return add_call_expr(ast, tg, copy_types, binding_of, id, std::move(ctx));
@@ -219,7 +218,8 @@ add_expr(const AST& ast,
 
 } // namespace
 
-FunctionGraphData create_graph(const AST& ast,
+FunctionGraphData create_graph(Program p,
+                               const AST& ast,
                                const TypeGraph& tg,
                                const std::unordered_set<TypeID>& copy_types,
                                const Map<ASTID, ASTID>& binding_of,
@@ -241,7 +241,7 @@ FunctionGraphData create_graph(const AST& ast,
 
   auto [cg, terms] = make_graph(std::move(borrows));
 
-  GraphContext ctx = {std::move(cg)};
+  GraphContext ctx = {std::move(p), std::move(cg)};
   int offset = 0;
 
   if(pattern.is_valid()) {
@@ -258,9 +258,10 @@ FunctionGraphData create_graph(const AST& ast,
 
   auto [final_ctx, output_terms] = add_expr(ast, tg, copy_types, binding_of, expr, std::move(ctx));
 
-  return {std::move(global_values),
-          std::move(global_borrows),
-          std::move(final_ctx.cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[expr.get()]))};
+  const Inst graph =
+    final_ctx.p.add(std::move(final_ctx.cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[expr.get()])));
+
+  return {std::move(final_ctx.p), std::move(global_values), std::move(global_borrows), graph};
 }
 
 } // namespace ooze

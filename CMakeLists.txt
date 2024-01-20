@@ -7,6 +7,8 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 find_package(fmt REQUIRED)
 
 add_subdirectory(ext/ctre)
@@ -18,19 +20,20 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 add_library(ooze
-  src/async_functions.cpp
   src/env.cpp
+  src/constructing_graph.cpp
+  src/function_graph_construction.cpp
   src/lexer.cpp
   src/io.cpp
+  src/ooze.cpp
   src/parser.cpp
+  src/program.cpp
   src/pretty_print.cpp
-  src/function_graph.cpp
-  src/function_graph_construction.cpp
-  src/type_check.cpp
-  src/sema.cpp
   src/repl.cpp
-  src/user_msg.cpp
-  src/ooze.cpp)
+  src/runtime.cpp
+  src/sema.cpp
+  src/type_check.cpp
+  src/user_msg.cpp)
 
 target_compile_features(ooze PUBLIC cxx_std_17)
 target_include_directories(ooze PRIVATE src PUBLIC include)

@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "function_graph.h"
+#include "constructing_graph.h"
 
 namespace ooze {
 
@@ -60,7 +60,7 @@ void ConstructingGraph::add_edges(Span<Oterm> inputs, Span<PassBy> pbs) {
   }
 }
 
-std::vector<Oterm> ConstructingGraph::add(AsyncFn fn, Span<Oterm> inputs, Span<PassBy> pbs, int num_outputs) {
+std::vector<Oterm> ConstructingGraph::add(Inst fn, Span<Oterm> inputs, Span<PassBy> pbs, int num_outputs) {
   add_edges(inputs, pbs);
 
   input_counts.push_back(counts(pbs));

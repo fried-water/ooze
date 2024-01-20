@@ -1,11 +1,11 @@
 #include "pch.h"
 
-#include "async_functions.h"
 #include "bindings.h"
 #include "function_graph_construction.h"
 #include "parser.h"
 #include "parser_combinators.h"
 #include "pretty_print.h"
+#include "runtime.h"
 #include "sema.h"
 #include "type_check.h"
 #include "user_msg.h"
@@ -74,13 +74,14 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   const TypeGraph& tg,
   const Map<ASTID, ASTID>& binding_of,
   const std::unordered_set<TypeID>& copy_types,
-  const std::unordered_map<ASTID, AsyncFn>& flat_functions,
+  const std::unordered_map<ASTID, Inst>& functions,
+  Program p,
   ExecutorRef ex,
   Map<ASTID, std::vector<AsyncValue>> bindings,
   ASTID expr_id) {
   assert(is_expr(ast.forest[expr_id]));
 
-  auto [value_inputs, borrow_inputs, fg] = create_graph(ast, tg, copy_types, binding_of, expr_id);
+  auto [p2, value_inputs, borrow_inputs, fg] = create_graph(std::move(p), ast, tg, copy_types, binding_of, expr_id);
 
   std::vector<BorrowedFuture> borrowed;
   for(ASTID id : borrow_inputs) {
@@ -93,8 +94,8 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   std::vector<Future> futures;
   for(ASTID id : value_inputs) {
     if(const auto it = bindings.find(id); it == bindings.end()) {
-      const auto fn_it = flat_functions.find(id);
-      assert(fn_it != flat_functions.end());
+      const auto fn_it = functions.find(id);
+      assert(fn_it != functions.end());
       futures.push_back(Future(Any(fn_it->second)));
     } else if(is_binding_copyable(tg, copy_types, ast.types[id.get()])) {
       for(AsyncValue& b : it->second) {
@@ -108,10 +109,10 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
     }
   }
 
-  AsyncFn fn = create_async_graph(std::move(fg));
-
-  return std::tuple(transform_to_vec(fn(ex, std::move(futures), std::move(borrowed)), Construct<AsyncValue>{}),
-                    std::move(bindings));
+  return std::tuple(
+    transform_to_vec(execute(std::make_shared<Program>(std::move(p2)), fg, ex, std::move(futures), std::move(borrowed)),
+                     Construct<AsyncValue>{}),
+    std::move(bindings));
 }
 
 auto assign_values(const AST& ast,
@@ -154,7 +155,8 @@ auto run_or_assign(ExecutorRef ex,
     tg,
     binding_of,
     env.native_types.copyable,
-    env.flat_functions,
+    env.functions,
+    env.program,
     ex,
     std::move(bindings),
     expr ? id : ast.forest.child_ids(id).get<1>());
@@ -183,25 +185,25 @@ Env generate_functions(
     if(ast.forest[*fn_id] == ASTTag::Fn) {
       const auto fn_id = ast.forest.next_sibling(id);
       assert(fn_id && ast.forest[*fn_id] == ASTTag::Fn);
-      auto [global_values, global_borrows, fg] =
-        create_graph(ast, tg, env.native_types.copyable, cg.binding_of, *fn_id);
+      auto [p2, global_values, global_borrows, fg] =
+        create_graph(std::move(env.program), ast, tg, env.native_types.copyable, cg.binding_of, *fn_id);
+
+      env.program = std::move(p2);
 
       assert(global_borrows.empty());
 
       std::vector<Any> values = transform_to_vec(global_values, [&](ASTID id) {
         const auto it = to_env_id.find(id);
         assert(it != to_env_id.end());
-        const auto fn_it = env.flat_functions.find(it->second);
-        assert(fn_it != env.flat_functions.end());
+        const auto fn_it = env.functions.find(it->second);
+        assert(fn_it != env.functions.end());
         return Any(fn_it->second);
       });
 
       const Type env_fn_type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
 
       to_env_id.emplace(
-        id,
-        env.add_function(
-          sv(srcs, ast.srcs[id.get()]), env_fn_type, curry(create_async_graph(std::move(fg)), std::move(values))));
+        id, env.add_function(sv(srcs, ast.srcs[id.get()]), env_fn_type, env.program.curry(fg, std::move(values))));
     } else {
       to_env_id.emplace(id, id);
     }
