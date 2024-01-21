@@ -189,6 +189,7 @@ auto literal() {
 
 ParseResult<ASTID> expr(State&, Span<Token>, ParseLocation);
 ParseResult<ASTID> call_expr(State&, Span<Token>, ParseLocation);
+ParseResult<ASTID> scope_cond_expr(State&, Span<Token>, ParseLocation);
 ParseResult<ASTID> non_call_expr(State&, Span<Token>, ParseLocation);
 
 auto assignment() {
@@ -233,14 +234,18 @@ auto scope() {
     });
 }
 
+ParseResult<ASTID> scope_cond_expr(State& s, Span<Token> tokens, ParseLocation loc) {
+  return choose(scope(),
+                transform(seq(keyword("select"), expr, scope(), keyword("else"), scope_cond_expr),
+                          ASTAppender{ASTTag::ExprSelect}))(s, tokens, loc);
+}
+
 ParseResult<ASTID> non_call_expr(State& s, Span<Token> tokens, ParseLocation loc) {
-  return choose(
-    tuple_expr(),
-    scope(),
-    transform(seq(keyword("select"), expr, scope(), keyword("else"), scope()), ASTAppender{ASTTag::ExprSelect}),
-    transform(seq(symbol("&"), expr), ASTAppender{ASTTag::ExprBorrow}),
-    leaf_ast(TokenType::Ident, ASTTag::ExprIdent),
-    literal())(s, tokens, loc);
+  return choose(leaf_ast(TokenType::Ident, ASTTag::ExprIdent),
+                literal(),
+                transform(seq(symbol("&"), expr), ASTAppender{ASTTag::ExprBorrow}),
+                tuple_expr(),
+                scope_cond_expr)(s, tokens, loc);
 }
 
 auto function() {

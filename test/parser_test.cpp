@@ -11,36 +11,17 @@ namespace {
      const TypeGraph& exp_tg,                                                                                          \
      const std::vector<std::pair<Type, SrcRef>>& exp_type_srcs,                                                        \
      auto result) {                                                                                                    \
-    BOOST_REQUIRE(result.has_value());                                                                                 \
-                                                                                                                       \
-    const auto& [type_srcs, ast, tg] = std::move(result).value_and_state();                                            \
-    if(exp_type_srcs != type_srcs) {                                                                                   \
-      fmt::print("Actual:   {}\n", knot::debug(type_srcs));                                                            \
-      fmt::print("Expected: {}\n", knot::debug(exp_type_srcs));                                                        \
-      BOOST_CHECK(exp_type_srcs == type_srcs);                                                                         \
-    }                                                                                                                  \
-    if(exp_ast != ast) {                                                                                               \
-      fmt::print("Actual:   {}\n", knot::debug(ast));                                                                  \
-      fmt::print("Expected: {}\n", knot::debug(exp_ast));                                                              \
-      BOOST_CHECK(exp_ast == ast);                                                                                     \
-    }                                                                                                                  \
-    if(exp_tg != tg) {                                                                                                 \
-      fmt::print("Actual:   {}\n", knot::debug(tg));                                                                   \
-      fmt::print("Expected: {}\n", knot::debug(exp_tg));                                                               \
-      BOOST_CHECK(exp_tg == tg);                                                                                       \
-    }                                                                                                                  \
+    const auto [type_srcs, ast, tg] = check_result(std::move(result));                                                 \
+    check_eq("type_srcs", exp_type_srcs, type_srcs);                                                                   \
+    check_eq("ast", exp_ast, ast);                                                                                     \
+    check_eq("tg", exp_type_srcs, type_srcs);                                                                          \
   }(_EXP_AST, _EXP_TYPES, _EXP_SRCS, _ACT)
 
 template <typename T, typename... Ts>
 void check_single_error(ContextualError expected, ContextualResult<T, Ts...> result) {
   const std::vector<ContextualError> err = check_error(std::move(result));
   BOOST_REQUIRE(err.size() == 1);
-
-  if(expected != err.front()) {
-    fmt::print("Actual:   {}\n", knot::debug(err.front()));
-    fmt::print("Expected: {}\n", knot::debug(expected));
-    BOOST_CHECK(false);
-  }
+  check_eq("error", expected, err.front());
 }
 
 std::vector<SrcRef> slices(std::string_view src, const std::vector<std::string_view>& svs) {
@@ -97,7 +78,7 @@ std::vector<Type> types(size_t s) { return std::vector<Type>(s); }
 
 } // namespace
 
-BOOST_AUTO_TEST_SUITE(parser2)
+BOOST_AUTO_TEST_SUITE(parser)
 
 BOOST_AUTO_TEST_CASE(pattern_ident) {
   const std::string_view src = "x";
@@ -330,6 +311,28 @@ BOOST_AUTO_TEST_CASE(expr_select) {
   f.append_child(ASTID{0}, ASTTag::ExprIdent);
   f.append_child(ASTID{0}, ASTTag::ExprIdent);
   const AST ast = {std::move(f), slices(src, {"x", "y", "z", src}), types(4)};
+  check_pass(ast, {}, {}, parse_expr({}, {}, {}, src));
+}
+
+BOOST_AUTO_TEST_CASE(expr_select_nested) {
+  const std::string_view src = "select a { b } else select c { d } else { e }";
+  auto f = ast_forest({{ASTTag::ExprSelect, ASTTag::ExprIdent}});
+  f.append_child(ASTID{0}, ASTTag::ExprIdent);
+  const ASTID nested_id = f.append_child(ASTID{0}, ASTTag::ExprSelect);
+  f.append_child(nested_id, ASTTag::ExprIdent);
+  f.append_child(nested_id, ASTTag::ExprIdent);
+  f.append_child(nested_id, ASTTag::ExprIdent);
+  const AST ast = {
+    std::move(f),
+    as_invalid_refs({{7, 8},   // a
+                     {11, 12}, // b
+                     {27, 28}, // c
+                     {31, 32}, // d
+                     {42, 43}, // e
+                     {20, 45},
+                     {0, 45}}),
+    types(7)};
+
   check_pass(ast, {}, {}, parse_expr({}, {}, {}, src));
 }
 

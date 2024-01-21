@@ -358,6 +358,12 @@ BOOST_AUTO_TEST_CASE(fn_select_from_cond) {
           "(a: bool, b: bool) -> bool = select a { a } else { b }");
 }
 
+BOOST_AUTO_TEST_CASE(fn_select_nested) {
+  test_tc(basic_test_env(),
+          "(a, b, c, d) -> _ = select a { b } else select c { d } else { 0 }",
+          "(a: bool, b: i32, c: bool, d: i32) -> i32 = select a { b } else select c { d } else { 0 }");
+}
+
 BOOST_AUTO_TEST_CASE(fn_assign) {
   test_tc(
     basic_test_env("f: fn() -> i32"), "() -> i32 = { let x = f; x() }", "() -> i32 = { let x : fn() -> i32 = f; x() }");
