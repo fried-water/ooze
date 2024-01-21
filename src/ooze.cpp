@@ -82,6 +82,7 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   assert(is_expr(ast.forest[expr_id]));
 
   auto [p2, value_inputs, borrow_inputs, fg] = create_graph(std::move(p), ast, tg, copy_types, binding_of, expr_id);
+  const Inst graph_inst = p2.add(std::move(fg));
 
   std::vector<BorrowedFuture> borrowed;
   for(ASTID id : borrow_inputs) {
@@ -110,8 +111,9 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   }
 
   return std::tuple(
-    transform_to_vec(execute(std::make_shared<Program>(std::move(p2)), fg, ex, std::move(futures), std::move(borrowed)),
-                     Construct<AsyncValue>{}),
+    transform_to_vec(
+      execute(std::make_shared<Program>(std::move(p2)), graph_inst, ex, std::move(futures), std::move(borrowed)),
+      Construct<AsyncValue>{}),
     std::move(bindings));
 }
 
@@ -177,22 +179,35 @@ Env generate_functions(
   }
 
   Map<ASTID, ASTID> to_env_id;
+  std::vector<std::pair<ASTID, Inst>> fns;
 
-  for(ASTID id : cg.topographical_fn_ordering) {
-    const auto fn_id = ast.forest.next_sibling(id);
-    assert(fn_id);
+  for(ASTID root : ast.forest.root_ids()) {
+    const auto [ident_id, value_id] = ast.forest.child_ids(root).take<2>();
 
-    if(ast.forest[*fn_id] == ASTTag::Fn) {
-      const auto fn_id = ast.forest.next_sibling(id);
-      assert(fn_id && ast.forest[*fn_id] == ASTTag::Fn);
-      auto [p2, global_values, global_borrows, fg] =
-        create_graph(std::move(env.program), ast, tg, env.native_types.copyable, cg.binding_of, *fn_id);
+    if(ast.forest[value_id] == ASTTag::Fn) {
+      const Inst inst = env.program.placeholder();
+      fns.emplace_back(value_id, inst);
+      to_env_id.emplace(
+        ident_id,
+        env.add_function(
+          sv(srcs, ast.srcs[ident_id.get()]), copy_type(srcs, env, to_env_type, tg, ast.types[ident_id.get()]), inst));
+    } else {
+      to_env_id.emplace(ident_id, ident_id);
+    }
+  }
 
-      env.program = std::move(p2);
+  for(const auto [id, inst] : fns) {
+    FunctionGraphData fg_data =
+      create_graph(std::move(env.program), ast, tg, env.native_types.copyable, cg.binding_of, id);
 
-      assert(global_borrows.empty());
+    env.program = std::move(fg_data.program);
 
-      std::vector<Any> values = transform_to_vec(global_values, [&](ASTID id) {
+    assert(fg_data.global_borrows.empty());
+
+    if(fg_data.global_values.empty()) {
+      env.program.set(inst, std::move(fg_data.graph));
+    } else {
+      std::vector<Any> values = transform_to_vec(fg_data.global_values, [&](ASTID id) {
         const auto it = to_env_id.find(id);
         assert(it != to_env_id.end());
         const auto fn_it = env.functions.find(it->second);
@@ -200,12 +215,8 @@ Env generate_functions(
         return Any(fn_it->second);
       });
 
-      const Type env_fn_type = copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]);
-
-      to_env_id.emplace(
-        id, env.add_function(sv(srcs, ast.srcs[id.get()]), env_fn_type, env.program.curry(fg, std::move(values))));
-    } else {
-      to_env_id.emplace(id, id);
+      const Inst graph_inst = env.program.add(std::move(fg_data.graph));
+      env.program.set(inst, graph_inst, std::move(values));
     }
   }
 

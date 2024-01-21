@@ -44,7 +44,7 @@ std::vector<Any> call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, 
 
 using AnyFunction = std::function<std::vector<Any>(Span<Any*>)>;
 
-enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry };
+enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry, Placeholder };
 
 struct AnyFunctionInst {
   AnyFunction fn;
@@ -81,6 +81,15 @@ struct Program {
   Inst add(SelectInst);
   Inst add(ConvergeInst);
   Inst curry(Inst, Span<Any>);
+
+  Inst placeholder() {
+    inst.push_back(InstOp::Placeholder);
+    inst_data.push_back(-1);
+    return Inst{i32(inst.size() - 1)};
+  }
+
+  void set(Inst, FunctionGraph);
+  void set(Inst, Inst, Span<Any>);
 
   template <typename F>
   Inst add(F&& f) {

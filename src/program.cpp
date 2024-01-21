@@ -43,4 +43,19 @@ Inst Program::curry(Inst curried, Span<Any> s) {
   return i;
 }
 
+void Program::set(Inst i, FunctionGraph g) {
+  assert(inst[i.get()] == InstOp::Placeholder);
+  inst[i.get()] = InstOp::Graph;
+  inst_data[i.get()] = i32(graphs.size());
+  graphs.push_back(std::move(g));
+}
+
+void Program::set(Inst i, Inst curried, Span<Any> s) {
+  assert(inst[i.get()] == InstOp::Placeholder);
+  inst[i.get()] = InstOp::Curry;
+  inst_data[i.get()] = i32(currys.size());
+  currys.emplace_back(curried, Slice{i32(values.size()), i32(values.size() + s.size())});
+  values = to_vec(std::move(s), std::move(values));
+}
+
 } // namespace ooze

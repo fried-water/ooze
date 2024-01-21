@@ -414,6 +414,7 @@ std::vector<Future> execute(std::shared_ptr<const Program> p,
     }
     return execute(std::move(p), curry_inst, ex, std::move(inputs), std::move(borrowed_inputs));
   }
+  case InstOp::Placeholder: assert(false); return {};
   }
 
   assert(false);

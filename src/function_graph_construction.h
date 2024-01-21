@@ -7,10 +7,10 @@
 namespace ooze {
 
 struct FunctionGraphData {
-  Program p;
+  Program program;
   std::vector<ASTID> global_values;
   std::vector<ASTID> global_borrows;
-  Inst inst;
+  FunctionGraph graph;
 };
 
 FunctionGraphData create_graph(Program,

@@ -257,11 +257,10 @@ FunctionGraphData create_graph(Program p,
   }
 
   auto [final_ctx, output_terms] = add_expr(ast, tg, copy_types, binding_of, expr, std::move(ctx));
-
-  const Inst graph =
-    final_ctx.p.add(std::move(final_ctx.cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[expr.get()])));
-
-  return {std::move(final_ctx.p), std::move(global_values), std::move(global_borrows), graph};
+  return {std::move(final_ctx.p),
+          std::move(global_values),
+          std::move(global_borrows),
+          std::move(final_ctx.cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[expr.get()]))};
 }
 
 } // namespace ooze
