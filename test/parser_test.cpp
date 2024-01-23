@@ -332,7 +332,35 @@ BOOST_AUTO_TEST_CASE(expr_select_nested) {
                      {20, 45},
                      {0, 45}}),
     types(7)};
+}
 
+BOOST_AUTO_TEST_CASE(expr_if) {
+  const std::string_view src = "if x { y } else { z }";
+  auto f = ast_forest({{ASTTag::ExprIf, ASTTag::ExprIdent}});
+  f.append_child(ASTID{0}, ASTTag::ExprIdent);
+  f.append_child(ASTID{0}, ASTTag::ExprIdent);
+  const AST ast = {std::move(f), slices(src, {"x", "y", "z", src}), types(4)};
+  check_pass(ast, {}, {}, parse_expr({}, {}, {}, src));
+}
+
+BOOST_AUTO_TEST_CASE(expr_if_nested) {
+  const std::string_view src = "if a { b } else if c { d } else { e }";
+  auto f = ast_forest({{ASTTag::ExprIf, ASTTag::ExprIdent}});
+  f.append_child(ASTID{0}, ASTTag::ExprIdent);
+  const ASTID nested_id = f.append_child(ASTID{0}, ASTTag::ExprIf);
+  f.append_child(nested_id, ASTTag::ExprIdent);
+  f.append_child(nested_id, ASTTag::ExprIdent);
+  f.append_child(nested_id, ASTTag::ExprIdent);
+  const AST ast = {
+    std::move(f),
+    as_invalid_refs({{3, 4},   // a
+                     {7, 8},   // b
+                     {19, 20}, // c
+                     {23, 24}, // d
+                     {34, 35}, // e
+                     {16, 37},
+                     {0, 37}}),
+    types(7)};
   check_pass(ast, {}, {}, parse_expr({}, {}, {}, src));
 }
 

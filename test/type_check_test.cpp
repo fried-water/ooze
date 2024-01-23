@@ -211,6 +211,7 @@ BOOST_AUTO_TEST_CASE(expr) {
   test_alr(parse_expr, "f()", {"fn _ -> _", "()", "_"});
 
   test_alr(parse_expr, "select x { y } else { z }", {"bool", "_", "_", "_"});
+  test_alr(parse_expr, "if x { y } else { z }", {"bool", "_", "_", "_"});
 
   test_alr_error(parse_expr, "1()", {{{SrcID{1}, {0, 1}}, "expected fn _ -> _, given i32"}});
 }
@@ -362,6 +363,36 @@ BOOST_AUTO_TEST_CASE(fn_select_nested) {
   test_tc(basic_test_env(),
           "(a, b, c, d) -> _ = select a { b } else select c { d } else { 0 }",
           "(a: bool, b: i32, c: bool, d: i32) -> i32 = select a { b } else select c { d } else { 0 }");
+}
+
+BOOST_AUTO_TEST_CASE(fn_if_from_return) {
+  test_tc(basic_test_env(),
+          "(a, b, c) -> i32 = if a { b } else { c }",
+          "(a: bool, b: i32, c: i32) -> i32 = if a { b } else { c }");
+}
+
+BOOST_AUTO_TEST_CASE(fn_if_from_arg) {
+  test_tc(basic_test_env(),
+          "(a, b: i32, c) -> _ = if a { b } else { c }",
+          "(a: bool, b: i32, c: i32) -> i32 = if a { b } else { c }");
+}
+
+BOOST_AUTO_TEST_CASE(fn_if_from_constant) {
+  test_tc(basic_test_env(), "(a, b) -> _ = if a { b } else { 1 }", "(a: bool, b: i32) -> i32 = if a { b } else { 1 }");
+}
+
+BOOST_AUTO_TEST_CASE(fn_if_from_cond) {
+  test_tc(
+    basic_test_env(), "(a, b) -> _ = if a { a } else { b }", "(a: bool, b: bool) -> bool = if a { a } else { b }");
+}
+
+BOOST_AUTO_TEST_CASE(fn_if_reuse_value) {
+  test_tc(basic_test_env(),
+          "(a, b) -> string = if a { b } else { b }",
+          "(a: bool, b: string) -> string = if a { b } else { b }");
+  test_tc(basic_test_env(),
+          "(a, b, c) -> string = if a { c } else { if b { c } else { c } }",
+          "(a: bool, b: bool, c: string) -> string = if a { c } else { if b { c } else { c } }");
 }
 
 BOOST_AUTO_TEST_CASE(fn_assign) {
@@ -649,15 +680,27 @@ BOOST_AUTO_TEST_CASE(unused_binding_ignore) {
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse) {
-  test_tc_error(basic_test_env(), "(x: string) -> _ = (x, x)", {{{SrcID{1}, {1, 2}}, "binding 'x' used 2 times"}});
+  test_tc_error(
+    basic_test_env(), "(x: string) -> _ = (x, x)", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse_floating) { test_tc(basic_test_env(), "(x) -> _ = (x, x)", "(x) -> _ = (x, x)"); }
 
+BOOST_AUTO_TEST_CASE(binding_reuse_if) {
+  // Env with non-copyable bool
+  const TestEnv env = create_test_env({{{"bool", type_id(knot::Type<bool>{})}}});
+  test_tc_error(
+    env, "(x: bool) -> bool  = if x { x } else { true }", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
+  test_tc_error(
+    env, "(x: bool) -> bool  = if x { x } else { false }", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
+  test_tc_error(
+    env, "(x: bool) -> bool  = if x { x } else { x }", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
+}
+
 BOOST_AUTO_TEST_CASE(binding_reuse_both) {
   test_tc_error(basic_test_env(),
                 "(x: string, y: i32) -> _ { let z = (x, y); (z, z) }",
-                {{{SrcID{1}, {31, 32}}, "binding 'z' used 2 times"}});
+                {{{SrcID{1}, {31, 32}}, "binding 'z' used more than once"}});
 }
 
 BOOST_AUTO_TEST_CASE(binding_ref_reuse) {

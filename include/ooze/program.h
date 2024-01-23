@@ -46,6 +46,11 @@ using AnyFunction = std::function<std::vector<Any>(Span<Any*>)>;
 
 enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry, Placeholder };
 
+constexpr auto names(knot::Type<InstOp>) {
+  return knot::Names("InstOp",
+                     {"Value", "Fn", "Graph", "Functional", "If", "Select", "Converge", "Curry", "Placeholder"});
+}
+
 struct AnyFunctionInst {
   AnyFunction fn;
   std::vector<bool> input_borrows;
@@ -58,6 +63,12 @@ struct IfInst {
   Inst if_inst;
   Inst else_inst;
   i32 output_count;
+
+  i32 value_common_end = 0;
+  i32 value_if_end = 0;
+
+  i32 borrow_common_end = 0;
+  i32 borrow_if_end = 0;
 };
 struct SelectInst {};
 struct ConvergeInst {};

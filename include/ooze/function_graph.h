@@ -26,7 +26,7 @@ struct FunctionGraph {
   std::vector<ValueForward> input_borrowed_fwds;
 
   std::vector<std::pair<int, int>> input_counts;
-  std::vector<Inst> fns;
+  std::vector<Inst> insts;
 
   KNOT_COMPAREABLE(FunctionGraph);
 };

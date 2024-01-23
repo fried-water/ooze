@@ -29,7 +29,7 @@ Inst Program::add(FunctionalInst inst) { return add_internal(*this, InstOp::Func
 
 Inst Program::add(IfInst inst) {
   const Inst i = add_internal(*this, InstOp::If, i32(ifs.size()));
-  ifs.emplace_back(inst);
+  ifs.push_back(inst);
   return i;
 }
 

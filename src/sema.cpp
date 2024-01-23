@@ -68,6 +68,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   case ASTTag::ExprLiteral:
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
+  case ASTTag::ExprIf:
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:
     for(ASTID child : ast.forest.child_ids(id)) {

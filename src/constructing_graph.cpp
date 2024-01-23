@@ -56,7 +56,7 @@ void ConstructingGraph::add_edges(Span<Oterm> inputs, Span<PassBy> pbs) {
   int borrow_idx = 0;
 
   for(int i = 0; i < inputs.ssize(); i++) {
-    fwd_of(inputs[i]).push_back({int(fns.size()), pbs[i] == PassBy::Borrow ? borrow_idx++ : value_idx++, pbs[i]});
+    fwd_of(inputs[i]).push_back({int(insts.size()), pbs[i] == PassBy::Borrow ? borrow_idx++ : value_idx++, pbs[i]});
   }
 }
 
@@ -64,10 +64,10 @@ std::vector<Oterm> ConstructingGraph::add(Inst fn, Span<Oterm> inputs, Span<Pass
   add_edges(inputs, pbs);
 
   input_counts.push_back(counts(pbs));
-  fns.push_back(std::move(fn));
+  insts.push_back(std::move(fn));
   owned_fwds.push_back(std::vector<std::vector<Iterm>>(num_outputs));
 
-  return make_oterms(int(fns.size()), num_outputs);
+  return make_oterms(int(insts.size()), num_outputs);
 }
 
 std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> inputs) {
@@ -80,7 +80,7 @@ std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> in
       const Term fanout = input_fwd.terms[i];
       const PassBy pb =
         i < input_fwd.copy_end ? PassBy::Copy : (i < input_fwd.move_end ? PassBy::Move : PassBy::Borrow);
-      if(fanout.node_id == g.fns.size()) {
+      if(fanout.node_id == g.insts.size()) {
         outputs[fanout.port] = fanin;
       } else {
         output_terms.push_back({{fanout.node_id + offset, fanout.port}, pb});
@@ -97,9 +97,9 @@ std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> in
     process_fwds(inputs[i], inner_fwd, fwd_of(inputs[i]));
   }
 
-  for(int n = 0; n < g.fns.size(); n++) {
+  for(int n = 0; n < g.insts.size(); n++) {
     input_counts.push_back(g.input_counts[n]);
-    fns.push_back(g.fns[n]);
+    insts.push_back(g.insts[n]);
     owned_fwds.push_back(std::vector<std::vector<Iterm>>(g.owned_fwds[n + 1].size()));
 
     for(int p = 0; p < g.owned_fwds[n + 1].size(); p++) {
@@ -121,7 +121,7 @@ FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs)
     knot::map<std::vector<std::vector<ValueForward>>>(std::move(owned_fwds), to_fwd),
     knot::map<std::vector<ValueForward>>(std::move(input_borrowed_fwds), to_fwd),
     std::move(input_counts),
-    std::move(fns)};
+    std::move(insts)};
 }
 
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<bool> input_borrows) {

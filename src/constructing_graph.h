@@ -27,7 +27,7 @@ class ConstructingGraph {
   std::vector<std::vector<Iterm>> input_borrowed_fwds;
 
   std::vector<std::pair<int, int>> input_counts;
-  std::vector<Inst> fns;
+  std::vector<Inst> insts;
 
   std::vector<Iterm>& fwd_of(Oterm);
   void add_edges(Span<Oterm>, Span<PassBy>);

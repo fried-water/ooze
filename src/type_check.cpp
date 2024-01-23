@@ -141,7 +141,7 @@ ContextualError generate_error(Span<std::string_view> srcs,
           ref, fmt::format("unused binding '{}'", sv(srcs, ref)), {"prefix with an _ to silence this error"}};
       },
       [&](const OverusedBinding& b) {
-        return ContextualError{ref, fmt::format("binding '{}' used {} times", sv(srcs, ref), b.count)};
+        return ContextualError{ref, fmt::format("binding '{}' used more than once", sv(srcs, ref), b.count)};
       }},
     error.type);
 }
@@ -319,8 +319,9 @@ void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<Type
       }
       break;
     case ASTTag::ExprSelect:
+    case ASTTag::ExprIf:
     case ASTTag::ExprWith: {
-      // Skip first child for both With (assignment) and Select (condition)
+      // Skip first child for both With (assignment) and Select/If (condition)
       auto [_, rest] = ast.forest.child_ids(id).match();
       for(ASTID id : rest) {
         find_returned_borrows(ast, tg, errors, id);
@@ -347,6 +348,43 @@ std::vector<TypeCheckError> find_returned_borrows(const AST& ast, const TypeGrap
   }
 
   return errors;
+}
+
+bool has_conditional_overuse(const Forest<ASTTag, ASTID>& forest, Span<ASTID> usages) {
+  std::vector<std::tuple<ASTID, int, int>> usage;
+
+  for(ASTID expr : usages) {
+    ASTID child = expr;
+    for(ASTID id : forest.ancestor_ids(expr)) {
+      auto it = std::find_if(usage.begin(), usage.end(), [&](auto tup) { return std::get<0>(tup) == id; });
+      if(it == usage.end()) {
+        usage.emplace_back(id, 0, 0);
+        it = usage.end() - 1;
+      }
+
+      auto& [_, left, right] = *it;
+
+      const int existing_max = std::max(left, right);
+
+      if(forest[id] == ASTTag::ExprIf) {
+        const auto [cond, if_, else_] = forest.child_ids(id).take<3>();
+        left += child != else_ ? 1 : 0;
+        right += child != if_ ? 1 : 0;
+      } else {
+        left++;
+        right++;
+      }
+
+      child = id;
+
+      if(std::max(left, right) <= existing_max) {
+        break;
+      }
+    }
+  }
+
+  return std::any_of(
+    usage.begin(), usage.end(), applied([](ASTID, int left, int right) { return std::max(left, right) > 1; }));
 }
 
 std::vector<TypeCheckError> find_binding_usage_errors(
@@ -377,7 +415,8 @@ std::vector<TypeCheckError> find_binding_usage_errors(
     } else if(sv(srcs, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
       return is_global(ast.forest, id) ? std::nullopt : std::optional(TypeCheckError{UnusedBinding{}, id});
     } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
-              has_non_copy_type(has_non_copy_type, ast.types[id.get()])) {
+              has_non_copy_type(has_non_copy_type, ast.types[id.get()]) &&
+              has_conditional_overuse(ast.forest, ident_graph.fanout(id))) {
       return TypeCheckError{OverusedBinding{ident_graph.num_fanout(id)}, id};
     } else {
       return std::nullopt;
@@ -410,6 +449,7 @@ Type language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID id) 
 
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
+  case ASTTag::ExprIf:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternIdent:
   case ASTTag::ExprWith:
@@ -487,6 +527,8 @@ ContextualResult<void, AST, TypeGraph> apply_language_rules(
       apply_type(id, tc.fn_floating);
     } else if(parent && ast.forest[*parent] == ASTTag::ExprSelect && ast.forest.first_child(*parent) == id) {
       apply_type(id, tc.boolean);
+    } else if(parent && ast.forest[*parent] == ASTTag::ExprIf && ast.forest.first_child(*parent) == id) {
+      apply_type(id, tc.boolean);
     }
   }
 
@@ -535,7 +577,8 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       break;
     }
     case ASTTag::ExprBorrow: add_pair(id, *forest.first_child(id), BorrowProp{}); break;
-    case ASTTag::ExprSelect: {
+    case ASTTag::ExprSelect:
+    case ASTTag::ExprIf: {
       const auto [cond, if_expr, else_expr] = forest.child_ids(id).take<3>();
       add_pair(if_expr, else_expr, DirectProp{});
       add_pair(if_expr, id, DirectProp{});

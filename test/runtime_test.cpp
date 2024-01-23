@@ -463,32 +463,40 @@ BOOST_AUTO_TEST_CASE(if_) {
 
   const Inst one = p.add(Any{1});
   const Inst two = p.add(Any{2});
+  const Inst identity = p.add([](int x) { return x; });
+  const Inst add1 = p.add([](int x) { return x + 1; });
+  const Inst identity_borrow = p.add([](const int& x) { return x; });
+  const Inst add1_borrow = p.add([](const int& x) { return x + 1; });
+  const Inst add = p.add([](int x, const int& y) { return x + y; });
+  const Inst mul = p.add([](int x, const int& y) { return x * y; });
 
   const Inst if_val = p.add(IfInst{one, two, 1});
-
   compare(1, execute(share(p), if_val, std::tuple(true), {}));
   compare(2, execute(share(p), if_val, std::tuple(false), {}));
 
-  const Inst identity = p.add([](int x) { return x; });
-  const Inst add1 = p.add([](int x) { return x + 1; });
-  const Inst if_fn = p.add(IfInst{identity, add1, 1});
-
+  const Inst if_fn = p.add(IfInst{identity, add1, 1, 1, 1});
   compare(5, execute(share(p), if_fn, std::tuple(true, 5), {}));
   compare(6, execute(share(p), if_fn, std::tuple(false, 5), {}));
 
-  const Inst identity_borrow = p.add([](const int& x) { return x; });
-  const Inst add1_borrow = p.add([](const int& x) { return x + 1; });
-  const Inst if_borrow = p.add(IfInst{identity_borrow, add1_borrow, 1});
-
+  const Inst if_borrow = p.add(IfInst{identity_borrow, add1_borrow, 1, 0, 0, 1, 1});
   compare(5, execute(share(p), if_borrow, std::tuple(true), std::tuple(5)));
   compare(6, execute(share(p), if_borrow, std::tuple(false), std::tuple(5)));
 
-  const Inst add = p.add([](int x, const int& y) { return x + y; });
-  const Inst mul = p.add([](int x, const int& y) { return x * y; });
-  const Inst if_multi = p.add(IfInst{add, mul, 1});
-
+  const Inst if_multi = p.add(IfInst{add, mul, 1, 1, 1, 1, 1});
   compare(7, execute(share(p), if_multi, std::tuple(true, 3), std::tuple(4)));
   compare(12, execute(share(p), if_multi, std::tuple(false, 3), std::tuple(4)));
+
+  const Inst if_diff_value = p.add(IfInst{identity, identity, 1, 0, 1});
+  compare(1, execute(share(p), if_diff_value, std::tuple(true, 1, 2), {}));
+  compare(2, execute(share(p), if_diff_value, std::tuple(false, 1, 2), {}));
+
+  const Inst if_diff_borrow = p.add(IfInst{identity_borrow, identity_borrow, 1, 0, 0, 0, 1});
+  compare(1, execute(share(p), if_diff_borrow, std::tuple(true), std::tuple(1, 2)));
+  compare(2, execute(share(p), if_diff_borrow, std::tuple(false), std::tuple(1, 2)));
+
+  const Inst if_diff_cat = p.add(IfInst{identity, identity_borrow, 1, 0, 1, 0, 0});
+  compare(1, execute(share(p), if_diff_cat, std::tuple(true, 1), std::tuple(2)));
+  compare(2, execute(share(p), if_diff_cat, std::tuple(false, 1), std::tuple(2)));
 }
 
 BOOST_AUTO_TEST_CASE(converge) {
@@ -552,7 +560,7 @@ BOOST_AUTO_TEST_CASE(if_) {
   Program p;
   const Inst identity = p.add([](int x) { return x; });
   const Inst add1 = p.add([](int x) { return x + 1; });
-  const Inst if_inst = p.add(IfInst{identity, add1, 1});
+  const Inst if_inst = p.add(IfInst{identity, add1, 1, 1, 1});
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     compare(i % 2, execute(share(p), if_inst, make_task_executor(), std::tuple(i % 2 == 0, 0), {}));
   }

@@ -124,9 +124,9 @@ public:
   using SiblingIter = Iter<SiblingIDs, ValueIterTraits<false>>;
   using SiblingConstIter = Iter<SiblingIDs, ValueIterTraits<true>>;
 
-  using AncestorIDIter = Iter<SiblingIDs, IDIterTraits>;
-  using AncestorIter = Iter<SiblingIDs, ValueIterTraits<false>>;
-  using AncestorConstIter = Iter<SiblingIDs, ValueIterTraits<true>>;
+  using AncestorIDIter = Iter<AncestorIDs, IDIterTraits>;
+  using AncestorIter = Iter<AncestorIDs, ValueIterTraits<false>>;
+  using AncestorConstIter = Iter<AncestorIDs, ValueIterTraits<true>>;
 
   using PreOrderIDIter = Iter<PreOrderIDs, IDIterTraits>;
   using PreOrderIter = Iter<PreOrderIDs, ValueIterTraits<false>>;

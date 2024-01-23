@@ -202,12 +202,12 @@ Env generate_functions(
 
     env.program = std::move(fg_data.program);
 
-    assert(fg_data.global_borrows.empty());
+    assert(fg_data.captured_borrows.empty());
 
-    if(fg_data.global_values.empty()) {
+    if(fg_data.captured_values.empty()) {
       env.program.set(inst, std::move(fg_data.graph));
     } else {
-      std::vector<Any> values = transform_to_vec(fg_data.global_values, [&](ASTID id) {
+      std::vector<Any> values = transform_to_vec(fg_data.captured_values, [&](ASTID id) {
         const auto it = to_env_id.find(id);
         assert(it != to_env_id.end());
         const auto fn_it = env.functions.find(it->second);

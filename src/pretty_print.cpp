@@ -90,6 +90,14 @@ void pretty_print(std::ostream& os,
     os << " }";
     return;
   }
+  case ASTTag::ExprIf: {
+    const auto [cond, if_expr, else_expr] = ast.forest.child_ids(id).take<3>();
+    pretty_print(os << "if ", srcs, ast, tg, type_names, cond, indentation);
+    pretty_print(os << " { ", srcs, ast, tg, type_names, if_expr, indentation);
+    pretty_print(os << " } else { ", srcs, ast, tg, type_names, else_expr, indentation);
+    os << " }";
+    return;
+  }
   case ASTTag::Assignment: {
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
     if(ast.forest.is_root(id) && ast.forest[expr] == ASTTag::Fn) {

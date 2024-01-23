@@ -51,7 +51,7 @@ public:
   Span first(std::size_t count) const { return {_begin, count}; }
   Span last(std::size_t count) const { return {_end - count, _end}; }
   Span subspan(std::size_t offset, std::size_t count = -1) const {
-    return {_begin + offset, count == -1 ? _end : _end + count};
+    return {_begin + offset, count == -1 ? _end : _begin + offset + count};
   }
 
   size_t size() const { return std::distance(_begin, _end); }

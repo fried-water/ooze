@@ -80,8 +80,7 @@ struct Block {
 };
 
 struct IfBlock : Block {
-  Inst if_inst;
-  Inst else_inst;
+  IfInst inst;
 };
 
 struct ConvergeBlock : Block {
@@ -286,8 +285,8 @@ std::vector<Future> execute(std::shared_ptr<const Program> p,
   s = propagate(std::move(s), g.owned_fwds.front(), std::move(inputs));
   s = propagate(std::move(s), g.input_borrowed_fwds, std::move(borrowed_inputs));
 
-  for(int i = 0; i < int(g.fns.size()); i++) {
-    std::vector<Future> results = execute(p, g.fns[i], ex, std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+  for(int i = 0; i < int(g.insts.size()); i++) {
+    std::vector<Future> results = execute(p, g.insts[i], ex, std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
     s = propagate(std::move(s), g.owned_fwds[i + 1], std::move(results));
   }
 
@@ -314,28 +313,38 @@ std::vector<Future> execute_functional(std::shared_ptr<const Program> p,
   return std::move(futures);
 }
 
-std::vector<Future>
-execute_if(std::shared_ptr<const Program> p,
-           int output_count,
-           Inst if_inst,
-           Inst else_inst,
-           ExecutorRef ex,
-           std::vector<Future> inputs,
-           std::vector<BorrowedFuture> borrowed_inputs) {
-  auto [promises, futures] = make_multi_promise_future(output_count);
+std::vector<Future> execute_if(std::shared_ptr<const Program> p,
+                               IfInst inst,
+                               ExecutorRef ex,
+                               std::vector<Future> inputs,
+                               std::vector<BorrowedFuture> borrowed_inputs) {
+  auto [promises, futures] = make_multi_promise_future(inst.output_count);
 
   Future cond = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
-  IfBlock* b =
-    new IfBlock{{std::move(p), ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)},
-                if_inst,
-                else_inst};
+  IfBlock* b = new IfBlock{
+    {std::move(p), ex, inst.output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)}, inst};
 
-  std::move(cond).then([b](Any cond) {
-    const Inst i = any_cast<bool>(cond) ? b->if_inst : b->else_inst;
+  std::move(cond).then([b](Any any_cond) {
+    assert(holds_alternative<bool>(any_cond));
+
+    const bool cond = any_cast<bool>(any_cond);
+    const IfInst inst = b->inst;
+
+    auto& inputs = b->owned_inputs;
+    auto& borrows = b->borrowed_inputs;
+
+    if(cond) {
+      inputs.erase(inputs.begin() + inst.value_if_end, inputs.end());
+      borrows.erase(borrows.begin() + inst.borrow_if_end, borrows.end());
+    } else {
+      inputs.erase(inputs.begin() + inst.value_common_end, inputs.begin() + inst.value_if_end);
+      borrows.erase(borrows.begin() + inst.borrow_common_end, borrows.begin() + inst.borrow_if_end);
+    }
+
     forward_results_then_delete(
-      execute(std::move(b->p), i, b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs)), b);
+      execute(std::move(b->p), cond ? inst.if_inst : inst.else_inst, b->e, std::move(inputs), std::move(borrows)), b);
   });
 
   return std::move(futures);
@@ -352,6 +361,8 @@ std::vector<Future> execute_select(std::vector<Future> inputs) {
   SelectBlock* b = new SelectBlock{output_count, std::move(inputs), std::move(promises)};
 
   std::move(cond).then([b](Any cond) mutable {
+    assert(holds_alternative<bool>(cond));
+
     if(any_cast<bool>(cond)) {
       b->futures.erase(b->futures.begin() + b->futures.size() / 2, b->futures.end());
     } else {
@@ -401,10 +412,8 @@ std::vector<Future> execute(std::shared_ptr<const Program> p,
     return execute(p, p->graphs[p->inst_data[inst.get()]], ex, std::move(inputs), std::move(borrowed_inputs));
   case InstOp::Functional:
     return execute_functional(p, p->inst_data[inst.get()], ex, std::move(inputs), std::move(borrowed_inputs));
-  case InstOp::If: {
-    const auto [if_inst, else_inst, output_count] = p->ifs[p->inst_data[inst.get()]];
-    return execute_if(p, output_count, if_inst, else_inst, ex, std::move(inputs), std::move(borrowed_inputs));
-  }
+  case InstOp::If:
+    return execute_if(p, p->ifs[p->inst_data[inst.get()]], ex, std::move(inputs), std::move(borrowed_inputs));
   case InstOp::Select: return execute_select(std::move(inputs));
   case InstOp::Converge: return execute_converge(p, ex, std::move(inputs), std::move(borrowed_inputs));
   case InstOp::Curry: {

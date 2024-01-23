@@ -8,8 +8,8 @@ namespace ooze {
 
 struct FunctionGraphData {
   Program program;
-  std::vector<ASTID> global_values;
-  std::vector<ASTID> global_borrows;
+  std::vector<ASTID> captured_values;
+  std::vector<ASTID> captured_borrows;
   FunctionGraph graph;
 };
 

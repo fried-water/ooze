@@ -38,8 +38,8 @@ void check_binding(
 
 template <typename T>
 void check_run(Env env, std::string_view script, std::string_view expr, std::string_view exp_type, const T& exp_value) {
-  auto [p, renv] = check_result(run(std::move(env), script, expr));
-  check_binding(renv, p, exp_type, exp_value);
+  auto [type, renv] = check_result(run(std::move(env), script, expr));
+  check_binding(renv, type, exp_type, exp_value);
 }
 
 StringResult<std::unordered_map<std::string, std::pair<Type, std::vector<Any>>>, Env>
@@ -198,8 +198,9 @@ BOOST_AUTO_TEST_CASE(already_move) {
   env.add_type<std::unique_ptr<int>>("unique_int");
   env.add_function("make_unique_int", [](int x) { return std::make_unique<int>(x); });
 
-  const std::vector<std::string> expected{
-    "1:5 error: binding 'x' used 2 times", " | fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)", " |      ^"};
+  const std::vector<std::string> expected{"1:5 error: binding 'x' used more than once",
+                                          " | fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)",
+                                          " |      ^"};
 
   check_range(expected, check_error(run(std::move(env), script, "f(make_unique_int(0))")));
 }
@@ -239,6 +240,189 @@ BOOST_AUTO_TEST_CASE(select) {
   constexpr std::string_view script = "fn f(b: bool) -> i32  = select b { 1 } else { 2 }";
   check_run(create_primative_env(), script, "f(true)", "i32", std::tuple(1));
   check_run(create_primative_env(), script, "f(false)", "i32", std::tuple(2));
+}
+
+BOOST_AUTO_TEST_CASE(if_) {
+  constexpr std::string_view script = "fn f(b: bool) -> i32  = if b { 1 } else { 2 }";
+  check_run(create_primative_env(), script, "f(true)", "i32", std::tuple(1));
+  check_run(create_primative_env(), script, "f(false)", "i32", std::tuple(2));
+}
+
+BOOST_AUTO_TEST_CASE(if_not_taken) {
+  Env e = create_primative_env();
+  e.add_function("never", []() {
+    BOOST_REQUIRE(false);
+    return 1;
+  });
+
+  constexpr std::string_view script =
+    "fn f(b: bool) -> i32  = if b { 1 } else { never() }\n"
+    "fn g(b: bool) -> i32  = if b { never() } else { 2 }\n";
+  check_run(e, script, "f(true)", "i32", std::tuple(1));
+  check_run(e, script, "g(false)", "i32", std::tuple(2));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_value) {
+  constexpr std::string_view script =
+    "fn f(b: bool) -> _ = {\n"
+    "  let common_tuple = ('a', 'b');\n"
+    "  let common = 'c';\n"
+    "  let left_tuple = ('l1', 'l2');\n"
+    "  let left = 'l3';\n"
+    "  let right_tuple = ('r1', 'r2');\n"
+    "  let right = 'r3';\n"
+    "  if b { (common_tuple, left, common, left_tuple) } else { (right_tuple, common, right, common_tuple) }\n"
+    "}";
+
+  const std::string_view exp_type = "((string, string), string, string, (string, string))";
+
+  const auto exp_if = std::tuple(
+    std::string("a"), std::string("b"), std::string("l3"), std::string("c"), std::string("l1"), std::string("l2"));
+  check_run(create_primative_env(), script, "f(true)", exp_type, exp_if);
+
+  const auto exp_else = std::tuple(
+    std::string("r1"), std::string("r2"), std::string("c"), std::string("r3"), std::string("a"), std::string("b"));
+  check_run(create_primative_env(), script, "f(false)", exp_type, exp_else);
+}
+
+BOOST_AUTO_TEST_CASE(if_nested) {
+  constexpr std::string_view script =
+    "fn f(b1: bool, b2: bool) -> string = {\n"
+    "  let x = 'x';\n"
+    "  let y = 'y';\n"
+    "  let z = 'z';\n"
+    "  if b1 { x } else if b2 { y } else { z }\n"
+    "}";
+
+  check_run(create_primative_env(), script, "f(true, true)", "string", std::string("x"));
+  check_run(create_primative_env(), script, "f(true, false)", "string", std::string("x"));
+
+  check_run(create_primative_env(), script, "f(false, true)", "string", std::string("y"));
+  check_run(create_primative_env(), script, "f(false, false)", "string", std::string("z"));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_reorder_common) {
+  Env e = create_primative_env();
+  e.add_function("sub", [](i32 x, i32 y) { return x - y; });
+
+  constexpr std::string_view script =
+    "fn f(b: bool, x: i32, y: i32) -> i32 = {\n"
+    "  if b { sub(x, y) } else { sub(y, x) }\n"
+    "}";
+
+  check_run(e, script, "f(true, 0, 1)", "i32", std::tuple(-1));
+  check_run(e, script, "f(false, 0, 1)", "i32", std::tuple(1));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_unordered) {
+  Env e;
+  e.add_type<bool>("bool");
+  e.add_type<i32>("i32");
+
+  constexpr std::string_view script =
+    "fn f(b: bool, x: i32, y: i32, z: i32) -> (i32, i32) = {\n"
+    "  if b { (x, z) } else { (y, z) }\n"
+    "}";
+
+  check_run(e, script, "f(true, 0, 1, 2)", "(i32, i32)", std::tuple(0, 2));
+  check_run(e, script, "f(false, 0, 1, 2)", "(i32, i32)", std::tuple(1, 2));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_borrow) {
+  Env e;
+  e.add_type<bool>("bool");
+  e.add_type<std::string>("string");
+
+  constexpr std::string_view script =
+    "fn f(b: bool, x: &string, y: &string) -> string = {\n"
+    "  if b { clone(x) } else { clone(y) }\n"
+    "}";
+
+  check_run(e, script, "f(true, &'a', &'b')", "string", std::string("a"));
+  check_run(e, script, "f(false, &'a', &'b')", "string", std::string("b"));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_borrow_unordered) {
+  Env e;
+  e.add_type<bool>("bool");
+  e.add_type<std::string>("string");
+
+  e.add_function("f", [](const std::string& x, const std::string& y) { return x + y; });
+
+  constexpr std::string_view script =
+    "fn f(b: bool, x, y, z) -> string = {\n"
+    "  if b { f(x, z) } else { f(y, z) }\n"
+    "}";
+
+  check_run(e, script, "f(true, &'a', &'b', &'c')", "string", std::string("ac"));
+  check_run(e, script, "f(false, &'a', &'b', &'c')", "string", std::string("bc"));
+}
+
+BOOST_AUTO_TEST_CASE(if_nested_capture) {
+  constexpr std::string_view script =
+    "fn f(b1: bool, b2: bool) -> (string, string) = {\n"
+    "  let a = 'a';\n"
+    "  let x = 'x';\n"
+    "  let y = 'y';\n"
+    "  let z = 'z';\n"
+    "  if b1 { (a, x) } else if b2 { (a, y) } else { (a, z) }\n"
+    "}";
+
+  check_run(create_primative_env(),
+            script,
+            "f(true, true)",
+            "(string, string)",
+            std::tuple(std::string("a"), std::string("x")));
+  check_run(create_primative_env(),
+            script,
+            "f(true, false)",
+            "(string, string)",
+            std::tuple(std::string("a"), std::string("x")));
+
+  check_run(create_primative_env(),
+            script,
+            "f(false, true)",
+            "(string, string)",
+            std::tuple(std::string("a"), std::string("y")));
+  check_run(create_primative_env(),
+            script,
+            "f(false, false)",
+            "(string, string)",
+            std::tuple(std::string("a"), std::string("z")));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_tuple_borrow, *boost::unit_test::disabled()) {
+  Env e;
+  e.add_type<bool>("bool");
+  e.add_type<std::string>("string");
+
+  e.add_function("f", [](const std::string& x, const std::string& y) { return x + y; });
+
+  constexpr std::string_view script =
+    "fn f(b: bool, x: &string, y: &string) -> string = {\n"
+    "  let t = (x, y);"
+    "  if b { let (a, b) = t; f(a, b) } else { let (a, b) = t; f(b, a) }\n"
+    "}";
+
+  check_run(e, script, "f(true, &'a', &'b')", "string", std::string("a"));
+  check_run(e, script, "f(false, &'a', &'b')", "string", std::string("b"));
+}
+
+BOOST_AUTO_TEST_CASE(if_capture_tuple_mixed, *boost::unit_test::disabled()) {
+  Env e;
+  e.add_type<bool>("bool");
+  e.add_type<std::string>("string");
+
+  e.add_function("f", [](const std::string& x, std::string y) { return x + y; });
+
+  constexpr std::string_view script =
+    "fn f(b: bool, x: string, y: string) -> string = {\n"
+    "  let t: (&string, string) = (&x, y);"
+    "  if b { let (a, b) = t; f(a, b) } else { let (a, b) = t; f(a, b) }\n"
+    "}";
+
+  check_run(e, script, "f(true, 'a', 'b')", "string", std::string("a"));
+  check_run(e, script, "f(false, 'a', 'b')", "string", std::string("b"));
 }
 
 BOOST_AUTO_TEST_CASE(out_of_order) {
