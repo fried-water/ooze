@@ -26,14 +26,30 @@ std::vector<PassBy> pass_bys_of(
   return pass_bys;
 }
 
-std::vector<bool> borrows_of(const TypeGraph& g, const Type& t) {
-  std::vector<bool> borrows;
-
+std::vector<bool> borrows_of(const TypeGraph& g, const Type& t, std::vector<bool> borrows = {}) {
   preorder(g, t, [&](Type t) {
     switch(g.get<TypeTag>(t)) {
     case TypeTag::Leaf: borrows.push_back(false); return false;
     case TypeTag::Fn: borrows.push_back(false); return false;
     case TypeTag::Borrow: borrows.push_back(true); return false;
+    case TypeTag::Floating: assert(false);
+    case TypeTag::Tuple: return true;
+    }
+    assert(false);
+    return false;
+  });
+
+  return borrows;
+}
+
+int borrow_count(const TypeGraph& g, const Type& t) {
+  int borrows = 0;
+
+  preorder(g, t, [&](Type t) {
+    switch(g.get<TypeTag>(t)) {
+    case TypeTag::Leaf: return false;
+    case TypeTag::Fn: return false;
+    case TypeTag::Borrow: borrows++; return false;
     case TypeTag::Floating: assert(false);
     case TypeTag::Tuple: return true;
     }
@@ -59,8 +75,7 @@ auto find_captures(const AST& ast, const TypeGraph& tg, const Map<ASTID, ASTID>&
     const auto ancestors = ast.forest.ancestor_ids(binding);
     if(find(ancestors, expr_id) == ancestors.end()) {
       const auto parent = ast.forest.parent(id);
-      const bool borrowed = tg.get<TypeTag>(ast.types[binding.get()]) == TypeTag::Borrow ||
-                            (parent && ast.forest[*parent] == ASTTag::ExprBorrow);
+      const bool borrowed = parent && ast.forest[*parent] == ASTTag::ExprBorrow;
 
       if(borrowed) {
         borrows.push_back(binding);
@@ -195,12 +210,12 @@ add_if_expr(const AST& ast,
 
       for(ASTID id : owned[0]) {
         offsets.emplace_back(id, int(input_borrows.size()));
-        input_borrows.insert(input_borrows.end(), size_of(tg, ast.types[id.get()]), false);
+        input_borrows = borrows_of(tg, ast.types[id.get()], std::move(input_borrows));
       }
 
       for(ASTID id : owned[is_if ? 1 : 2]) {
         offsets.emplace_back(id, int(input_borrows.size()));
-        input_borrows.insert(input_borrows.end(), size_of(tg, ast.types[id.get()]), false);
+        input_borrows = borrows_of(tg, ast.types[id.get()], std::move(input_borrows));
       }
 
       for(ASTID id : borrowed[0]) {
@@ -234,23 +249,25 @@ add_if_expr(const AST& ast,
       return std::move(cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[id.get()]));
     };
 
-  const auto append_terms = [&](Span<ASTID> captures, std::vector<Oterm>& terms) {
-    const i32 og_size = i32(terms.size());
-    for(ASTID id : captures) {
-      terms = to_vec(ctx.bindings.at(id), std::move(terms));
-    }
-    return i32(terms.size()) - og_size;
-  };
-
-  std::array<int, 3> value_term_sizes;
-  std::array<int, 3> borrow_term_sizes;
+  std::array<int, 3> value_term_sizes = {};
+  std::array<int, 3> borrow_term_sizes = {};
 
   for(int i = 0; i < 3; i++) {
-    value_term_sizes[i] = append_terms(owned_grouping[i], outer_terms);
+    for(ASTID id : owned_grouping[i]) {
+      outer_terms = to_vec(ctx.bindings.at(id), std::move(outer_terms));
+      const int size = size_of(tg, ast.types[id.get()]);
+      const int borrows = borrow_count(tg, ast.types[id.get()]);
+
+      borrow_term_sizes[i] += borrows;
+      value_term_sizes[i] += size - borrows;
+    }
   }
 
   for(int i = 0; i < 3; i++) {
-    borrow_term_sizes[i] = append_terms(borrowed_grouping[i], outer_terms);
+    for(ASTID id : borrowed_grouping[i]) {
+      outer_terms = to_vec(ctx.bindings.at(id), std::move(outer_terms));
+      borrow_term_sizes[i] += size_of(tg, ast.types[id.get()]);
+    }
   }
 
   std::vector<PassBy> pass_bys = pass_bys_of(copy_types, tg, ast.types[cond_id.get()]);
@@ -370,7 +387,7 @@ FunctionGraphData create_graph(Program p,
   auto [captured_values, captured_borrows] = find_captures(ast, tg, binding_of, id);
 
   for(const ASTID id : captured_values) {
-    borrows.insert(borrows.end(), size_t(size_of(tg, ast.types[id.get()])), false);
+    borrows = borrows_of(tg, ast.types[id.get()], std::move(borrows));
   }
 
   for(const ASTID id : captured_borrows) {

@@ -391,7 +391,7 @@ BOOST_AUTO_TEST_CASE(if_nested_capture) {
             std::tuple(std::string("a"), std::string("z")));
 }
 
-BOOST_AUTO_TEST_CASE(if_capture_tuple_borrow, *boost::unit_test::disabled()) {
+BOOST_AUTO_TEST_CASE(if_capture_tuple_borrow) {
   Env e;
   e.add_type<bool>("bool");
   e.add_type<std::string>("string");
@@ -404,11 +404,11 @@ BOOST_AUTO_TEST_CASE(if_capture_tuple_borrow, *boost::unit_test::disabled()) {
     "  if b { let (a, b) = t; f(a, b) } else { let (a, b) = t; f(b, a) }\n"
     "}";
 
-  check_run(e, script, "f(true, &'a', &'b')", "string", std::string("a"));
-  check_run(e, script, "f(false, &'a', &'b')", "string", std::string("b"));
+  check_run(e, script, "f(true, &'a', &'b')", "string", std::string("ab"));
+  check_run(e, script, "f(false, &'a', &'b')", "string", std::string("ba"));
 }
 
-BOOST_AUTO_TEST_CASE(if_capture_tuple_mixed, *boost::unit_test::disabled()) {
+BOOST_AUTO_TEST_CASE(if_capture_tuple_mixed) {
   Env e;
   e.add_type<bool>("bool");
   e.add_type<std::string>("string");
@@ -421,8 +421,8 @@ BOOST_AUTO_TEST_CASE(if_capture_tuple_mixed, *boost::unit_test::disabled()) {
     "  if b { let (a, b) = t; f(a, b) } else { let (a, b) = t; f(a, b) }\n"
     "}";
 
-  check_run(e, script, "f(true, 'a', 'b')", "string", std::string("a"));
-  check_run(e, script, "f(false, 'a', 'b')", "string", std::string("b"));
+  check_run(e, script, "f(true, 'a', 'b')", "string", std::string("ab"));
+  check_run(e, script, "f(false, 'a', 'b')", "string", std::string("ab"));
 }
 
 BOOST_AUTO_TEST_CASE(out_of_order) {
