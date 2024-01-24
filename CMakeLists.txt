@@ -32,7 +32,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ctre)
 
-add_subdirectory(ext/knot)
+FetchContent_Declare(
+    knot
+    GIT_REPOSITORY https://github.com/fried-water/knot
+    GIT_TAG 8bdbefe68e4d0baf4f30e41d0aed512382ad128b
+)
+FetchContent_MakeAvailable(knot)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_options(-fsanitize=address)
