@@ -9,6 +9,16 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+
+FetchContent_Declare(
+    cli11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11
+    GIT_TAG v2.3.2
+)
+
+FetchContent_MakeAvailable(cli11)
+
 find_package(fmt REQUIRED)
 
 add_subdirectory(ext/ctre)
@@ -42,7 +52,7 @@ target_link_libraries(ooze
   PUBLIC
     knot
   PRIVATE
-    ctre fmt)
+    ctre fmt CLI11::CLI11)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_subdirectory(example)

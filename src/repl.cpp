@@ -9,6 +9,8 @@
 #include "ooze/core.h"
 #include "ooze/executor/task_executor.h"
 
+#include <CLI/CLI.hpp>
+
 #include <iostream>
 #include <map>
 
@@ -16,31 +18,25 @@ namespace ooze {
 
 namespace {
 
-struct Command {
-  bool run_main = false;
-  std::vector<std::string> filenames;
-};
+struct CLIState {
+  CLI::App app;
 
-std::optional<Command> parse_cmd_line(int argc, const char** argv) {
-  if(argc <= 1) {
-    return Command{};
-  } else {
-    const std::string_view cmd = argv[1];
+  CLI::App* run_cmd = nullptr;
+  CLI::App* repl_cmd = nullptr;
 
-    std::vector<std::string> filenames;
-    for(int i = 2; i < argc; i++) {
-      filenames.push_back(argv[i]);
-    }
+  std::vector<std::string> run_scripts;
+  std::vector<std::string> run_args;
 
-    if(cmd == "run") {
-      return Command{true, std::move(filenames)};
-    } else if(cmd == "repl") {
-      return Command{false, std::move(filenames)};
-    } else {
-      return std::nullopt;
-    }
+  std::vector<std::string> repl_scripts;
+
+  CLIState() : app{"", "ooze"} {
+    run_cmd = app.add_subcommand("run", "");
+    run_cmd->add_option("script", run_scripts, "")->required()->expected(1, -1);
+
+    repl_cmd = app.add_subcommand("repl", "");
+    repl_cmd->add_option("script", repl_scripts, "");
   }
-}
+};
 
 StringResult<void, Env> parse_scripts(Env e, const std::vector<std::string>& filenames) {
   std::vector<StringResult<std::string>> srcs = transform_to_vec(filenames, read_text_file);
@@ -296,33 +292,28 @@ std::tuple<Env, Bindings> run_repl(ExecutorRef executor, Env env, Bindings bindi
 }
 
 int repl_main(int argc, const char** argv, Env e) {
-  const std::optional<Command> cmd = parse_cmd_line(argc, argv);
+  CLIState cli;
 
-  if(!cmd) {
-    const char* msg =
-      "Usage:\n"
-      "  run [scripts...]\n"
-      "  repl [scripts...]\n";
-
-    fmt::print("{}", msg);
-    return 1;
+  try {
+    cli.app.parse(argc, argv);
+  } catch(const CLI::ParseError& e) {
+    return cli.app.exit(e);
   }
 
   Executor executor = make_task_executor();
 
   const auto result =
-    parse_scripts(std::move(e), cmd->filenames).append_state(Bindings{}).and_then([&](Env env, Bindings bindings) {
-      if(cmd->run_main) {
-        return run_to_string(executor, std::move(env), std::move(bindings), "main()")
-          .map([](std::string s, Env e, Bindings b) {
-            return std::tuple(make_vector(std::move(s)), std::move(e), std::move(b));
-          });
-      } else {
-        std::tie(env, bindings) = run_repl(executor, std::move(env), std::move(bindings));
-        return success(
-          knot::Type<std::vector<std::string>>{}, std::vector<std::string>{}, std::move(env), std::move(bindings));
-      }
-    });
+    cli.run_cmd->parsed()
+      ? parse_scripts(std::move(e), cli.run_scripts).append_state(Bindings{}).and_then([&](Env env, Bindings bindings) {
+          return run_to_string(executor, std::move(env), std::move(bindings), "main()")
+            .map([](std::string s, Env e, Bindings b) {
+              return std::tuple(make_vector(std::move(s)), std::move(e), std::move(b));
+            });
+        })
+      : parse_scripts(std::move(e), cli.repl_scripts).append_state(Bindings{}).map([&](Env env, Bindings bindings) {
+          std::tie(env, bindings) = run_repl(executor, std::move(env), std::move(bindings));
+          return std::tuple(std::vector<std::string>{}, std::move(env), std::move(bindings));
+        });
 
   for(const std::string& line : result ? result.value() : result.error()) {
     fmt::print("{}\n", line);
