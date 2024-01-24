@@ -2,7 +2,7 @@
 
 #include "lexer.h"
 
-#include <ctre.h>
+#include <ctre.hpp>
 
 namespace ooze {
 

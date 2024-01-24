@@ -16,12 +16,22 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11
     GIT_TAG v2.3.2
 )
-
 FetchContent_MakeAvailable(cli11)
 
-find_package(fmt REQUIRED)
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 10.2.1
+)
+FetchContent_MakeAvailable(fmt)
 
-add_subdirectory(ext/ctre)
+FetchContent_Declare(
+    ctre
+    GIT_REPOSITORY https://github.com/hanickadot/compile-time-regular-expressions
+    GIT_TAG v2.10
+)
+FetchContent_MakeAvailable(ctre)
+
 add_subdirectory(ext/knot)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -52,7 +62,7 @@ target_link_libraries(ooze
   PUBLIC
     knot
   PRIVATE
-    ctre fmt CLI11::CLI11)
+    ctre fmt::fmt CLI11::CLI11)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_subdirectory(example)
