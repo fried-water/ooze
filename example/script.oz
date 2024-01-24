@@ -14,11 +14,11 @@ fn bind(x: i32) -> i32 {
   take_u(y)
 }
 
-fn main() -> Box {
+fn main() -> () {
   let p = create_point(&1, &2);
   let x = 1;
   let p1 = create_point(&sleep(bind(x)), &sleep(nested(x)));
   let p2 = double(p);
   let p3 = triple(p);
-  create_box(&p2, &add(p1, scale(p3, sleep(x))))
+  println(&to_string(&create_box(&p2, &add(p1, scale(p3, sleep(x))))))
 }

@@ -572,12 +572,12 @@ BOOST_AUTO_TEST_CASE(assign_borrow) {
 }
 
 BOOST_AUTO_TEST_CASE(undeclared_function) {
-  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'f'", " | f()", " | ^"};
+  const std::vector<std::string> expected{"1:0 error: undeclared binding 'f'", " | f()", " | ^"};
   check_range(expected, check_error(run(create_primative_env(), "", "f()")));
 }
 
 BOOST_AUTO_TEST_CASE(undeclared_binding) {
-  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
+  const std::vector<std::string> expected{"1:0 error: undeclared binding 'x'", " | x", " | ^"};
   check_range(expected, check_error(run(create_primative_env(), "", "x")));
 }
 
@@ -636,7 +636,7 @@ BOOST_AUTO_TEST_CASE(extract_binding) {
   std::tie(result, e, bindings) = check_result(run(executor, std::move(e), std::move(bindings), "x"));
   check_binding(e, await(std::move(result)), "string", std::string("abc"));
 
-  const std::vector<std::string> expected{"1:0 error: use of undeclared binding 'x'", " | x", " | ^"};
+  const std::vector<std::string> expected{"1:0 error: undeclared binding 'x'", " | x", " | ^"};
   check_range(expected, check_error(run(std::move(e), "", "x")));
 }
 

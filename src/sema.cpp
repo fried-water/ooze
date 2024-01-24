@@ -189,7 +189,7 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
            ? ContextualResult<Graph<ASTID>>{Graph<ASTID>(ctx.fanouts)}
            : ContextualResult<Graph<ASTID>>{Failure{transform_to_vec(ctx.undeclared_bindings, [&](ASTID id) {
                return ContextualError{
-                 ast.srcs[id.get()], fmt::format("use of undeclared binding '{}'", sv(srcs, ast.srcs[id.get()]))};
+                 ast.srcs[id.get()], fmt::format("undeclared binding '{}'", sv(srcs, ast.srcs[id.get()]))};
              })}};
 }
 

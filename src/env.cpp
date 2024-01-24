@@ -39,6 +39,7 @@ Env create_primative_env() {
   add_tieable_type<std::string>(env, "string");
 
   env.add_type<std::vector<std::byte>>("byte_vector");
+  env.add_type<std::vector<std::string>>("string_vector");
 
   env.add_function("write", [](const std::string& file, const std::vector<std::byte>& bytes) {
     const auto r = write_binary_file(file, bytes);
@@ -67,6 +68,8 @@ Env create_primative_env() {
       dump_and_exit(r.error());
     }
   });
+
+  env.add_function("println", [](const std::string& s) { fmt::println("{}", s); });
 
   return env;
 }

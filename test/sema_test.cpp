@@ -263,7 +263,7 @@ BOOST_AUTO_TEST_CASE(tuple_partial) {
 }
 
 BOOST_AUTO_TEST_CASE(undeclared_function) {
-  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {15, 22}}, "use of undeclared binding 'missing'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {15, 22}}, "undeclared binding 'missing'"}};
   check_eq("errors", exp_errors, check_error(run_sema({}, "fn f() -> () = missing()")));
 }
 
@@ -277,7 +277,7 @@ BOOST_AUTO_TEST_CASE(unbound) {
   const auto srcs = make_sv_array("x");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {0, 1}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {0, 1}}, "undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -285,7 +285,7 @@ BOOST_AUTO_TEST_CASE(unbound_fn) {
   const auto srcs = make_sv_array("x()");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {0, 1}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {0, 1}}, "undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -322,7 +322,7 @@ BOOST_AUTO_TEST_CASE(scope_and_unbound) {
   const auto srcs = make_sv_array("{ let x = 1; (x, y)}");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {17, 18}}, "use of undeclared binding 'y'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {17, 18}}, "undeclared binding 'y'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -342,7 +342,7 @@ BOOST_AUTO_TEST_CASE(self_assign) {
   const auto srcs = make_sv_array("{ let x = x; x}");
   const AST ast = std::get<1>(check_result(parse_expr({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 
@@ -382,7 +382,7 @@ BOOST_AUTO_TEST_CASE(fn_unbound) {
   const auto srcs = make_sv_array("() -> T = x");
   const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
-  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "use of undeclared binding 'x'"}};
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
 }
 

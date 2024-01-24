@@ -32,6 +32,7 @@ struct CLIState {
   CLIState() : app{"", "ooze"} {
     run_cmd = app.add_subcommand("run", "");
     run_cmd->add_option("script", run_scripts, "")->required()->expected(1, -1);
+    run_cmd->add_option("--args", run_args, "arguments to main()");
 
     repl_cmd = app.add_subcommand("repl", "");
     repl_cmd->add_option("script", repl_scripts, "");
@@ -302,24 +303,48 @@ int repl_main(int argc, const char** argv, Env e) {
 
   Executor executor = make_task_executor();
 
+  const auto extract_return = [](Binding b, Env env, Bindings bindings) {
+    return std::tuple(any_cast<i32>(take(std::move(b.values[0])).wait()), std::move(env), std::move(bindings));
+  };
+
+  const auto return_success = [](Binding, Env env, Bindings bindings) {
+    return std::tuple(0, std::move(env), std::move(bindings));
+  };
+
   const auto result =
     cli.run_cmd->parsed()
-      ? parse_scripts(std::move(e), cli.run_scripts).append_state(Bindings{}).and_then([&](Env env, Bindings bindings) {
-          return run_to_string(executor, std::move(env), std::move(bindings), "main()")
-            .map([](std::string s, Env e, Bindings b) {
-              return std::tuple(make_vector(std::move(s)), std::move(e), std::move(b));
-            });
-        })
+      ? parse_scripts(std::move(e), cli.run_scripts)
+          .append_state(Bindings{})
+          .and_then([&](Env env, Bindings bindings) -> StringResult<int, Env, Bindings> {
+            const Type arg_type = env.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::vector<std::string>>{}));
+            bindings.emplace("args", Binding{arg_type, make_vector(AsyncValue{Future{Any{std::move(cli.run_args)}}})});
+
+            if(auto tc_result = type_check_binding(env, "main: fn(string_vector) -> i32"); tc_result) {
+              return run(executor, std::move(env), std::move(bindings), "main(args)").map(extract_return);
+            } else if(type_check_binding(env, "main: fn(string_vector) -> ()")) {
+              return run(executor, std::move(env), std::move(bindings), "main(args)").map(return_success);
+            } else if(type_check_binding(env, "main: fn() -> i32")) {
+              return run(executor, std::move(env), std::move(bindings), "main()").map(extract_return);
+            } else if(type_check_binding(env, "main: fn() -> ()")) {
+              return run(executor, std::move(env), std::move(bindings), "main()").map(return_success);
+            } else {
+              return std::move(tc_result).map([]() { return 0; }).append_state(std::move(env), std::move(bindings));
+            }
+          })
       : parse_scripts(std::move(e), cli.repl_scripts).append_state(Bindings{}).map([&](Env env, Bindings bindings) {
           std::tie(env, bindings) = run_repl(executor, std::move(env), std::move(bindings));
-          return std::tuple(std::vector<std::string>{}, std::move(env), std::move(bindings));
+          return std::tuple(0, std::move(env), std::move(bindings));
         });
 
-  for(const std::string& line : result ? result.value() : result.error()) {
-    fmt::print("{}\n", line);
-  }
+  if(result) {
+    return *result;
+  } else {
+    for(const std::string& line : result.error()) {
+      fmt::print("{}\n", line);
+    }
 
-  return !result.has_value();
+    return 1;
+  }
 }
 
 } // namespace ooze

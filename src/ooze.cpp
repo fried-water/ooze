@@ -267,6 +267,33 @@ StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
 }
 
+StringResult<void> type_check_binding(const Env& env, std::string_view binding) {
+  const auto srcs = make_sv_array(env.src, binding);
+  return parse_binding(env.ast, env.tg, SrcID{1}, srcs[1])
+    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+        return std::tuple(std::move(ast), std::move(tg));
+      });
+    })
+    .and_then([&](AST ast, TypeGraph tg) {
+      const ASTID pattern_root{i32(ast.forest.size() - 1)};
+      if(ast.forest[pattern_root] != ASTTag::PatternIdent) {
+        return ContextualResult<CallGraphData, AST, TypeGraph>{
+          Failure{make_vector(ContextualError{ast.srcs[pattern_root.get()], "not a binding"})},
+          std::move(ast),
+          std::move(tg)};
+      } else {
+        // Type check it as if it were an expr with the given type
+        ast.forest[pattern_root] = ASTTag::ExprIdent;
+        const TypeCache tc = create_type_cache(tg);
+        return sema(srcs, tc, env.native_types, std::move(ast), std::move(tg));
+      }
+    })
+    .map_state(nullify())
+    .map(nullify())
+    .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
+}
+
 StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
   const std::string env_src = env.src;
   const auto srcs = flatten(make_sv_array(env_src), files);
