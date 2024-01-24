@@ -221,7 +221,15 @@ BOOST_AUTO_TEST_CASE(types) {
 }
 
 BOOST_AUTO_TEST_CASE(functions) {
-  Env e = create_primative_env();
+  Env e;
+
+  e.add_type<bool>("bool");
+  e.add_type<i8>("i8");
+  e.add_type<i16>("i16");
+  e.add_type<i32>("i32");
+  e.add_type<i64>("i64");
+  e.add_type<f32>("f32");
+  e.add_type<std::string>("string");
 
   struct A {};
 
@@ -234,21 +242,13 @@ BOOST_AUTO_TEST_CASE(functions) {
   e.add_function("concat", [](const std::string& a, const std::string& b) { return a + b; });
 
   const std::vector<std::string> expected{
-    "60 function(s)",
-    "  clone [14 overloads]",
+    "12 function(s)",
+    "  clone [7 overloads]",
     "  concat(&string, &string) -> string",
     fmt::format("  create_a() -> {}", pretty_print(e.native_types.names, a_type)),
-    "  deserialize [12 overloads]",
     "  pow(i32) -> i32",
-    "  println(&string) -> ()",
-    "  read(&string) -> byte_vector",
-    "  read(&string) -> string",
     fmt::format("  read_a(&{}) -> ()", pretty_print(e.native_types.names, a_type)),
-    "  serialize [12 overloads]",
-    fmt::format("  take_a({}) -> ()", pretty_print(e.native_types.names, a_type)),
-    "  to_string [12 overloads]",
-    "  write(&string, &byte_vector) -> ()",
-    "  write(&string, &string) -> ()"};
+    fmt::format("  take_a({}) -> ()", pretty_print(e.native_types.names, a_type))};
 
   step_and_compare(expected, ":f", std::move(e), Bindings{});
 }
