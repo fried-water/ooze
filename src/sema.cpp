@@ -130,7 +130,7 @@ ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
   TypeGraph tg) {
 
   return global_binding_resolution(srcs, tc, type_names, ident_graph, std::move(ast), std::move(tg))
-    .and_then([&](Map<ASTID, ASTID> binding_of, AST ast, TypeGraph tg) {
+    .map([&](Map<ASTID, ASTID> binding_of, AST ast, TypeGraph tg) {
       std::vector<std::vector<ASTID>> call_graph_vec(ast.forest.size());
 
       for(const auto [id, overload] : binding_of) {
@@ -144,18 +144,8 @@ ContextualResult<CallGraphData, AST, TypeGraph> create_call_graph_data(
         v = unique(sorted(std::move(v)));
       }
 
-      auto call_graph = Graph<ASTID>(call_graph_vec);
-
-      return topographical_ordering(invert(call_graph))
-        .map([&](std::vector<ASTID> ordering) {
-          return CallGraphData{std::move(call_graph),
-                               filter_to_vec(std::move(ordering), [&](ASTID id) { return is_global(ast.forest, id); }),
-                               std::move(binding_of)};
-        })
-        .map_error([&](std::vector<ASTID> ordering) {
-          return std::vector{ContextualError{ast.srcs[ordering.front().get()], "detected recursive cycle"}};
-        })
-        .append_state(std::move(ast), std::move(tg));
+      return std::tuple(
+        CallGraphData{Graph<ASTID>(call_graph_vec), std::move(binding_of)}, std::move(ast), std::move(tg));
     });
 }
 

@@ -436,6 +436,49 @@ BOOST_AUTO_TEST_CASE(out_of_order) {
   check_run(std::move(env), script, "f()", "i32", std::tuple(1));
 }
 
+BOOST_AUTO_TEST_CASE(recursion) {
+  Env env;
+  env.add_type<bool>("bool");
+  env.add_type<i32>("i32");
+
+  env.add_function("eq", [](i32 x, i32 y) { return x == y; });
+  env.add_function("sub", [](i32 x, i32 y) { return x - y; });
+
+  constexpr std::string_view script =
+    "fn f(x: i32) -> i32 {\n"
+    "  if eq(x, 0) { 0 } else { f(sub(x, 1)) }\n"
+    "}";
+
+  check_run(env, script, "f(0)", "i32", 0);
+  check_run(env, script, "f(1)", "i32", 0);
+  check_run(env, script, "f(2)", "i32", 0);
+  check_run(env, script, "f(10)", "i32", 0);
+}
+
+BOOST_AUTO_TEST_CASE(fibonacci) {
+  Env env;
+  env.add_type<bool>("bool");
+  env.add_type<i32>("i32");
+
+  env.add_function("le", [](i32 x, i32 y) { return x <= y; });
+  env.add_function("add", [](i32 x, i32 y) { return x + y; });
+  env.add_function("sub", [](i32 x, i32 y) { return x - y; });
+
+  constexpr std::string_view script =
+    "fn fib(x: i32) -> i32 {\n"
+    "  if le(x, 1) {\n"
+    "    x\n"
+    "  } else {\n"
+    "    add(fib(sub(x, 1)), fib(sub(x, 2)))\n"
+    "  }\n"
+    "}";
+
+  check_run(env, script, "fib(0)", "i32", 0);
+  check_run(env, script, "fib(1)", "i32", 1);
+  check_run(env, script, "fib(2)", "i32", 1);
+  check_run(env, script, "fib(6)", "i32", 8);
+}
+
 BOOST_AUTO_TEST_CASE(generic, *boost::unit_test::disabled()) {
   constexpr std::string_view script =
     "fn f(x : &_) -> string = to_string(x)\n"

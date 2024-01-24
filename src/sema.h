@@ -16,7 +16,6 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view>, con
 
 struct CallGraphData {
   Graph<ASTID> call_graph;
-  std::vector<ASTID> topographical_fn_ordering;
   Map<ASTID, ASTID> binding_of;
 };
 
