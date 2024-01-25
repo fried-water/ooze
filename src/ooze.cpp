@@ -362,7 +362,6 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
 
   auto [env_src, ast, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
   const SrcRef to_string_ref = {SrcID{0}, append_src(env_src, "to_string")};
-  const SrcRef string_ref = {SrcID{0}, append_src(env_src, "string")};
 
   const auto srcs = make_sv_array(env_src, expr);
 

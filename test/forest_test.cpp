@@ -119,7 +119,7 @@ BOOST_AUTO_TEST_CASE(append_post_order) {
   const int c = f.append_root("c");
   const int d = f.append_root("d");
   const int b = f.append_root_post_order("b", std::array{c, d});
-  const int a = f.append_root_post_order("a", std::array{b});
+  f.append_root_post_order("a", std::array{b});
 
   const std::array exp_pre = {"a", "b", "c", "d"};
   BOOST_CHECK_RANGE_EQUAL(exp_pre, f.pre_order());
