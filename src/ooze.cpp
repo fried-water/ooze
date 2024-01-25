@@ -356,7 +356,7 @@ StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_b
     });
 }
 
-StringResult<std::string, Env, Bindings>
+StringResult<Future, Env, Bindings>
 run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view expr) {
   Map<Type, Type> to_env_type;
 
@@ -409,16 +409,13 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
     .map([](Binding b, Env env, Bindings bindings) {
       assert(b.values.size() <= 1);
       assert(b.values.empty() || env.tg.get<TypeID>(b.type) == type_id(knot::Type<std::string>{}));
-      return std::tuple(
-        b.values.size() == 1 ? any_cast<std::string>(take(std::move(b.values[0])).wait()) : std::string(),
-        std::move(env),
-        std::move(bindings));
+      return std::tuple(b.values.size() == 1 ? take(std::move(b.values[0])) : Future(Any(std::string())),
+                        std::move(env),
+                        std::move(bindings));
     })
     .map_error([&](auto errors, Env env, Bindings bindings) {
       return std::tuple(contextualize(srcs, std::move(errors)), std::move(env), std::move(bindings));
     });
-
-  return {"", std::move(env), std::move(str_bindings)};
 }
 
 } // namespace ooze

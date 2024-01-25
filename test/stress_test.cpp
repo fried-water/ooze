@@ -3,7 +3,7 @@
 #include "constructing_graph.h"
 #include "runtime.h"
 
-#include "ooze/executor/task_executor.h"
+#include "ooze/executor/tbb_executor.h"
 
 #include <chrono>
 #include <thread>
@@ -62,11 +62,13 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 
   for(int i = 1; i <= std::thread::hardware_concurrency(); i++) {
-    auto ex = make_task_executor(i);
     auto t0 = std::chrono::steady_clock::now();
     int result = -1;
-    for(int i = 0; i < num_executions; i++) {
-      result = any_cast<int>(std::move(execute(shared_prog, inst, ex, make_vector(Future(1)), {})[0]).wait());
+    for(int c = 0; c < num_executions; c++) {
+      auto ex = make_tbb_executor(i);
+      std::move(execute(shared_prog, inst, ex, make_vector(Future(1)), {})[0]).then([&](Any a) {
+        result = any_cast<i32>(a);
+      });
     }
 
     const auto ms =

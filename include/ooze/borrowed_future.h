@@ -8,7 +8,6 @@ struct BorrowedSharedBlock {
   Promise promise;
   Any value;
   std::mutex mutex;
-  std::condition_variable cv;
   std::vector<std::function<void(const Any&)>> continuations;
   bool value_ready = false;
 
@@ -19,12 +18,6 @@ struct BorrowedSharedBlock {
 class BorrowedFuture {
 public:
   BorrowedFuture() = default;
-
-  const Any& wait() {
-    std::unique_lock lk(_block->mutex);
-    _block->cv.wait(lk, [&]() { return _block->value_ready; });
-    return _block->value;
-  }
 
   template <typename F, typename = std::enable_if_t<std::is_same_v<void, std::invoke_result_t<F, const Any&>>>>
   void then(F f) {
@@ -82,7 +75,6 @@ inline std::pair<BorrowedFuture, Future> borrow(Future f, int expected_continuat
       std::lock_guard lk(b->mutex);
       b->value_ready = true;
     }
-    b->cv.notify_all();
 
     for(auto&& f : b->continuations) {
       std::move(f)(b->value);

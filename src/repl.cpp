@@ -7,7 +7,8 @@
 #include "repl.h"
 
 #include "ooze/core.h"
-#include "ooze/executor/task_executor.h"
+#include "ooze/executor/sequential_executor.h"
+#include "ooze/executor/tbb_executor.h"
 
 #include <CLI/CLI.hpp>
 
@@ -24,18 +25,16 @@ struct CLIState {
   CLI::App* run_cmd = nullptr;
   CLI::App* repl_cmd = nullptr;
 
-  std::vector<std::string> run_scripts;
+  std::vector<std::string> scripts;
   std::vector<std::string> run_args;
-
-  std::vector<std::string> repl_scripts;
 
   CLIState() : app{"", "ooze"} {
     run_cmd = app.add_subcommand("run", "");
-    run_cmd->add_option("script", run_scripts, "")->required()->expected(1, -1);
+    run_cmd->add_option("script", scripts, "")->required()->expected(1, -1);
     run_cmd->add_option("--args", run_args, "arguments to main()");
 
     repl_cmd = app.add_subcommand("repl", "");
-    repl_cmd->add_option("script", repl_scripts, "");
+    repl_cmd->add_option("script", scripts, "");
   }
 };
 
@@ -151,6 +150,11 @@ constexpr auto convert_errors = [](std::vector<std::string> errors, auto&&... ts
   return success(knot::Type<std::vector<std::string>>{}, std::move(errors), std::forward<decltype(ts)>(ts)...);
 };
 
+constexpr auto convert_errors_futures = [](std::vector<std::string> errors, auto&&... ts) {
+  return success(
+    knot::Type<std::vector<std::string>>{}, Future(Any(std::move(errors))), std::forward<decltype(ts)>(ts)...);
+};
+
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const EvalCmd& eval) {
   return read_text_file(eval.file)
     .append_state(std::move(env))
@@ -248,51 +252,63 @@ run(ExecutorRef executor, Env env, Bindings bindings, const AwaitCmd& cmd) {
 
 } // namespace
 
-std::tuple<std::vector<std::string>, Env, Bindings>
-step_repl(ExecutorRef executor, Env env, Bindings bindings, std::string_view line) {
+std::tuple<Future, Env, Bindings> step_repl(ExecutorRef executor, Env env, Bindings bindings, std::string_view line) {
   if(line.empty()) {
-    return std::tuple(std::vector<std::string>{}, std::move(env), std::move(bindings));
+    return std::tuple(Future(Any(std::vector<std::string>{})), std::move(env), std::move(bindings));
   } else if(line[0] == ':') {
     return parse_command({line.data() + 1, line.size() - 1})
       .append_state(std::move(env), std::move(bindings))
       .map(visited([&](const auto& cmd, Env env, Bindings bindings) {
         return run(executor, std::move(env), std::move(bindings), cmd);
       }))
-      .or_else(convert_errors)
+      .map([](auto output, Env env, Bindings bindings) {
+        return std::tuple(Future(Any(std::move(output))), std::move(env), std::move(bindings));
+      })
+      .or_else(convert_errors_futures)
       .value_and_state();
   } else {
     return run_to_string(executor, std::move(env), std::move(bindings), line)
-      .map([](std::string out, Env env, Bindings bindings) {
-        return std::tuple(
-          out.empty() ? std::vector<std::string>{} : make_vector(std::move(out)), std::move(env), std::move(bindings));
+      .map([](Future out, Env env, Bindings bindings) {
+        return std::tuple(std::move(out).then([](Any any) {
+          std::string output = any_cast<std::string>(std::move(any));
+          return output.empty() ? std::vector<std::string>{} : make_vector(std::move(output));
+        }),
+                          std::move(env),
+                          std::move(bindings));
       })
-      .or_else(convert_errors)
+      .or_else(convert_errors_futures)
       .value_and_state();
   }
 }
 
-std::tuple<Env, Bindings> run_repl(ExecutorRef executor, Env env, Bindings bindings) {
+void run_repl_recursive(ExecutorRef executor, Env env, Bindings bindings) {
+  std::string line;
+  if(std::getline(std::cin, line)) {
+    Future output;
+    std::tie(output, env, bindings) = step_repl(executor, std::move(env), std::move(bindings), line);
+
+    // Move-only fn please
+    auto sp = std::make_shared<std::pair<Env, Bindings>>(std::move(env), std::move(bindings));
+    return std::move(output).then([executor, sp = std::move(sp)](Any output) mutable {
+      for(const auto& line : any_cast<std::vector<std::string>>(output)) {
+        fmt::print("{}\n", line);
+      }
+
+      fmt::print("> ");
+      return run_repl_recursive(executor, std::move(sp->first), std::move(sp->second));
+    });
+  }
+}
+
+void run_repl(ExecutorRef executor, Env env, Bindings bindings) {
   fmt::print("Welcome to the ooze repl!\n");
   fmt::print("Try :h for help. Use Ctrl^D to exit.\n");
   fmt::print("> ");
 
-  std::string line;
-  std::vector<std::string> output;
-
-  while(std::getline(std::cin, line)) {
-    std::tie(output, env, bindings) = step_repl(executor, std::move(env), std::move(bindings), line);
-
-    for(const auto& line : output) {
-      fmt::print("{}\n", line);
-    }
-
-    fmt::print("> ");
-  }
-
-  return {std::move(env), std::move(bindings)};
+  run_repl_recursive(executor, std::move(env), std::move(bindings));
 }
 
-int repl_main(int argc, const char** argv, Env e) {
+int repl_main(int argc, const char** argv, Env env) {
   CLIState cli;
 
   try {
@@ -301,50 +317,62 @@ int repl_main(int argc, const char** argv, Env e) {
     return cli.app.exit(e);
   }
 
-  Executor executor = make_task_executor();
+  auto result = parse_scripts(std::move(env), cli.scripts);
 
-  const auto extract_return = [](Binding b, Env env, Bindings bindings) {
-    return std::tuple(any_cast<i32>(take(std::move(b.values[0])).wait()), std::move(env), std::move(bindings));
-  };
-
-  const auto return_success = [](Binding, Env env, Bindings bindings) {
-    return std::tuple(0, std::move(env), std::move(bindings));
-  };
-
-  const auto result =
-    cli.run_cmd->parsed()
-      ? parse_scripts(std::move(e), cli.run_scripts)
-          .append_state(Bindings{})
-          .and_then([&](Env env, Bindings bindings) -> StringResult<int, Env, Bindings> {
-            const Type arg_type = env.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::vector<std::string>>{}));
-            bindings.emplace("args", Binding{arg_type, make_vector(AsyncValue{Future{Any{std::move(cli.run_args)}}})});
-
-            if(auto tc_result = type_check_binding(env, "main: fn(string_vector) -> i32"); tc_result) {
-              return run(executor, std::move(env), std::move(bindings), "main(args)").map(extract_return);
-            } else if(type_check_binding(env, "main: fn(string_vector) -> ()")) {
-              return run(executor, std::move(env), std::move(bindings), "main(args)").map(return_success);
-            } else if(type_check_binding(env, "main: fn() -> i32")) {
-              return run(executor, std::move(env), std::move(bindings), "main()").map(extract_return);
-            } else if(type_check_binding(env, "main: fn() -> ()")) {
-              return run(executor, std::move(env), std::move(bindings), "main()").map(return_success);
-            } else {
-              return std::move(tc_result).map([]() { return 0; }).append_state(std::move(env), std::move(bindings));
-            }
-          })
-      : parse_scripts(std::move(e), cli.repl_scripts).append_state(Bindings{}).map([&](Env env, Bindings bindings) {
-          std::tie(env, bindings) = run_repl(executor, std::move(env), std::move(bindings));
-          return std::tuple(0, std::move(env), std::move(bindings));
-        });
-
-  if(result) {
-    return *result;
-  } else {
+  if(!result) {
     for(const std::string& line : result.error()) {
       fmt::print("{}\n", line);
     }
-
     return 1;
   }
+
+  std::tie(env) = std::move(result.state());
+
+  int ret = 0;
+
+  {
+    Executor executor = make_tbb_executor(4);
+
+    if(cli.run_cmd->parsed()) {
+      const auto extract_return = [&](Binding b, Env env, Bindings bindings) {
+        take(std::move(b.values[0])).then([&](Any a) { ret = any_cast<i32>(a); });
+        return std::tuple(std::move(env), std::move(bindings));
+      };
+
+      const auto return_success = [](Binding, Env env, Bindings bindings) {
+        return std::tuple(std::move(env), std::move(bindings));
+      };
+
+      const auto dump_error = [&](auto errors, Env e, Bindings b) {
+        for(const std::string& line : result.error()) {
+          fmt::print("{}\n", line);
+        }
+
+        ret = 1;
+        return std::tuple(std::move(e), std::move(b));
+      };
+
+      const Type arg_type = env.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::vector<std::string>>{}));
+      Bindings bindings;
+      bindings.emplace("args", Binding{arg_type, make_vector(AsyncValue{Future{Any{std::move(cli.run_args)}}})});
+
+      if(auto tc_result = type_check_binding(env, "main: fn(string_vector) -> i32"); tc_result) {
+        run(executor, std::move(env), std::move(bindings), "main(args)").map(extract_return).map_error(dump_error);
+      } else if(type_check_binding(env, "main: fn(string_vector) -> ()")) {
+        run(executor, std::move(env), std::move(bindings), "main(args)").map(return_success).map_error(dump_error);
+      } else if(type_check_binding(env, "main: fn() -> i32")) {
+        run(executor, std::move(env), std::move(bindings), "main()").map(extract_return).map_error(dump_error);
+      } else if(type_check_binding(env, "main: fn() -> ()")) {
+        run(executor, std::move(env), std::move(bindings), "main()").map(return_success).map_error(dump_error);
+      } else {
+        std::move(tc_result).append_state(std::move(env), std::move(bindings)).map_error(dump_error);
+      }
+    } else {
+      run_repl(executor, std::move(env), {});
+    }
+  } // Executor goes out of scope
+
+  return ret;
 }
 
 } // namespace ooze

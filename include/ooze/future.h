@@ -15,8 +15,6 @@ inline bool ready(const std::atomic<int>& a) { return a.load(std::memory_order_a
 
 struct SharedBlock {
   Any value;
-  std::mutex mutex;
-  std::condition_variable cv;
   std::optional<std::function<void(Any)>> continuation;
   std::atomic<int> value_ready;
 
@@ -48,14 +46,7 @@ public:
 
   void send(Any value) && {
     _block->value = std::move(value);
-
-    std::unique_lock lk(_block->mutex);
-    const bool ready = decrement(_block->value_ready);
-    lk.unlock();
-
-    if(ready) {
-      _block->cv.notify_one();
-
+    if(decrement(_block->value_ready)) {
       if(_block->continuation) {
         std::move (*_block->continuation)(std::move(_block->value));
       }
@@ -85,14 +76,6 @@ public:
   Future& operator=(Future&&) = default;
 
   bool ready() const { return _block->value_ready.load(std::memory_order_relaxed) == 0; }
-
-  Any wait() && {
-    std::unique_lock lk(_block->mutex);
-    _block->cv.wait(lk, [&]() { return ready(); });
-    Any result = std::move(_block->value);
-    _block = nullptr;
-    return result;
-  }
 
   template <typename F, typename = std::enable_if_t<std::is_same_v<void, std::invoke_result_t<F, Any>>>>
   void then(F f) && {

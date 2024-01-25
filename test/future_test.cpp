@@ -16,14 +16,6 @@ BOOST_AUTO_TEST_CASE(promise_future_cleanup) {
   p = {};
 }
 
-BOOST_AUTO_TEST_CASE(wait_no_send) {
-  auto [p, f] = make_promise_future();
-
-  p = {};
-
-  BOOST_CHECK(!std::move(f).wait().has_value());
-}
-
 BOOST_AUTO_TEST_CASE(then_no_send) {
   auto [p, f] = make_promise_future();
 
@@ -50,14 +42,6 @@ BOOST_AUTO_TEST_CASE(no_receive_send) {
   f = {};
 
   std::move(p).send(1);
-}
-
-BOOST_AUTO_TEST_CASE(send_wait) {
-  auto [p, f] = make_promise_future();
-
-  std::move(p).send(1);
-
-  BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(f).wait()));
 }
 
 BOOST_AUTO_TEST_CASE(send_then) {
@@ -87,26 +71,6 @@ BOOST_AUTO_TEST_CASE(then_then_send) {
   std::move(p).send(1);
 }
 
-BOOST_AUTO_TEST_CASE(send_then_then_wait) {
-  auto [p, f] = make_promise_future();
-
-  std::move(p).send(1);
-
-  const Any result =
-    std::move(f)
-      .then([](Any v) {
-        BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-        return 2;
-      })
-      .then([](Any v) {
-        BOOST_CHECK_EQUAL(2, any_cast<int>(v));
-        return 3;
-      })
-      .wait();
-
-  BOOST_CHECK_EQUAL(3, any_cast<int>(result));
-}
-
 BOOST_AUTO_TEST_CASE(stress) {
   constexpr int count = 1000;
 
@@ -117,19 +81,12 @@ BOOST_AUTO_TEST_CASE(stress) {
   for(int i = 0; i < count; i++) {
     auto [p, f] = make_promise_future();
     functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
-    if(i % 2 == 0) {
-      functions.emplace_back([f = std::make_shared<Future>(std::move(f)), &calls]() mutable {
-        BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(*f).wait()));
+    functions.emplace_back([f = std::make_shared<Future>(std::move(f)), &calls]() mutable {
+      std::move(*f).then([&](Any v) {
+        BOOST_CHECK_EQUAL(1, any_cast<int>(v));
         calls++;
       });
-    } else {
-      functions.emplace_back([f = std::make_shared<Future>(std::move(f)), &calls]() mutable {
-        std::move(*f).then([&](Any v) {
-          BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-          calls++;
-        });
-      });
-    }
+    });
   }
 
   std::random_device rd;

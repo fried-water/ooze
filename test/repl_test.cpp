@@ -3,6 +3,7 @@
 #include "bindings.h"
 #include "pretty_print.h"
 #include "repl.h"
+#include "runtime_test.h"
 
 #include "ooze/executor/sequential_executor.h"
 
@@ -14,12 +15,8 @@ const TypeID I = type_id(knot::Type<i32>{});
 
 #define step_and_compare(_EXP, _STR, _ENV, _BND)                                                                       \
   [&](const std::vector<std::string>& e, std::string_view str, Env env, Bindings b) {                                  \
-    auto [a, e1, b1] = step_repl(make_seq_executor(), std::move(env), std::move(b), str);                              \
-    if(e != a) {                                                                                                       \
-      fmt::print("E: {}\n", knot::debug(e));                                                                           \
-      fmt::print("A: {}\n", knot::debug(a));                                                                           \
-    }                                                                                                                  \
-    check_range(e, a);                                                                                                 \
+    auto [future, e1, b1] = step_repl(make_seq_executor(), std::move(env), std::move(b), str);                         \
+    check_any(e, await(std::move(future)));                                                                            \
     return std::tuple(std::move(e1), std::move(b1));                                                                   \
   }(_EXP, _STR, _ENV, _BND)
 
@@ -28,8 +25,8 @@ const TypeID I = type_id(knot::Type<i32>{});
 BOOST_AUTO_TEST_SUITE(repl)
 
 BOOST_AUTO_TEST_CASE(empty) {
-  const auto [ouptut, env, bindings] = step_repl(make_seq_executor(), {}, {}, "");
-  BOOST_CHECK(ouptut.empty());
+  auto [future, env, bindings] = step_repl(make_seq_executor(), {}, {}, "");
+  check_any(std::vector<std::string>(), await(std::move(future)));
   BOOST_CHECK(bindings.empty());
 }
 

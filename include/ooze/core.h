@@ -37,6 +37,6 @@ StringResult<void> type_check_fn(const Env&, std::string_view);
 StringResult<void> type_check_binding(const Env&, std::string_view);
 
 StringResult<Binding, Env, Bindings> run(ExecutorRef, Env, Bindings, std::string_view);
-StringResult<std::string, Env, Bindings> run_to_string(ExecutorRef, Env, Bindings, std::string_view);
+StringResult<Future, Env, Bindings> run_to_string(ExecutorRef, Env, Bindings, std::string_view);
 
 } // namespace ooze

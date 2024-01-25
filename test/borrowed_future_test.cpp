@@ -38,19 +38,10 @@ BOOST_AUTO_TEST_CASE(forward) {
 
   std::move(p).send(1);
   b = {};
-  BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(f2).wait()));
-}
 
-BOOST_AUTO_TEST_CASE(send_wait) {
-  auto [p, f] = make_promise_future();
-  auto [b, f2] = borrow(std::move(f));
-
-  auto b2 = b;
-
-  std::move(p).send(1);
-
-  BOOST_CHECK_EQUAL(1, any_cast<int>(b.wait()));
-  BOOST_CHECK_EQUAL(1, any_cast<int>(b2.wait()));
+  int x = 0;
+  std::move(f2).then([&](Any v) { x = any_cast<int>(v); });
+  BOOST_CHECK_EQUAL(1, x);
 }
 
 BOOST_AUTO_TEST_CASE(send_then) {
@@ -104,27 +95,22 @@ BOOST_AUTO_TEST_CASE(stress) {
 
     functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
     functions.emplace_back([f2 = std::make_shared<Future>(std::move(f2)), &calls]() mutable {
-      BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(*f2).wait()));
-      calls++;
+      std::move(*f2).then([&](Any v) {
+        BOOST_CHECK_EQUAL(1, any_cast<int>(v));
+        calls++;
+      });
     });
 
     const int copies = rd() % 4;
 
     for(int i = 0; i < copies; i++) {
-      if(rd() % 2 == 0) {
-        functions.emplace_back([b = b, &calls]() mutable {
-          BOOST_CHECK_EQUAL(1, any_cast<int>(b.wait()));
+      functions.emplace_back([b = b, &calls]() mutable {
+        b.then([&](Any v) {
+          BOOST_CHECK_EQUAL(1, any_cast<int>(v));
           calls++;
         });
-      } else {
-        functions.emplace_back([b = b, &calls]() mutable {
-          b.then([&](Any v) {
-            BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-            calls++;
-          });
-          b = {};
-        });
-      }
+        b = {};
+      });
     }
   }
 

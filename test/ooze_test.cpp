@@ -11,11 +11,6 @@ namespace ooze {
 
 namespace {
 
-auto await(Binding b) {
-  return std::pair(b.type,
-                   transform_to_vec(std::move(b.values), [](AsyncValue v) { return take(std::move(v)).wait(); }));
-}
-
 StringResult<std::pair<Type, std::vector<Any>>, Env> run(Env env, std::string_view script, std::string_view expr) {
   auto executor = make_seq_executor();
 
@@ -70,7 +65,6 @@ Any execute1(Env e, std::string_view name, std::tuple<Ts...> ts, std::tuple<Bs..
     if(sv(make_sv_array(e.src), e.ast.srcs[id.get()]) == name) {
       std::vector<Any> results =
         execute(std::make_shared<const Program>(std::move(e.program)), fn, std::move(ts), std::move(bs));
-      BOOST_REQUIRE_EQUAL(1, results.size());
       return std::move(results[0]);
     }
   }
@@ -302,7 +296,9 @@ BOOST_AUTO_TEST_CASE(if_nested) {
 }
 
 BOOST_AUTO_TEST_CASE(if_capture_reorder_common) {
-  Env e = create_primative_env();
+  Env e;
+  e.add_type<bool>("bool");
+  e.add_type<i32>("i32");
   e.add_function("sub", [](i32 x, i32 y) { return x - y; });
 
   constexpr std::string_view script =
@@ -596,14 +592,18 @@ BOOST_AUTO_TEST_CASE(expr_or_error) {
 
 BOOST_AUTO_TEST_CASE(to_string) {
   auto executor = make_seq_executor();
-  BOOST_CHECK_EQUAL("1", check_result_value(run_to_string(executor, create_primative_env(), Bindings{}, "1")));
+  check_result_value(run_to_string(executor, create_primative_env(), Bindings{}, "1")).then([](Any a) {
+    check_any(std::string("1"), a);
+  });
 }
 
 BOOST_AUTO_TEST_CASE(to_string_fn) {
   auto executor = make_seq_executor();
   Env e = create_primative_env();
   e.add_function("f", []() { return std::string("abc"); });
-  BOOST_CHECK_EQUAL("abc", check_result_value(run_to_string(executor, std::move(e), Bindings{}, "f()")));
+  check_result_value(run_to_string(executor, std::move(e), Bindings{}, "f()")).then([](Any a) {
+    check_any(std::string("abc"), a);
+  });
 }
 
 BOOST_AUTO_TEST_CASE(copy_binding) {
@@ -694,17 +694,17 @@ BOOST_AUTO_TEST_CASE(reuse_to_string_binding) {
 
   Env e = create_primative_env();
 
-  std::string result;
+  Future result;
   Bindings bindings;
 
   std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "let x = 1"));
-  BOOST_CHECK_EQUAL("", result);
+  std::move(result).then([](Any a) { check_any(std::string(), a); });
 
   std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "x"));
-  BOOST_CHECK_EQUAL("1", result);
+  std::move(result).then([](Any a) { check_any(std::string("1"), a); });
 
   std::tie(result, e, bindings) = check_result(run_to_string(executor, std::move(e), std::move(bindings), "x"));
-  BOOST_CHECK_EQUAL("1", result);
+  std::move(result).then([](Any a) { check_any(std::string("1"), a); });
 }
 
 BOOST_AUTO_TEST_CASE(reuse_assign_binding_indirect) {

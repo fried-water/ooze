@@ -14,8 +14,7 @@ class TBBExecutor {
 
 public:
   TBBExecutor() : TBBExecutor(unsigned(tbb::info::default_concurrency())) {}
-  explicit TBBExecutor(unsigned num_threads)
-      : _control(tbb::global_control::max_allowed_parallelism, num_threads + 1) {}
+  explicit TBBExecutor(unsigned num_threads) : _control(tbb::global_control::max_allowed_parallelism, num_threads) {}
 
   ~TBBExecutor() { _group.wait(); }
 
@@ -24,6 +23,8 @@ public:
     // tbb requires a const call operator, even if the function is called once
     _group.run([f = std::forward<F>(f)]() { const_cast<std::decay_t<F>&>(f)(); });
   }
+
+  void wait() { _group.wait(); }
 };
 
 inline Executor make_tbb_executor(unsigned num_threads = 0) {

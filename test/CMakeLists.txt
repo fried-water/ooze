@@ -25,7 +25,7 @@ add_executable(ooze_test
   stress_test.cpp
   type_check_test.cpp)
 
-target_link_libraries(ooze_test PRIVATE ooze tbb ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+target_link_libraries(ooze_test PRIVATE ooze ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 target_include_directories(ooze_test PRIVATE ../src)
 target_precompile_headers(ooze_test PRIVATE ../src/pch.h)
 

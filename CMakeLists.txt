@@ -65,7 +65,7 @@ target_include_directories(ooze PRIVATE src PUBLIC include)
 target_precompile_headers(ooze PRIVATE src/pch.h)
 target_link_libraries(ooze
   PUBLIC
-    knot
+    knot tbb
   PRIVATE
     ctre fmt::fmt CLI11::CLI11)
 

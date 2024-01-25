@@ -5,7 +5,6 @@
 #include "runtime_test.h"
 
 #include "ooze/executor/sequential_executor.h"
-#include "ooze/executor/task_executor.h"
 #include "ooze/executor/tbb_executor.h"
 #include "ooze/function_graph.h"
 #include "ooze/program.h"
@@ -86,9 +85,14 @@ void execute_with_threads(std::shared_ptr<const Program> p, Inst i, MakeExecutor
   const int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
-    Executor e = f(num_threads);
+
     const auto t0 = std::chrono::steady_clock::now();
-    const auto results = execute(p, i, e, std::tuple(size), std::tuple());
+    std::vector<Future> futures;
+    {
+      Executor e = f(num_threads);
+      futures = execute(p, i, e, std::tuple(size), std::tuple());
+    }
+    const auto results = await(std::move(futures));
     const auto t1 = std::chrono::steady_clock::now();
     fmt::print("{} THREADS: result is {} after {}us\n",
                num_threads,
@@ -116,42 +120,11 @@ BOOST_AUTO_TEST_CASE(example_tbb, *boost::unit_test::disabled()) {
   execute_with_threads(std::make_shared<Program>(std::move(p)), fn, [](int n) { return make_tbb_executor(n); });
 }
 
-BOOST_AUTO_TEST_CASE(example_task, *boost::unit_test::disabled()) {
-  fmt::print("\nExecuting graph with custom task system\n\n");
-  Program p;
-  const Inst fn = create_graph(p);
-  execute_with_threads(std::make_shared<Program>(std::move(p)), fn, [](int n) { return make_task_executor(n); });
-}
-
 BOOST_AUTO_TEST_CASE(example_seq, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph Sequentially\n\n");
   Program p;
   const Inst fn = create_graph(p);
   execute_with_threads(std::make_shared<Program>(std::move(p)), fn, [](int) { return make_seq_executor(); });
-}
-
-BOOST_AUTO_TEST_CASE(test_executor_ref_count) {
-  Executor e = make_seq_executor();
-
-  ExecutorRef er1 = e;
-  ExecutorRef er2 = e;
-
-  BOOST_CHECK_EQUAL(2, e.ref_count());
-
-  ExecutorRef er_copy = er1;
-  ExecutorRef er_move = std::move(er2);
-
-  BOOST_CHECK_EQUAL(4, e.ref_count());
-
-  er1 = e.ref();
-  er2 = e.ref();
-
-  BOOST_CHECK_EQUAL(4, e.ref_count());
-
-  static_cast<void>(er_copy);
-  static_cast<void>(er_move);
-
-  // ~Executor() shouldnt crash (ref count should be 0)
 }
 
 BOOST_AUTO_TEST_CASE(empty) {
@@ -233,7 +206,7 @@ BOOST_AUTO_TEST_CASE(fwd) {
   std::vector<Future> results =
     execute(std::make_shared<Program>(std::move(p)), g, ex, make_vector(Future(Any(Sentinal{}))), {});
   BOOST_REQUIRE_EQUAL(1, results.size());
-  const Sentinal result = any_cast<Sentinal>(std::move(results.front()).wait());
+  const Sentinal result = any_cast<Sentinal>(await(std::move(results.front())));
 
   BOOST_CHECK_EQUAL(0, result.copies);
   BOOST_CHECK_EQUAL(3, result.moves); // into input any, through fwd, into result
@@ -253,8 +226,8 @@ BOOST_AUTO_TEST_CASE(borrow_fwd) {
   auto [b2, post_future2] = ooze::borrow(Future(Sentinal{}));
   const auto results =
     execute(std::make_shared<Program>(std::move(p)), g, ex, {}, std::vector{std::move(b1), std::move(b2)});
-  const Sentinal input1 = any_cast<Sentinal>(std::move(post_future1).wait());
-  const Sentinal input2 = any_cast<Sentinal>(std::move(post_future2).wait());
+  const Sentinal input1 = any_cast<Sentinal>(await(std::move(post_future1)));
+  const Sentinal input2 = any_cast<Sentinal>(await(std::move(post_future2)));
 
   BOOST_CHECK_EQUAL(0, results.size());
   BOOST_CHECK_EQUAL(0, input1.copies);
@@ -283,7 +256,7 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
 
   const Inst g = p.add(std::move(cg).finalize(outputs, std::vector<PassBy>(COUNT, PassBy::Move)));
 
-  Executor ex = make_task_executor();
+  Executor ex = make_tbb_executor();
 
   std::vector<Promise> promises;
   std::vector<BorrowedFuture> inputs;
@@ -308,8 +281,8 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
 
   std::vector<std::thread> threads;
   for(Future& f : futures) {
-    threads.emplace_back([&]() {
-      std::string str = any_cast<std::string>(std::move(f).wait());
+    std::move(f).then([&](Any a) {
+      std::string str = any_cast<std::string>(std::move(a));
       const auto time = std::chrono::steady_clock::now();
       std::lock_guard lk(m);
       ordered_results.emplace_back(std::move(str), time);
@@ -322,9 +295,7 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
     std::move(promises[i]).send(std::string(1, char('A' + i)));
   }
 
-  for(std::thread& t : threads) {
-    t.join();
-  }
+  ex.wait();
 
   for(const auto& [string, time] : ordered_results) {
     fmt::print("({:05} us) {}\n", std::chrono::duration_cast<std::chrono::microseconds>(time - start).count(), string);
@@ -339,15 +310,15 @@ BOOST_AUTO_TEST_CASE(value) {
   Program p;
   const Inst one = p.add(Any{1});
   const Inst abc = p.add(Any{std::string("abc")});
-  compare(1, execute(share(p), one, {}, {}));
-  compare(std::string("abc"), execute(share(p), abc, {}, {}));
+  compare(1, execute_tbb(share(p), one, {}, {}));
+  compare(std::string("abc"), execute_tbb(share(p), abc, {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
   const auto test_fn = [](auto exp, auto fn, auto values, auto borrows) {
     Program p;
     const Inst inst = p.add(std::move(fn));
-    compare(exp, execute(share(p), inst, std::move(values), std::move(borrows)));
+    compare(exp, execute_tbb(share(p), inst, std::move(values), std::move(borrows)));
   };
 
   test_fn(
@@ -368,28 +339,23 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_value) {
   Program p;
   const Inst fn = p.add([](Sentinal x) { return x; });
 
-  std::vector<Future> results = execute(share(p), fn, make_seq_executor(), make_vector(Future(Sentinal{})), {});
+  std::vector<Any> results = execute(share(p), fn, make_vector(Any(Sentinal{})), {});
 
   BOOST_REQUIRE_EQUAL(1, results.size());
-
-  const Any result = std::move(results[0]).wait();
-
-  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(result).copies);
-  BOOST_CHECK_EQUAL(4, any_cast<Sentinal>(result).moves); // into any, into function, out of function, into result any
+  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(results[0]).copies);
+  BOOST_CHECK_EQUAL(4,
+                    any_cast<Sentinal>(results[0]).moves); // into any, into function, out of function, into result any
 }
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_rvalue) {
   Program p;
   const Inst fn = p.add([](Sentinal&& x) { return x; });
 
-  std::vector<Future> results = execute(share(p), fn, make_seq_executor(), make_vector(Future(Sentinal{})), {});
+  std::vector<Any> results = execute(share(p), fn, make_vector(Any(Sentinal{})), {});
 
   BOOST_REQUIRE_EQUAL(1, results.size());
-
-  const Any result = std::move(results[0]).wait();
-
-  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(result).copies);
-  BOOST_CHECK_EQUAL(3, any_cast<Sentinal>(result).moves); // into any, out of function, into result any
+  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(results[0]).copies);
+  BOOST_CHECK_EQUAL(3, any_cast<Sentinal>(results[0]).moves); // into any, out of function, into result any
 }
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
@@ -401,8 +367,8 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
 
   BOOST_REQUIRE_EQUAL(1, results.size());
 
-  const Any input = std::move(post_future).wait();
-  const Any result = std::move(results[0]).wait();
+  const Any input = await(std::move(post_future));
+  const Any result = await(std::move(results[0]));
 
   BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(input).copies);
   BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(result).copies);
@@ -417,7 +383,7 @@ BOOST_AUTO_TEST_CASE(functional) {
     const Inst inst = p.add(std::move(fn));
     const Inst functional = p.add(FunctionalInst{output_count});
     compare(exp,
-            execute(share(p), functional, std::tuple_cat(std::tuple(inst), std::move(values)), std::move(borrows)));
+            execute_tbb(share(p), functional, std::tuple_cat(std::tuple(inst), std::move(values)), std::move(borrows)));
   };
 
   test_fn(
@@ -440,22 +406,22 @@ BOOST_AUTO_TEST_CASE(curry_fn) {
   const Inst add3 = p.curry(add, std::array{Any{3}});
   const Inst seven = p.curry(add3, std::array{Any{4}});
 
-  compare(5, execute(share(p), add3, std::tuple(2), {}));
-  compare(7, execute(share(p), seven, {}, {}));
+  compare(5, execute_tbb(share(p), add3, std::tuple(2), {}));
+  compare(7, execute_tbb(share(p), seven, {}, {}));
 }
 
 BOOST_AUTO_TEST_CASE(select) {
   Program p;
   const Inst sel = p.add(SelectInst{});
 
-  compare(std::tuple(), execute(share(p), sel, std::tuple(true), {}));
-  compare(std::tuple(), execute(share(p), sel, std::tuple(false), {}));
+  compare(std::tuple(), execute_tbb(share(p), sel, std::tuple(true), {}));
+  compare(std::tuple(), execute_tbb(share(p), sel, std::tuple(false), {}));
 
-  compare(1, execute(share(p), sel, std::tuple(true, 1, 2), {}));
-  compare(2, execute(share(p), sel, std::tuple(false, 1, 2), {}));
+  compare(1, execute_tbb(share(p), sel, std::tuple(true, 1, 2), {}));
+  compare(2, execute_tbb(share(p), sel, std::tuple(false, 1, 2), {}));
 
-  compare(std::tuple(1, 2), execute(share(p), sel, std::tuple(true, 1, 2, 3, 4), {}));
-  compare(std::tuple(3, 4), execute(share(p), sel, std::tuple(false, 1, 2, 3, 4), {}));
+  compare(std::tuple(1, 2), execute_tbb(share(p), sel, std::tuple(true, 1, 2, 3, 4), {}));
+  compare(std::tuple(3, 4), execute_tbb(share(p), sel, std::tuple(false, 1, 2, 3, 4), {}));
 }
 
 BOOST_AUTO_TEST_CASE(if_) {
@@ -471,32 +437,32 @@ BOOST_AUTO_TEST_CASE(if_) {
   const Inst mul = p.add([](int x, const int& y) { return x * y; });
 
   const Inst if_val = p.add(IfInst{one, two, 1});
-  compare(1, execute(share(p), if_val, std::tuple(true), {}));
-  compare(2, execute(share(p), if_val, std::tuple(false), {}));
+  compare(1, execute_tbb(share(p), if_val, std::tuple(true), {}));
+  compare(2, execute_tbb(share(p), if_val, std::tuple(false), {}));
 
   const Inst if_fn = p.add(IfInst{identity, add1, 1, 1, 1});
-  compare(5, execute(share(p), if_fn, std::tuple(true, 5), {}));
-  compare(6, execute(share(p), if_fn, std::tuple(false, 5), {}));
+  compare(5, execute_tbb(share(p), if_fn, std::tuple(true, 5), {}));
+  compare(6, execute_tbb(share(p), if_fn, std::tuple(false, 5), {}));
 
   const Inst if_borrow = p.add(IfInst{identity_borrow, add1_borrow, 1, 0, 0, 1, 1});
-  compare(5, execute(share(p), if_borrow, std::tuple(true), std::tuple(5)));
-  compare(6, execute(share(p), if_borrow, std::tuple(false), std::tuple(5)));
+  compare(5, execute_tbb(share(p), if_borrow, std::tuple(true), std::tuple(5)));
+  compare(6, execute_tbb(share(p), if_borrow, std::tuple(false), std::tuple(5)));
 
   const Inst if_multi = p.add(IfInst{add, mul, 1, 1, 1, 1, 1});
-  compare(7, execute(share(p), if_multi, std::tuple(true, 3), std::tuple(4)));
-  compare(12, execute(share(p), if_multi, std::tuple(false, 3), std::tuple(4)));
+  compare(7, execute_tbb(share(p), if_multi, std::tuple(true, 3), std::tuple(4)));
+  compare(12, execute_tbb(share(p), if_multi, std::tuple(false, 3), std::tuple(4)));
 
   const Inst if_diff_value = p.add(IfInst{identity, identity, 1, 0, 1});
-  compare(1, execute(share(p), if_diff_value, std::tuple(true, 1, 2), {}));
-  compare(2, execute(share(p), if_diff_value, std::tuple(false, 1, 2), {}));
+  compare(1, execute_tbb(share(p), if_diff_value, std::tuple(true, 1, 2), {}));
+  compare(2, execute_tbb(share(p), if_diff_value, std::tuple(false, 1, 2), {}));
 
   const Inst if_diff_borrow = p.add(IfInst{identity_borrow, identity_borrow, 1, 0, 0, 0, 1});
-  compare(1, execute(share(p), if_diff_borrow, std::tuple(true), std::tuple(1, 2)));
-  compare(2, execute(share(p), if_diff_borrow, std::tuple(false), std::tuple(1, 2)));
+  compare(1, execute_tbb(share(p), if_diff_borrow, std::tuple(true), std::tuple(1, 2)));
+  compare(2, execute_tbb(share(p), if_diff_borrow, std::tuple(false), std::tuple(1, 2)));
 
   const Inst if_diff_cat = p.add(IfInst{identity, identity_borrow, 1, 0, 1, 0, 0});
-  compare(1, execute(share(p), if_diff_cat, std::tuple(true, 1), std::tuple(2)));
-  compare(2, execute(share(p), if_diff_cat, std::tuple(false, 1), std::tuple(2)));
+  compare(1, execute_tbb(share(p), if_diff_cat, std::tuple(true, 1), std::tuple(2)));
+  compare(2, execute_tbb(share(p), if_diff_cat, std::tuple(false, 1), std::tuple(2)));
 }
 
 BOOST_AUTO_TEST_CASE(converge) {
@@ -506,10 +472,10 @@ BOOST_AUTO_TEST_CASE(converge) {
   const Inst body = p.add([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
   const Inst converge = p.add(ConvergeInst{});
 
-  compare(std::tuple(), execute(share(p), converge, std::tuple(empty_body, false), {}));
-  compare(std::tuple(), execute(share(p), converge, std::tuple(empty_body, true), {}));
-  compare(10, execute(share(p), converge, std::tuple(body, false, 5), std::tuple(10)));
-  compare(5, execute(share(p), converge, std::tuple(body, true, 5), std::tuple(10)));
+  compare(std::tuple(), execute_tbb(share(p), converge, std::tuple(empty_body, false), {}));
+  compare(std::tuple(), execute_tbb(share(p), converge, std::tuple(empty_body, true), {}));
+  compare(10, execute_tbb(share(p), converge, std::tuple(body, false, 5), std::tuple(10)));
+  compare(5, execute_tbb(share(p), converge, std::tuple(body, true, 5), std::tuple(10)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -523,7 +489,7 @@ BOOST_AUTO_TEST_CASE(any_function) {
   const Inst fn = p.add([](int x, const int& y) { return x + y; });
   const auto sp = share(std::move(p));
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i + 5, execute(sp, fn, make_task_executor(), std::tuple(5), std::tuple(i)));
+    compare(i + 5, execute_tbb(sp, fn, std::tuple(5), std::tuple(i)));
   }
 }
 
@@ -532,7 +498,7 @@ BOOST_AUTO_TEST_CASE(functional) {
   const Inst functional = p.add(FunctionalInst{1});
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     const Inst fn = p.add([i](int x, const int& y) { return x + y + i; });
-    compare(i + 12, execute(share(p), functional, make_task_executor(), std::tuple(fn, 5), std::tuple(7)));
+    compare(i + 12, execute_tbb(share(p), functional, std::tuple(fn, 5), std::tuple(7)));
   }
 }
 
@@ -540,7 +506,7 @@ BOOST_AUTO_TEST_CASE(select) {
   Program p;
   const Inst select = p.add(SelectInst{});
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i % 2, execute(share(p), select, make_task_executor(), std::tuple(i % 2 == 0, 0, 1), {}));
+    compare(i % 2, execute_tbb(share(p), select, std::tuple(i % 2 == 0, 0, 1), {}));
   }
 }
 
@@ -551,8 +517,7 @@ BOOST_AUTO_TEST_CASE(converge) {
 
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     const int limit = i % 10;
-    compare(limit,
-            execute(share(p), converge, make_task_executor(), std::tuple(body, 0 >= limit, 0), std::tuple(limit)));
+    compare(limit, execute_tbb(share(p), converge, std::tuple(body, 0 >= limit, 0), std::tuple(limit)));
   }
 }
 
@@ -562,7 +527,7 @@ BOOST_AUTO_TEST_CASE(if_) {
   const Inst add1 = p.add([](int x) { return x + 1; });
   const Inst if_inst = p.add(IfInst{identity, add1, 1, 1, 1});
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i % 2, execute(share(p), if_inst, make_task_executor(), std::tuple(i % 2 == 0, 0), {}));
+    compare(i % 2, execute_tbb(share(p), if_inst, std::tuple(i % 2 == 0, 0), {}));
   }
 }
 
