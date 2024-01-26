@@ -205,7 +205,7 @@ ParseResult<ASTID> expr(State& s, Span<Token> tokens, ParseLocation loc) {
   return transform(
     seq(call_expr, n(seq(symbol("."), transform(seq(non_call_expr, tuple_expr()), ASTAppender{ASTTag::ExprCall})))),
     [](State& s, ASTID acc, std::vector<ASTID> chain) {
-      return knot::accumulate(std::move(chain), std::move(acc), [&](ASTID acc, ASTID call) {
+      return knot::accumulate(std::move(chain), acc, [&](ASTID acc, ASTID call) {
         const ASTID args = *s.ast.forest.next_sibling(*s.ast.forest.first_child(call));
         s.ast.forest.move_first_child(args, acc);
         s.ast.srcs[call.get()] = join(s.ast.srcs[acc.get()], s.ast.srcs[call.get()]);
@@ -216,7 +216,7 @@ ParseResult<ASTID> expr(State& s, Span<Token> tokens, ParseLocation loc) {
 
 ParseResult<ASTID> call_expr(State& s, Span<Token> tokens, ParseLocation loc) {
   return transform(seq(non_call_expr, n(tuple_expr())), [](State& s, ASTID callee, std::vector<ASTID> arg_sets) {
-    return knot::accumulate(std::move(arg_sets), std::move(callee), [&](ASTID acc, ASTID args) {
+    return knot::accumulate(std::move(arg_sets), callee, [&](ASTID acc, ASTID args) {
       return ASTAppender{ASTTag::ExprCall}(
         s, join(s.ast.srcs[acc.get()], s.ast.srcs[args.get()]), std::array{acc, args});
     });

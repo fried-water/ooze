@@ -271,7 +271,7 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(ig)
 
-BOOST_AUTO_TEST_CASE(null) { BOOST_CHECK(check_result(calculate_ident_graph({}, {})) == Graph<ASTID>{}); }
+BOOST_AUTO_TEST_CASE(null) { check_eq("graph", Graph<ASTID>{}, check_result(calculate_ident_graph({}, {}))); }
 
 BOOST_AUTO_TEST_CASE(unbound) {
   const auto srcs = make_sv_array("x");
@@ -415,7 +415,7 @@ BOOST_AUTO_TEST_CASE(call_global) {
   fanout[0] = {ASTID{5}};
   fanout[5] = {ASTID{0}};
 
-  check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));
+  check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast)));
 }
 
 BOOST_AUTO_TEST_CASE(overloaded) {
@@ -430,7 +430,7 @@ BOOST_AUTO_TEST_CASE(overloaded) {
   fanout[6] = {ASTID{14}};
   fanout[14] = {ASTID{0}, ASTID{6}};
 
-  BOOST_CHECK(Graph<ASTID>(std::move(fanout)) == ident_graph);
+  BOOST_CHECK(Graph<ASTID>(fanout) == ident_graph);
 }
 
 BOOST_AUTO_TEST_CASE(recursive) {
@@ -442,21 +442,21 @@ BOOST_AUTO_TEST_CASE(recursive) {
   fanout[0] = {ASTID{2}};
   fanout[2] = {ASTID{0}};
 
-  BOOST_CHECK(Graph<ASTID>(std::move(fanout)) == ident_graph);
+  BOOST_CHECK(Graph<ASTID>(fanout) == ident_graph);
 }
 
 BOOST_AUTO_TEST_CASE(unused_fn) {
   auto [types, env_src, ast, tg] = create_test_env({}, {"f: fn() -> ()"});
   const auto srcs = make_sv_array(env_src);
-  auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
-  check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));
+  const auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
+  check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast)));
 }
 
 BOOST_AUTO_TEST_CASE(unused_script_fn) {
   const auto srcs = make_sv_array("fn f() -> () = ()");
   const AST ast = std::get<1>(check_result(parse({}, {}, SrcID{0}, srcs[0])));
-  auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
-  check_eq("ident_graph", Graph<ASTID>(std::move(fanout)), check_result(calculate_ident_graph(srcs, ast)));
+  const auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
+  check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -105,7 +105,7 @@ auto parse_command(std::string_view line) {
   });
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const HelpCmd& help) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const HelpCmd&) {
   return std::tuple(
     std::vector<std::string>{
       {":h - This message"},
@@ -119,7 +119,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, BindingsCmd) {
-  std::vector<std::string> ordered = sorted(transform_to_vec(bindings, [](const auto& p) { return p.first; }));
+  const auto ordered = sorted(transform_to_vec(bindings, Get<0>{}));
 
   std::vector<std::string> output;
   output.reserve(bindings.size() + 1);
@@ -143,7 +143,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
       std::move(tree_ss).str()));
   }
 
-  return std::tuple(std::move(output), std::move(env), std::move(bindings));
+  return {std::move(output), std::move(env), std::move(bindings)};
 }
 
 constexpr auto convert_errors = [](std::vector<std::string> errors, auto&&... ts) {
@@ -199,7 +199,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
     it = next_it;
   }
 
-  return std::tuple(std::move(output), std::move(env), std::move(bindings));
+  return {std::move(output), std::move(env), std::move(bindings)};
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const TypesCmd&) {
@@ -213,21 +213,20 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
     output.push_back(fmt::format("  {:20} [to_string: {}]", name, info ? "Y" : "N"));
   }
 
-  return std::tuple(std::move(output), std::move(env), std::move(bindings));
+  return {std::move(output), std::move(env), std::move(bindings)};
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings>
 run(ExecutorRef, Env env, Bindings bindings, const ReleaseCmd& cmd) {
   if(const auto it = bindings.find(cmd.var); it != bindings.end()) {
     bindings.erase(it);
-    return std::tuple(std::vector<std::string>{}, std::move(env), std::move(bindings));
+    return {std::vector<std::string>{}, std::move(env), std::move(bindings)};
   } else {
-    return std::tuple(make_vector(fmt::format("Binding {} not found", cmd.var)), std::move(env), std::move(bindings));
+    return {make_vector(fmt::format("Binding {} not found", cmd.var)), std::move(env), std::move(bindings)};
   }
 }
 
-std::tuple<std::vector<std::string>, Env, Bindings>
-run(ExecutorRef executor, Env env, Bindings bindings, const AwaitCmd& cmd) {
+std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const AwaitCmd& cmd) {
   std::vector<std::string> output;
   if(cmd.bindings.empty()) {
     for(auto& [name, binding] : bindings) {
@@ -247,14 +246,14 @@ run(ExecutorRef executor, Env env, Bindings bindings, const AwaitCmd& cmd) {
     }
   }
 
-  return std::tuple(std::move(output), std::move(env), std::move(bindings));
+  return {std::move(output), std::move(env), std::move(bindings)};
 }
 
 } // namespace
 
 std::tuple<Future, Env, Bindings> step_repl(ExecutorRef executor, Env env, Bindings bindings, std::string_view line) {
   if(line.empty()) {
-    return std::tuple(Future(Any(std::vector<std::string>{})), std::move(env), std::move(bindings));
+    return {Future(Any(std::vector<std::string>{})), std::move(env), std::move(bindings)};
   } else if(line[0] == ':') {
     return parse_command({line.data() + 1, line.size() - 1})
       .append_state(std::move(env), std::move(bindings))
@@ -334,7 +333,7 @@ int repl_main(int argc, const char** argv, Env env) {
     Executor executor = make_tbb_executor(4);
 
     if(cli.run_cmd->parsed()) {
-      const auto extract_return = [&](Binding b, Env env, Bindings bindings) {
+      const auto extract_return = [&ret](Binding b, Env env, Bindings bindings) {
         take(std::move(b.values[0])).then([&](Any a) { ret = any_cast<i32>(a); });
         return std::tuple(std::move(env), std::move(bindings));
       };
@@ -343,8 +342,8 @@ int repl_main(int argc, const char** argv, Env env) {
         return std::tuple(std::move(env), std::move(bindings));
       };
 
-      const auto dump_error = [&](auto errors, Env e, Bindings b) {
-        for(const std::string& line : result.error()) {
+      const auto dump_error = [&ret](auto errors, Env e, Bindings b) {
+        for(const std::string& line : errors) {
           fmt::print("{}\n", line);
         }
 

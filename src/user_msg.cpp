@@ -20,7 +20,7 @@ std::vector<std::string> contextualize(Span<std::string_view> srcs, std::vector<
 
         const std::string error_line(line_begin, std::find_if(pos, src.end(), is_newline));
 
-        std::string highlight = "";
+        std::string highlight;
         for(int i = 0; i < col_no; i++) highlight += " ";
         highlight += '^';
         for(int i = 0; i < static_cast<int>(size(e.ref.slice)) - 1; i++) highlight += "~";

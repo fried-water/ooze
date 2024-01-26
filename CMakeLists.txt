@@ -44,6 +44,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_link_options(-fsanitize=address)
 endif()
 
+option(USE_CLANG_TIDY "Run clang-tidy with the compiler." OFF)
+if(USE_CLANG_TIDY)
+  set(CMAKE_CXX_CLANG_TIDY clang-tidy)
+endif()
+
 add_library(ooze
   src/env.cpp
   src/constructing_graph.cpp

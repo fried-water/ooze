@@ -8,7 +8,7 @@ namespace {
 
 auto ch(char c) { return constant(std::string() + c, c); }
 auto pass(char c) {
-  return filter(any(), std::string() + c, [=](int x, char c2) { return c == c2; });
+  return filter(any(), std::string() + c, [=](int, char c2) { return c == c2; });
 }
 
 template <typename R, typename P>

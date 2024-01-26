@@ -86,8 +86,6 @@ BOOST_AUTO_TEST_CASE(stress) {
 
   std::atomic<int> calls = 0;
 
-  int invocations = 0;
-
   std::vector<std::function<void()>> functions;
   for(int i = 0; i < count; i++) {
     auto [p, f] = make_promise_future();
@@ -101,7 +99,7 @@ BOOST_AUTO_TEST_CASE(stress) {
       });
     });
 
-    const int copies = rd() % 4;
+    const int copies = int(rd()) % 4;
 
     for(int i = 0; i < copies; i++) {
       functions.emplace_back([b = b, &calls]() mutable {
@@ -116,10 +114,7 @@ BOOST_AUTO_TEST_CASE(stress) {
 
   std::shuffle(functions.begin(), functions.end(), rng);
 
-  std::vector<std::thread> threads;
-  for(auto& f : functions) {
-    threads.emplace_back(std::move(f));
-  }
+  std::vector<std::thread> threads = transform_to_vec(std::move(functions), Construct<std::thread>{});
 
   for(auto& thread : threads) {
     thread.join();

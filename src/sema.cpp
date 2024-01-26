@@ -22,10 +22,10 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   case ASTTag::Fn:
   case ASTTag::ExprWith: {
     const size_t original_size = ctx.stack.size();
-    for(ASTID child : ast.forest.child_ids(id)) {
+    for(const ASTID child : ast.forest.child_ids(id)) {
       calculate_ident_graph(ctx, child, srcs, ast);
     }
-    ctx.stack.erase(ctx.stack.begin() + original_size, ctx.stack.end());
+    ctx.stack.erase(ctx.stack.begin() + i64(original_size), ctx.stack.end());
     break;
   }
   case ASTTag::ExprIdent: {
@@ -71,7 +71,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   case ASTTag::ExprIf:
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:
-    for(ASTID child : ast.forest.child_ids(id)) {
+    for(const ASTID child : ast.forest.child_ids(id)) {
       calculate_ident_graph(ctx, child, srcs, ast);
     }
     break;
@@ -89,7 +89,7 @@ ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph> global_binding_resolution(
 
   std::vector<ContextualError> errors;
 
-  for(ASTID id : ast.forest.ids()) {
+  for(const ASTID id : ast.forest.ids()) {
     if(ast.forest[id] != ASTTag::ExprIdent) continue;
 
     assert(ident_graph.num_fanout(id) > 0);
@@ -165,7 +165,7 @@ type_name_resolution(Span<std::string_view> srcs,
     if(const auto opt_id = find_id(type_names, sv(srcs, src)); opt_id) {
       tg.set<TypeID>(t, *opt_id);
     } else {
-      errors.push_back(ContextualError{src, "undefined type"});
+      errors.push_back({src, "undefined type"});
     }
   }
 
@@ -181,7 +181,7 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
                : std::nullopt;
     })};
 
-  for(ASTID root : ast.forest.root_ids()) {
+  for(const ASTID root : ast.forest.root_ids()) {
     calculate_ident_graph(ctx, root, srcs, ast);
   }
 

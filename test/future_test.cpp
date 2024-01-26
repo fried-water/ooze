@@ -19,7 +19,7 @@ BOOST_AUTO_TEST_CASE(promise_future_cleanup) {
 BOOST_AUTO_TEST_CASE(then_no_send) {
   auto [p, f] = make_promise_future();
 
-  std::move(f).then([&](Any v) { BOOST_CHECK(!v.has_value()); });
+  std::move(f).then([&](Any) { BOOST_CHECK(false); });
 }
 
 BOOST_AUTO_TEST_CASE(no_send_then) {
@@ -27,7 +27,7 @@ BOOST_AUTO_TEST_CASE(no_send_then) {
 
   p = {};
 
-  std::move(f).then([&](Any v) { BOOST_CHECK(!v.has_value()); });
+  std::move(f).then([&](Any) { BOOST_CHECK(false); });
 }
 
 BOOST_AUTO_TEST_CASE(send_no_receive) {
@@ -94,10 +94,7 @@ BOOST_AUTO_TEST_CASE(stress) {
 
   std::shuffle(functions.begin(), functions.end(), rng);
 
-  std::vector<std::thread> threads;
-  for(auto& f : functions) {
-    threads.emplace_back(std::move(f));
-  }
+  std::vector<std::thread> threads = transform_to_vec(std::move(functions), Construct<std::thread>{});
 
   for(auto& thread : threads) {
     thread.join();

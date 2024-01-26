@@ -39,7 +39,7 @@ Inst Program::add(ConvergeInst) { return add_internal(*this, InstOp::Converge); 
 Inst Program::curry(Inst curried, Span<Any> s) {
   const Inst i = add_internal(*this, InstOp::Curry, i32(currys.size()));
   currys.emplace_back(curried, Slice{i32(values.size()), i32(values.size() + s.size())});
-  values = to_vec(std::move(s), std::move(values));
+  values.insert(values.end(), std::make_move_iterator(s.begin()), std::make_move_iterator(s.end()));
   return i;
 }
 
@@ -55,7 +55,7 @@ void Program::set(Inst i, Inst curried, Span<Any> s) {
   inst[i.get()] = InstOp::Curry;
   inst_data[i.get()] = i32(currys.size());
   currys.emplace_back(curried, Slice{i32(values.size()), i32(values.size() + s.size())});
-  values = to_vec(std::move(s), std::move(values));
+  values.insert(values.end(), std::make_move_iterator(s.begin()), std::make_move_iterator(s.end()));
 }
 
 } // namespace ooze

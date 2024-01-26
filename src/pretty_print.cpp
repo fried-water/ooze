@@ -63,7 +63,7 @@ void pretty_print(std::ostream& os,
                   int indentation = 0) {
   const auto print_binding = [&](std::ostream& os, ASTID pattern_id) {
     pretty_print(os, srcs, ast, tg, type_names, pattern_id, indentation);
-    if(Type t = ast.types[pattern_id.get()]; t.is_valid() && tg.get<TypeTag>(t) != TypeTag::Floating) {
+    if(const Type t = ast.types[pattern_id.get()]; t.is_valid() && tg.get<TypeTag>(t) != TypeTag::Floating) {
       pretty_print(os << ": ", srcs, tg, type_names, t);
     }
   };
@@ -130,7 +130,7 @@ void pretty_print(std::ostream& os,
     if(!ast.forest.is_leaf(pattern)) {
       const auto [pattern_first, pattern_rest] = ast.forest.child_ids(pattern).match();
       print_binding(os, pattern_first);
-      for(ASTID c : pattern_rest) {
+      for(const ASTID c : pattern_rest) {
         print_binding(os << ", ", c);
       }
     }
@@ -156,7 +156,7 @@ void pretty_print(std::ostream& os,
     if(!ast.forest.is_leaf(id)) {
       const auto [first, rest] = ast.forest.child_ids(id).match();
       pretty_print(os, srcs, ast, tg, type_names, first, indentation);
-      for(ASTID c : rest) {
+      for(const ASTID c : rest) {
         pretty_print(os << ", ", srcs, ast, tg, type_names, c, indentation);
       }
     }
@@ -185,7 +185,7 @@ std::string pretty_print(Span<std::string_view> srcs,
   if(id) {
     pretty_print(os, srcs, ast, tg, type_names, *id);
   } else {
-    for(ASTID root : ast.forest.root_ids()) {
+    for(const ASTID root : ast.forest.root_ids()) {
       pretty_print(os, srcs, ast, tg, type_names, root);
       if(ast.forest.next_sibling(root)) {
         os << "\n\n";

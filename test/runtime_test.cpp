@@ -144,7 +144,7 @@ BOOST_AUTO_TEST_CASE(move) {
   Program p;
   const Inst take = p.add([](int i) { return i; });
   auto [cg, s] = make_graph({false});
-  const auto g = std::move(cg).finalize(cg.add(take, s, {PassBy::Move}, 1), {PassBy::Move});
+  auto g = std::move(cg).finalize(cg.add(take, s, {PassBy::Move}, 1), {PassBy::Move});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
 }
 
@@ -152,7 +152,7 @@ BOOST_AUTO_TEST_CASE(borrow) {
   Program p;
   const Inst take_ref = p.add([](const int& i) { return i; });
   auto [cg, s] = make_graph({false});
-  const auto g = std::move(cg).finalize(cg.add(take_ref, s, {PassBy::Borrow}, 1), {PassBy::Copy});
+  auto g = std::move(cg).finalize(cg.add(take_ref, s, {PassBy::Borrow}, 1), {PassBy::Copy});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
 }
 
@@ -173,7 +173,7 @@ BOOST_AUTO_TEST_CASE(sentinal) {
   const Oterm o4 = cg.add(borrow, {inputs[2]}, {PassBy::Borrow}, 1)[0];
   const Oterm o5 = inputs[2];
 
-  const auto g = std::move(cg).finalize(
+  auto g = std::move(cg).finalize(
     {o1, o2, o3, o4, o5}, {PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move});
 
   const std::vector<Any> results =
@@ -279,12 +279,11 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
   std::vector<std::pair<std::string, std::chrono::time_point<std::chrono::steady_clock>>> ordered_results;
   ordered_results.reserve(futures.size());
 
-  std::vector<std::thread> threads;
   for(Future& f : futures) {
     std::move(f).then([&](Any a) {
       std::string str = any_cast<std::string>(std::move(a));
       const auto time = std::chrono::steady_clock::now();
-      std::lock_guard lk(m);
+      const std::lock_guard lk(m);
       ordered_results.emplace_back(std::move(str), time);
     });
   }

@@ -14,14 +14,14 @@ template <typename ID, typename... Ts>
 class Graph : std::vector<Ts>... {
   using underlying_type = decltype(as_integral(ID{}));
 
-  std::vector<i32> _indices = {0};
+  std::vector<i32> _indices;
   std::vector<ID> _fanout;
 
 public:
-  Graph() = default;
+  Graph() : _indices{0} {}
 
   Graph(const std::vector<std::vector<ID>>& fanouts, std::vector<Ts>... columns)
-      : std::vector<Ts>{std::move(columns)}..., _indices() {
+      : std::vector<Ts>{std::move(columns)}... {
     _indices.reserve(fanouts.size() + 1);
     size_t offset = 0;
 

@@ -60,14 +60,14 @@ void ConstructingGraph::add_edges(Span<Oterm> inputs, Span<PassBy> pbs) {
   }
 }
 
-std::vector<Oterm> ConstructingGraph::add(Inst fn, Span<Oterm> inputs, Span<PassBy> pbs, int num_outputs) {
+std::vector<Oterm> ConstructingGraph::add(Inst fn, Span<Oterm> inputs, Span<PassBy> pbs, int output_count) {
   add_edges(inputs, pbs);
 
   input_counts.push_back(counts(pbs));
-  insts.push_back(std::move(fn));
-  owned_fwds.push_back(std::vector<std::vector<Iterm>>(num_outputs));
+  insts.push_back(fn);
+  owned_fwds.emplace_back(output_count);
 
-  return make_oterms(int(insts.size()), num_outputs);
+  return make_oterms(int(insts.size()), output_count);
 }
 
 std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> inputs) {
@@ -100,7 +100,7 @@ std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> in
   for(int n = 0; n < g.insts.size(); n++) {
     input_counts.push_back(g.input_counts[n]);
     insts.push_back(g.insts[n]);
-    owned_fwds.push_back(std::vector<std::vector<Iterm>>(g.owned_fwds[n + 1].size()));
+    owned_fwds.emplace_back(g.owned_fwds[n + 1].size());
 
     for(int p = 0; p < g.owned_fwds[n + 1].size(); p++) {
       process_fwds({{n + 1 + offset, p}, false}, g.owned_fwds[n + 1][p], owned_fwds.back()[p]);
@@ -111,7 +111,7 @@ std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> in
 }
 
 FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs) && {
-  assert(owned_fwds.size() > 0);
+  assert(!owned_fwds.empty());
 
   add_edges(outputs, pbs);
 
@@ -131,7 +131,7 @@ std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<bool> i
 
 ConstructingGraph::ConstructingGraph(std::vector<bool> input_borrows_) : input_borrows{std::move(input_borrows_)} {
   auto [value_count, borrow_count] = counts(input_borrows);
-  owned_fwds.push_back(std::vector<std::vector<Iterm>>(value_count));
+  owned_fwds.emplace_back(value_count);
   input_borrowed_fwds.resize(borrow_count);
 }
 

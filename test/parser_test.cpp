@@ -14,7 +14,7 @@ namespace {
     const auto [type_srcs, ast, tg] = check_result(std::move(result));                                                 \
     check_eq("type_srcs", exp_type_srcs, type_srcs);                                                                   \
     check_eq("ast", exp_ast, ast);                                                                                     \
-    check_eq("tg", exp_type_srcs, type_srcs);                                                                          \
+    check_eq("tg", exp_tg, tg);                                                                                        \
   }(_EXP_AST, _EXP_TYPES, _EXP_SRCS, _ACT)
 
 template <typename T, typename... Ts>
@@ -64,7 +64,7 @@ TypeGraph make_tg(std::vector<TypeTag> tags, std::vector<std::vector<i32>> edges
   }
   for(const auto& fanout : edges) {
     g.add_node();
-    for(i32 t : fanout) {
+    for(const i32 t : fanout) {
       g.add_fanout_to_last_node(Type(t));
     }
   }

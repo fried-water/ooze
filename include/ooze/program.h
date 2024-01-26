@@ -62,7 +62,7 @@ struct FunctionalInst {
 struct IfInst {
   Inst if_inst;
   Inst else_inst;
-  i32 output_count;
+  i32 output_count = 0;
 
   i32 value_common_end = 0;
   i32 value_if_end = 0;
@@ -121,7 +121,7 @@ struct Program {
 
       inst.push_back(InstOp::Fn);
       inst_data.push_back(int(fns.size()));
-      fns.push_back(AnyFunctionInst{[f = std::move(f), fn_args](Span<Any*> inputs) {
+      fns.push_back(AnyFunctionInst{[f = std::forward<F>(f), fn_args](Span<Any*> inputs) {
                                       return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
                                     },
                                     std::move(input_borrows),

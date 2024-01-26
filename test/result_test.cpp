@@ -87,14 +87,14 @@ BOOST_AUTO_TEST_CASE(and_then_void_fail) {
 
 BOOST_AUTO_TEST_CASE(and_then_pass_state) {
   const auto r = success(knot::Type<std::string>{}, 5, State{3}).and_then([](int x, State s) {
-    return success(knot::Type<std::string>{}, float(x), std::move(s));
+    return success(knot::Type<std::string>{}, float(x), s);
   });
   BOOST_CHECK((success(knot::Type<std::string>{}, 5.0f, State{3}) == r));
 }
 
 BOOST_AUTO_TEST_CASE(and_then_fail_state) {
   const auto r = success(knot::Type<std::string>{}, 5, State{1}).and_then([](int, State s) {
-    return fail(knot::Type<float>{}, std::string("abc"), std::move(s));
+    return fail(knot::Type<float>{}, std::string("abc"), s);
   });
   BOOST_CHECK((fail(knot::Type<float>{}, std::string("abc"), State{1}) == r));
 }
@@ -131,9 +131,8 @@ BOOST_AUTO_TEST_CASE(map_void) {
 }
 
 BOOST_AUTO_TEST_CASE(map_state) {
-  const auto r = success(knot::Type<std::string>{}, 5, State{3}).map([](int x, State s) {
-    return std::tuple(float(x), std::move(s));
-  });
+  const auto r =
+    success(knot::Type<std::string>{}, 5, State{3}).map([](int x, State s) { return std::tuple(float(x), s); });
   BOOST_CHECK((success(knot::Type<std::string>{}, 5.0f, State{3}) == r));
 }
 
@@ -153,7 +152,7 @@ BOOST_AUTO_TEST_CASE(map_from_void) {
 }
 
 BOOST_AUTO_TEST_CASE(map_skip) {
-  const auto r = fail(knot::Type<int>{}, std::string("abc")).map([](int x) { BOOST_CHECK(false); });
+  const auto r = fail(knot::Type<int>{}, std::string("abc")).map([](int) { BOOST_CHECK(false); });
   BOOST_CHECK((fail(knot::Type<void>{}, std::string("abc")) == r));
 }
 
@@ -168,21 +167,19 @@ BOOST_AUTO_TEST_CASE(map_error_void) {
 }
 
 BOOST_AUTO_TEST_CASE(map_error_state) {
-  const auto r = fail(knot::Type<float>{}, 5, State{1}).map_error([](int x, State s) {
-    return std::tuple(std::to_string(x), std::move(s));
-  });
+  const auto r =
+    fail(knot::Type<float>{}, 5, State{1}).map_error([](int x, State s) { return std::tuple(std::to_string(x), s); });
   BOOST_CHECK((fail(knot::Type<float>{}, std::string("5"), State{1}) == r));
 }
 
 BOOST_AUTO_TEST_CASE(map_error_void_state) {
-  const auto r = fail(knot::Type<void>{}, 5, State{1}).map_error([](int x, State s) {
-    return std::tuple(std::to_string(x), std::move(s));
-  });
+  const auto r =
+    fail(knot::Type<void>{}, 5, State{1}).map_error([](int x, State s) { return std::tuple(std::to_string(x), s); });
   BOOST_CHECK((fail(knot::Type<void>{}, std::string("5"), State{1}) == r));
 }
 
 BOOST_AUTO_TEST_CASE(map_error_skip) {
-  const auto r = success(knot::Type<std::string>{}, 5).map_error([](std::string x) -> float {
+  const auto r = success(knot::Type<std::string>{}, 5).map_error([](std::string) -> float {
     BOOST_CHECK(false);
     return 1.0f;
   });

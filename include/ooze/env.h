@@ -32,7 +32,7 @@ struct Env {
   ASTID add_function(std::string_view name, Type type, Inst fn) {
     const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
     const ASTID id = add_global(ast, ref, type);
-    functions.emplace(id, std::move(fn));
+    functions.emplace(id, fn);
     return id;
   }
 

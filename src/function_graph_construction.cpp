@@ -29,7 +29,7 @@ std::vector<PassBy> pass_bys_of(
 std::vector<bool> borrows_of(const TypeGraph& g, const Type& t, std::vector<bool> borrows = {}) {
   preorder(g, t, [&](Type t) {
     switch(g.get<TypeTag>(t)) {
-    case TypeTag::Leaf: borrows.push_back(false); return false;
+    case TypeTag::Leaf:
     case TypeTag::Fn: borrows.push_back(false); return false;
     case TypeTag::Borrow: borrows.push_back(true); return false;
     case TypeTag::Floating: assert(false);
@@ -47,7 +47,7 @@ int borrow_count(const TypeGraph& g, const Type& t) {
 
   preorder(g, t, [&](Type t) {
     switch(g.get<TypeTag>(t)) {
-    case TypeTag::Leaf: return false;
+    case TypeTag::Leaf:
     case TypeTag::Fn: return false;
     case TypeTag::Borrow: borrows++; return false;
     case TypeTag::Floating: assert(false);
@@ -60,7 +60,7 @@ int borrow_count(const TypeGraph& g, const Type& t) {
   return borrows;
 }
 
-auto find_captures(const AST& ast, const TypeGraph& tg, const Map<ASTID, ASTID>& binding_of, ASTID expr_id) {
+auto find_captures(const AST& ast, const Map<ASTID, ASTID>& binding_of, ASTID expr_id) {
   std::vector<ASTID> values;
   std::vector<ASTID> borrows;
 
@@ -105,7 +105,7 @@ std::pair<GraphContext, int> append_bindings(
   GraphContext ctx,
   int offset = 0) {
   auto it = terms.begin() + offset;
-  for(ASTID id : ast.forest.pre_order_ids(pattern)) {
+  for(const ASTID id : ast.forest.pre_order_ids(pattern)) {
     if(ast.forest[id] == ASTTag::PatternWildCard) {
       it += size_of(tg, ast.types[id.get()]);
     } else if(ast.forest[id] == ASTTag::PatternIdent) {
@@ -114,7 +114,7 @@ std::pair<GraphContext, int> append_bindings(
       it += count;
     }
   }
-  return std::pair(std::move(ctx), int(std::distance(terms.begin(), it)));
+  return {std::move(ctx), int(std::distance(terms.begin(), it))};
 }
 
 std::pair<GraphContext, std::vector<Oterm>>
@@ -171,6 +171,60 @@ struct Grouping {
   };
 };
 
+FunctionGraph wrap_conditional_branch(
+  const TypeGraph& tg,
+  const std::vector<Type>& ast_types,
+  const FunctionGraphData& data,
+  Span<PassBy> pass_bys,
+  Span<ASTID> owned_common,
+  Span<ASTID> owned_exclusive,
+  Span<ASTID> borrowed_common,
+  Span<ASTID> borrowed_exclusive) {
+  std::vector<bool> input_borrows;
+
+  std::vector<std::pair<ASTID, int>> offsets;
+
+  for(const ASTID id : owned_common) {
+    offsets.emplace_back(id, int(input_borrows.size()));
+    input_borrows = borrows_of(tg, ast_types[id.get()], std::move(input_borrows));
+  }
+
+  for(const ASTID id : owned_exclusive) {
+    offsets.emplace_back(id, int(input_borrows.size()));
+    input_borrows = borrows_of(tg, ast_types[id.get()], std::move(input_borrows));
+  }
+
+  for(const ASTID id : borrowed_common) {
+    offsets.emplace_back(id, int(input_borrows.size()));
+    input_borrows.insert(input_borrows.end(), size_of(tg, ast_types[id.get()]), true);
+  }
+
+  for(const ASTID id : borrowed_exclusive) {
+    offsets.emplace_back(id, int(input_borrows.size()));
+    input_borrows.insert(input_borrows.end(), size_of(tg, ast_types[id.get()]), true);
+  }
+
+  offsets.emplace_back(ASTID::Invalid(), int(input_borrows.size()));
+
+  auto [cg, inputs] = make_graph(std::move(input_borrows));
+
+  std::vector<Oterm> terms;
+  terms.reserve(inputs.size());
+
+  for(const ASTID id : data.captured_values) {
+    const auto it = find_if(offsets, [&](auto p) { return p.first == id; });
+    for(int i = it->second; i < (it + 1)->second; i++) terms.push_back(inputs[i]);
+  }
+
+  for(const ASTID id : data.captured_borrows) {
+    const auto it = find_if(offsets, [&](auto p) { return p.first == id; });
+    for(int i = it->second; i < (it + 1)->second; i++) terms.push_back(inputs[i]);
+  }
+
+  const auto output_terms = cg.add(data.graph, terms);
+  return std::move(cg).finalize(output_terms, pass_bys);
+}
+
 std::pair<GraphContext, std::vector<Oterm>>
 add_if_expr(const AST& ast,
             const TypeGraph& tg,
@@ -199,61 +253,13 @@ add_if_expr(const AST& ast,
   };
 
   const Grouping<ASTID, 3> owned_grouping = find_shared(if_graph.captured_values, else_graph.captured_values);
-
   const Grouping<ASTID, 3> borrowed_grouping = find_shared(if_graph.captured_borrows, else_graph.captured_borrows);
-
-  const auto make_wrapper_graph =
-    [&](const FunctionGraphData& data, const auto& owned, const auto& borrowed, bool is_if) {
-      std::vector<bool> input_borrows;
-
-      std::vector<std::pair<ASTID, int>> offsets;
-
-      for(ASTID id : owned[0]) {
-        offsets.emplace_back(id, int(input_borrows.size()));
-        input_borrows = borrows_of(tg, ast.types[id.get()], std::move(input_borrows));
-      }
-
-      for(ASTID id : owned[is_if ? 1 : 2]) {
-        offsets.emplace_back(id, int(input_borrows.size()));
-        input_borrows = borrows_of(tg, ast.types[id.get()], std::move(input_borrows));
-      }
-
-      for(ASTID id : borrowed[0]) {
-        offsets.emplace_back(id, int(input_borrows.size()));
-        input_borrows.insert(input_borrows.end(), size_of(tg, ast.types[id.get()]), true);
-      }
-
-      for(ASTID id : borrowed[is_if ? 1 : 2]) {
-        offsets.emplace_back(id, int(input_borrows.size()));
-        input_borrows.insert(input_borrows.end(), size_of(tg, ast.types[id.get()]), true);
-      }
-
-      offsets.emplace_back(ASTID::Invalid(), int(input_borrows.size()));
-
-      auto [cg, inputs] = make_graph(std::move(input_borrows));
-
-      std::vector<Oterm> terms;
-      terms.reserve(inputs.size());
-
-      for(ASTID id : data.captured_values) {
-        const auto it = find_if(offsets, [&](auto p) { return p.first == id; });
-        for(int i = it->second; i < (it + 1)->second; i++) terms.push_back(inputs[i]);
-      }
-
-      for(ASTID id : data.captured_borrows) {
-        const auto it = find_if(offsets, [&](auto p) { return p.first == id; });
-        for(int i = it->second; i < (it + 1)->second; i++) terms.push_back(inputs[i]);
-      }
-
-      const auto output_terms = cg.add(data.graph, terms);
-      return std::move(cg).finalize(output_terms, pass_bys_of(copy_types, tg, ast.types[id.get()]));
-    };
 
   std::array<int, 3> value_term_sizes = {};
   std::array<int, 3> borrow_term_sizes = {};
 
   for(int i = 0; i < 3; i++) {
-    for(ASTID id : owned_grouping[i]) {
+    for(const ASTID id : owned_grouping[i]) {
       outer_terms = to_vec(ctx.bindings.at(id), std::move(outer_terms));
       const int size = size_of(tg, ast.types[id.get()]);
       const int borrows = borrow_count(tg, ast.types[id.get()]);
@@ -264,23 +270,33 @@ add_if_expr(const AST& ast,
   }
 
   for(int i = 0; i < 3; i++) {
-    for(ASTID id : borrowed_grouping[i]) {
+    for(const ASTID id : borrowed_grouping[i]) {
       outer_terms = to_vec(ctx.bindings.at(id), std::move(outer_terms));
       borrow_term_sizes[i] += size_of(tg, ast.types[id.get()]);
     }
   }
 
-  std::vector<PassBy> pass_bys = pass_bys_of(copy_types, tg, ast.types[cond_id.get()]);
-
-  for(ASTID id : owned_grouping.vec) pass_bys = pass_bys_of(copy_types, tg, ast.types[id.get()], std::move(pass_bys));
-
-  for(ASTID id : borrowed_grouping.vec)
-    pass_bys.insert(pass_bys.end(), size_of(tg, ast.types[id.get()]), PassBy::Borrow);
-
   const i32 output_count = size_of(tg, ast.types[id.get()]);
 
-  const Inst if_inst = ctx.p.add(make_wrapper_graph(if_graph, owned_grouping, borrowed_grouping, true));
-  const Inst else_inst = ctx.p.add(make_wrapper_graph(else_graph, owned_grouping, borrowed_grouping, false));
+  const std::vector<PassBy> expr_pass_bys = pass_bys_of(copy_types, tg, ast.types[id.get()]);
+  const Inst if_inst = ctx.p.add(wrap_conditional_branch(
+    tg,
+    ast.types,
+    if_graph,
+    expr_pass_bys,
+    owned_grouping[0],
+    owned_grouping[1],
+    borrowed_grouping[0],
+    borrowed_grouping[1]));
+  const Inst else_inst = ctx.p.add(wrap_conditional_branch(
+    tg,
+    ast.types,
+    else_graph,
+    expr_pass_bys,
+    owned_grouping[0],
+    owned_grouping[2],
+    borrowed_grouping[0],
+    borrowed_grouping[2]));
   const Inst inst = ctx.p.add(IfInst{
     if_inst,
     else_inst,
@@ -289,6 +305,14 @@ add_if_expr(const AST& ast,
     value_term_sizes[0] + value_term_sizes[1],
     borrow_term_sizes[0],
     borrow_term_sizes[0] + borrow_term_sizes[1]});
+
+  std::vector<PassBy> pass_bys = pass_bys_of(copy_types, tg, ast.types[cond_id.get()]);
+
+  for(const ASTID id : owned_grouping.vec)
+    pass_bys = pass_bys_of(copy_types, tg, ast.types[id.get()], std::move(pass_bys));
+
+  for(const ASTID id : borrowed_grouping.vec)
+    pass_bys.insert(pass_bys.end(), size_of(tg, ast.types[id.get()]), PassBy::Borrow);
 
   std::vector<Oterm> output_terms = ctx.cg.add(inst, std::move(outer_terms), pass_bys, output_count);
   return {std::move(ctx), std::move(output_terms)};
@@ -384,7 +408,7 @@ FunctionGraphData create_graph(Program p,
 
   std::vector<bool> borrows = pattern.is_valid() ? borrows_of(tg, ast.types[pattern.get()]) : std::vector<bool>();
 
-  auto [captured_values, captured_borrows] = find_captures(ast, tg, binding_of, id);
+  auto [captured_values, captured_borrows] = find_captures(ast, binding_of, id);
 
   for(const ASTID id : captured_values) {
     borrows = borrows_of(tg, ast.types[id.get()], std::move(borrows));

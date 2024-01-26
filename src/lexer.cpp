@@ -13,10 +13,10 @@ constexpr auto comment_re = ctll::fixed_string{"^//[^\\n]*"};
 constexpr auto keyword_re = ctll::fixed_string{"^let|^fn|^select|^if|^else"};
 constexpr auto underscore_re = ctll::fixed_string{"^_"};
 constexpr auto ident_re = ctll::fixed_string{"^[a-zA-Z_][a-zA-Z0-9_]*"};
-constexpr auto symbol_re = ctll::fixed_string{"^\\(|^\\)|^\\{|^\\}|^,|^\\.|^:|^=|^&|^->|^;"};
+constexpr auto symbol_re = ctll::fixed_string{R"(^\(|^\)|^\{|^\}|^,|^\.|^:|^=|^&|^->|^;)"};
 
 constexpr auto int_re = ctll::fixed_string{"^-?\\d+(i8|i16|i32|i64|u8|u16|u32|u64)?"};
-constexpr auto float_re = ctll::fixed_string{"^-?\\d+?\\.\\d+f?"};
+constexpr auto float_re = ctll::fixed_string{R"(^-?\d+?\.\d+f?)"};
 constexpr auto bool_re = ctll::fixed_string{"^true|^false"};
 constexpr auto string_re = ctll::fixed_string{"^\".*?\"|^'.*?'"};
 
@@ -38,7 +38,7 @@ constexpr std::tuple MATCHERS = {
 template <typename... Ts>
 auto lex_one(const std::tuple<Ts...>& ts, std::string_view sv) {
   const std::array<std::pair<TokenType, int>, sizeof...(Ts)> matches{
-    {{std::get<0>(std::get<Ts>(MATCHERS)), (int)std::get<1>(std::get<Ts>(MATCHERS))(sv).to_view().size()}...}};
+    {{std::get<0>(std::get<Ts>(ts)), (int)std::get<1>(std::get<Ts>(ts))(sv).to_view().size()}...}};
 
   return *std::max_element(matches.begin(), matches.end(), [](const auto& a, const auto& b) {
     return a.second < b.second;

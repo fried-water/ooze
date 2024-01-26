@@ -12,7 +12,7 @@ struct BorrowedSharedBlock {
   bool value_ready = false;
 
   BorrowedSharedBlock(Promise&& p) : promise(std::move(p)) {}
-  ~BorrowedSharedBlock() { std::move(promise).send(std::move(value)); }
+  ~BorrowedSharedBlock() noexcept(false) { std::move(promise).send(std::move(value)); }
 };
 
 class BorrowedFuture {
@@ -72,7 +72,7 @@ inline std::pair<BorrowedFuture, Future> borrow(Future f, int expected_continuat
     b->value = std::move(value);
 
     {
-      std::lock_guard lk(b->mutex);
+      const std::lock_guard lk(b->mutex);
       b->value_ready = true;
     }
 

@@ -22,13 +22,13 @@ std::pair<Inst, Program> create_graph(int depth) {
   const Inst sum = program.add([](const int& x, int y) { return x + y; });
 
   auto [cg, input] = make_graph({false});
-  int num_inputs = 1 << depth;
+  const int num_inputs = 1 << depth;
   for(int i = 0; i < num_inputs; i++) {
     edges.emplace(std::pair(depth, i), cg.add(identity, {input}, {PassBy::Copy}, 1)[0]);
   }
 
   for(int layer = depth - 1; layer >= 0; layer--) {
-    int nodes_on_layer = 1 << layer;
+    const int nodes_on_layer = 1 << layer;
     for(int i = 0; i < nodes_on_layer; i++) {
       edges.emplace(std::pair(layer, i),
                     cg.add(sum,
@@ -39,8 +39,7 @@ std::pair<Inst, Program> create_graph(int depth) {
   }
 
   const Inst g = program.add(std::move(cg).finalize({edges.at(std::pair(0, 0))}, {PassBy::Copy}));
-
-  return std::pair(g, std::move(program));
+  return {g, std::move(program)};
 }
 
 } // namespace
@@ -78,7 +77,7 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
                i,
                num_executions,
                ms,
-               1000.0 * graph_size * num_executions / ms);
+               1000.0 * graph_size * num_executions / double(ms));
   }
 }
 

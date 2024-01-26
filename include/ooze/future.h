@@ -30,19 +30,12 @@ std::pair<Promise, Future> make_promise_future();
 class Promise {
 public:
   Promise() = default;
-  ~Promise() {
-    if(_block) std::move(*this).send(Any{});
-  }
 
   Promise(const Promise&) = delete;
   Promise& operator=(const Promise&) = delete;
 
   Promise(Promise&&) = default;
-  Promise& operator=(Promise&& p) {
-    this->~Promise();
-    _block = std::move(p._block);
-    return *this;
-  }
+  Promise& operator=(Promise&&) = default;
 
   void send(Any value) && {
     _block->value = std::move(value);

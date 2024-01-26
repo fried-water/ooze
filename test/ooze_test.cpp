@@ -51,7 +51,7 @@ assign(Env env, std::string_view script, std::string_view expr) {
 
       std::unordered_map<std::string, std::pair<Type, std::vector<Any>>> results;
       for(auto& [name, binding] : bindings) {
-        results.emplace(std::move(name), await(std::move(binding)));
+        results.emplace(name, await(std::move(binding)));
       }
 
       return std::tuple(std::move(results), std::move(env), Bindings{});

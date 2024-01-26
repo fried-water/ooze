@@ -43,6 +43,7 @@ class Any {
 
 public:
   Any() = default;
+  ~Any() = default;
 
   template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>
   Any(T&& t)

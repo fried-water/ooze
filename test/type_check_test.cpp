@@ -42,7 +42,7 @@ void compare_tc(R exp_result, R act_result) {
 
   BOOST_REQUIRE(act_ast.forest == exp_ast.forest);
 
-  for(ASTID id : exp_ast.forest.ids()) {
+  for(const ASTID id : exp_ast.forest.ids()) {
     const Type exp_type = exp_ast.types[id.get()];
     const Type act_type = act_ast.types[id.get()];
 

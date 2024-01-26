@@ -77,7 +77,7 @@ public:
   constexpr ResultStorage(Ts... ts) : _state(std::move(ts)...) {}
   constexpr ResultStorage(Failure<E> e, Ts... ts) : _error(std::move(e.value)), _state(std::move(ts)...) {}
 
-  constexpr std::tuple<> value() const { return std::tuple(); }
+  constexpr std::tuple<> value() const { return {}; }
 
   constexpr E&& error() && { return std::move(*_error); }
   constexpr E& error() & { return *_error; }

@@ -25,9 +25,9 @@ bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& 
       is_copyable = is_copyable && copy_types.find(tg.get<TypeID>(t)) != copy_types.end();
       return false;
     case TypeTag::Fn: return false;
-    case TypeTag::Floating: assert(false); return false;
-    case TypeTag::Borrow: assert(false); return false;
     case TypeTag::Tuple: return true;
+    case TypeTag::Floating:
+    case TypeTag::Borrow: assert(false); return false;
     }
     assert(false);
     return true;
@@ -69,7 +69,6 @@ type_check(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& native_t
 }
 
 std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_function(
-  Span<std::string_view> srcs,
   const AST& ast,
   const TypeGraph& tg,
   const Map<ASTID, ASTID>& binding_of,
@@ -85,7 +84,7 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   const Inst graph_inst = p2.add(std::move(fg));
 
   std::vector<BorrowedFuture> borrowed;
-  for(ASTID id : borrow_inputs) {
+  for(const ASTID id : borrow_inputs) {
     const auto it = bindings.find(id);
     assert(it != bindings.end());
     borrowed = transform_to_vec(
@@ -93,16 +92,14 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   }
 
   std::vector<Future> futures;
-  for(ASTID id : value_inputs) {
+  for(const ASTID id : value_inputs) {
     if(const auto it = bindings.find(id); it == bindings.end()) {
       const auto fn_it = functions.find(id);
       assert(fn_it != functions.end());
-      futures.push_back(Future(Any(fn_it->second)));
+      futures.emplace_back(Any(fn_it->second));
     } else if(is_binding_copyable(tg, copy_types, ast.types[id.get()])) {
-      for(AsyncValue& b : it->second) {
-        futures = transform_to_vec(
-          it->second, [](AsyncValue& v) { return borrow(v).then([](const Any& a) { return a; }); }, std::move(futures));
-      }
+      futures = transform_to_vec(
+        it->second, [](AsyncValue& v) { return borrow(v).then([](const Any& a) { return a; }); }, std::move(futures));
     } else {
       futures = transform_to_vec(
         std::move(it->second), [](AsyncValue v) { return take(std::move(v)); }, std::move(futures));
@@ -152,7 +149,6 @@ auto run_or_assign(ExecutorRef ex,
 
   std::vector<AsyncValue> values;
   std::tie(values, bindings) = run_function(
-    srcs,
     ast,
     tg,
     binding_of,
@@ -174,14 +170,14 @@ Env generate_functions(
   Map<Type, Type> to_env_type;
 
   // type graph was copied from env initially, so all those nodes should be identical
-  for(Type t : id_range(Type{env.tg.num_nodes()})) {
+  for(const Type t : id_range(Type{env.tg.num_nodes()})) {
     to_env_type.emplace(t, t);
   }
 
   Map<ASTID, ASTID> to_env_id;
   std::vector<std::pair<ASTID, Inst>> fns;
 
-  for(ASTID root : ast.forest.root_ids()) {
+  for(const ASTID root : ast.forest.root_ids()) {
     const auto [ident_id, value_id] = ast.forest.child_ids(root).take<2>();
 
     if(ast.forest[value_id] == ASTTag::Fn) {
@@ -231,7 +227,7 @@ append_global_bindings(std::string env_src, AST ast, Bindings str_bindings) {
                      std::move(binding.values));
   }
 
-  return std::tuple(std::move(env_src), std::move(ast), std::move(bindings));
+  return {std::move(env_src), std::move(ast), std::move(bindings)};
 }
 
 std::tuple<Env, Bindings> to_str_bindings(
@@ -246,7 +242,7 @@ std::tuple<Env, Bindings> to_str_bindings(
     str_bindings.emplace(std::string(sv(srcs, ast.srcs[id.get()])),
                          Binding{copy_type(srcs, env, to_env_type, tg, ast.types[id.get()]), std::move(values)});
   }
-  return std::tuple(std::move(env), std::move(str_bindings));
+  return {std::move(env), std::move(str_bindings)};
 }
 
 } // namespace
@@ -302,7 +298,7 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
            [&srcs](SrcID src, AST ast, TypeGraph tg) {
              return parse(std::move(ast), std::move(tg), src, srcs[src.get()]);
            },
-           id_range(SrcID(1), SrcID(srcs.size())),
+           id_range(SrcID(1), SrcID(int(srcs.size()))),
            env.ast,
            env.tg)
     .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
@@ -311,7 +307,7 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
       });
     })
     .and_then([&](AST ast, TypeGraph tg) {
-      TypeCache tc = create_type_cache(tg);
+      const TypeCache tc = create_type_cache(tg);
       return sema(srcs, tc, env.native_types, std::move(ast), std::move(tg));
     })
     .append_state(std::move(env))

@@ -26,7 +26,7 @@ StringResult<void> write_binary_file(const std::string& filename, Span<std::byte
   try {
     return check_is_not_directory(filename).map([&]() {
       std::basic_ofstream<char> file(filename, std::ios::binary);
-      file.write((const char*)bytes.begin(), bytes.size());
+      file.write((const char*)bytes.begin(), int(bytes.size()));
     });
   } catch(const std::exception& ex) {
     return err(ex.what());
@@ -51,7 +51,7 @@ StringResult<std::vector<std::byte>> read_binary_file(const std::string& filenam
 StringResult<std::string> read_text_file(const std::string& filename) {
   try {
     return check_file_exists(filename).and_then([&]() { return check_is_not_directory(filename); }).map([&]() {
-      std::ifstream file(filename);
+      const std::ifstream file(filename);
 
       std::stringstream sstr;
       sstr << file.rdbuf();

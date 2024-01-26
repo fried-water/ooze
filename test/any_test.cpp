@@ -58,7 +58,7 @@ BOOST_AUTO_TEST_CASE(move_only) {
   BOOST_CHECK(type_id(knot::Type<MoveOnlyType>{}) == any.type());
   BOOST_CHECK(MoveOnlyType() == any_cast<MoveOnlyType>(any));
 
-  BOOST_CHECK_THROW(Any a = any, BadCopy);
+  BOOST_CHECK_THROW((Any(any)), BadCopy);
 
   Any any2 = std::move(any);
 
@@ -67,7 +67,7 @@ BOOST_AUTO_TEST_CASE(move_only) {
   BOOST_CHECK(type_id(knot::Type<MoveOnlyType>{}) == any2.type());
   BOOST_CHECK(MoveOnlyType() == any_cast<MoveOnlyType>(any2));
 
-  MoveOnlyType m = any_cast<MoveOnlyType>(std::move(any2));
+  const MoveOnlyType m = any_cast<MoveOnlyType>(std::move(any2));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
