@@ -52,8 +52,8 @@ Type copy_type(Span<std::string_view> srcs, Env& env, Map<Type, Type>& m, const 
 }
 
 template <typename Parser>
-ContextualResult<CallGraphData, AST, TypeGraph>
-type_check(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& native_types, AST ast, TypeGraph tg) {
+ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph>
+sema(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& native_types, AST ast, TypeGraph tg) {
   assert(srcs.size() == 2);
 
   return p(std::move(ast), std::move(tg), SrcID{1}, srcs[1])
@@ -166,7 +166,7 @@ auto run_or_assign(ExecutorRef ex,
 }
 
 Env generate_functions(
-  Span<std::string_view> srcs, Env env, const AST& ast, const TypeGraph& tg, const CallGraphData& cg) {
+  Span<std::string_view> srcs, Env env, const AST& ast, const TypeGraph& tg, const Map<ASTID, ASTID>& overloads) {
   Map<Type, Type> to_env_type;
 
   // type graph was copied from env initially, so all those nodes should be identical
@@ -193,8 +193,7 @@ Env generate_functions(
   }
 
   for(const auto [id, inst] : fns) {
-    FunctionGraphData fg_data =
-      create_graph(std::move(env.program), ast, tg, env.native_types.copyable, cg.binding_of, id);
+    FunctionGraphData fg_data = create_graph(std::move(env.program), ast, tg, env.native_types.copyable, overloads, id);
 
     env.program = std::move(fg_data.program);
 
@@ -249,7 +248,7 @@ std::tuple<Env, Bindings> to_str_bindings(
 
 StringResult<void> type_check_expr(const Env& env, std::string_view expr) {
   const auto srcs = make_sv_array(env.src, expr);
-  return type_check(parse_expr, srcs, env.native_types, env.ast, env.tg)
+  return sema(parse_expr, srcs, env.native_types, env.ast, env.tg)
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
@@ -257,7 +256,7 @@ StringResult<void> type_check_expr(const Env& env, std::string_view expr) {
 
 StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
   const auto srcs = make_sv_array(env.src, fn);
-  return type_check(parse_function, srcs, env.native_types, env.ast, env.tg)
+  return sema(parse_function, srcs, env.native_types, env.ast, env.tg)
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
@@ -274,7 +273,7 @@ StringResult<void> type_check_binding(const Env& env, std::string_view binding) 
     .and_then([&](AST ast, TypeGraph tg) {
       const ASTID pattern_root{i32(ast.forest.size() - 1)};
       if(ast.forest[pattern_root] != ASTTag::PatternIdent) {
-        return ContextualResult<CallGraphData, AST, TypeGraph>{
+        return ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph>{
           Failure{make_vector(ContextualError{ast.srcs[pattern_root.get()], "not a binding"})},
           std::move(ast),
           std::move(tg)};
@@ -311,8 +310,8 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
       return sema(srcs, tc, env.native_types, std::move(ast), std::move(tg));
     })
     .append_state(std::move(env))
-    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env) {
-      env = generate_functions(srcs, std::move(env), ast, tg, cg);
+    .map([&](Map<ASTID, ASTID> overloads, AST ast, TypeGraph tg, Env env) {
+      env = generate_functions(srcs, std::move(env), ast, tg, overloads);
       return std::tuple(std::move(ast), std::move(tg), std::move(env));
     })
     .map_state([](AST, TypeGraph, Env env) { return env; })
@@ -328,22 +327,23 @@ StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_b
 
   const auto srcs = make_sv_array(env_src, expr);
 
-  return type_check(parse_repl, srcs, env.native_types, std::move(ast), env.tg)
+  return sema(parse_repl, srcs, env.native_types, std::move(ast), env.tg)
     .append_state(std::move(env), std::move(bindings))
-    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
-      Binding result;
-      std::tie(result, env, bindings) = run_or_assign(
-        ex,
-        srcs,
-        ast,
-        tg,
-        cg.binding_of,
-        to_env_type,
-        std::move(env),
-        std::move(bindings),
-        ASTID{i32(ast.forest.size() - 1)});
-      return std::tuple(std::move(result), std::move(ast), std::move(tg), std::move(env), std::move(bindings));
-    })
+    .map(
+      [&](Map<ASTID, ASTID> overloads, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
+        Binding result;
+        std::tie(result, env, bindings) = run_or_assign(
+          ex,
+          srcs,
+          ast,
+          tg,
+          overloads,
+          to_env_type,
+          std::move(env),
+          std::move(bindings),
+          ASTID{i32(ast.forest.size() - 1)});
+        return std::tuple(std::move(result), std::move(ast), std::move(tg), std::move(env), std::move(bindings));
+      })
     .map_state([&](AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       return to_str_bindings(srcs, ast, tg, to_env_type, std::move(env), std::move(bindings));
     })
@@ -361,11 +361,11 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
 
   const auto srcs = make_sv_array(env_src, expr);
 
-  return type_check(parse_repl, srcs, env.native_types, std::move(ast), env.tg)
-    .and_then([&](CallGraphData cg, AST ast, TypeGraph tg) {
+  return sema(parse_repl, srcs, env.native_types, std::move(ast), env.tg)
+    .and_then([&](Map<ASTID, ASTID> overloads, AST ast, TypeGraph tg) {
       const auto id = ASTID{i32(ast.forest.size() - 1)};
       if(ast.forest[id] == ASTTag::Assignment) {
-        return success(knot::Type<std::vector<ContextualError>>{}, std::move(cg), std::move(ast), std::move(tg));
+        return success(knot::Type<std::vector<ContextualError>>{}, std::move(overloads), std::move(ast), std::move(tg));
       } else {
         const Type expr_type = ast.types[id.get()];
         const Type borrow_type = tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});
@@ -384,20 +384,21 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
       }
     })
     .append_state(std::move(env), std::move(bindings))
-    .map([&](CallGraphData cg, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
-      Binding result;
-      std::tie(result, env, bindings) = run_or_assign(
-        ex,
-        srcs,
-        ast,
-        tg,
-        cg.binding_of,
-        to_env_type,
-        std::move(env),
-        std::move(bindings),
-        ASTID{i32(ast.forest.size() - 1)});
-      return std::tuple(std::move(result), std::move(ast), std::move(tg), std::move(env), std::move(bindings));
-    })
+    .map(
+      [&](Map<ASTID, ASTID> overloads, AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
+        Binding result;
+        std::tie(result, env, bindings) = run_or_assign(
+          ex,
+          srcs,
+          ast,
+          tg,
+          overloads,
+          to_env_type,
+          std::move(env),
+          std::move(bindings),
+          ASTID{i32(ast.forest.size() - 1)});
+        return std::tuple(std::move(result), std::move(ast), std::move(tg), std::move(env), std::move(bindings));
+      })
     .map_state([&](AST ast, TypeGraph tg, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       return to_str_bindings(srcs, ast, tg, to_env_type, std::move(env), std::move(bindings));
     })
