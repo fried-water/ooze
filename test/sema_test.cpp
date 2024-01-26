@@ -249,6 +249,32 @@ BOOST_AUTO_TEST_CASE(unresolved_env_fn) {
   check_eq("errors", exp_errors, check_error(run_sema(create_test_env({}, {"f: fn() -> _"}), "")));
 }
 
+BOOST_AUTO_TEST_CASE(ambiguous_overload) {
+  const TestEnv env = basic_test_env("f: fn() -> i32", "f: fn() -> f32", "g: fn(i32) -> ()", "g: fn(f32) -> ()");
+
+  const std::vector<ContextualError> exp_errors = {
+    {{SrcID{1}, {15, 16}},
+     "ambiguous overload",
+     {"deduced fn(_) -> () [2 candidate(s)]", "  fn(i32) -> ()", "  fn(f32) -> ()"}},
+    {{SrcID{1}, {17, 18}},
+     "ambiguous overload",
+     {"deduced fn() -> _ [2 candidate(s)]", "  fn() -> i32", "  fn() -> f32"}}};
+
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn h() -> () = g(f())")));
+}
+
+BOOST_AUTO_TEST_CASE(no_overload) {
+  const TestEnv env = basic_test_env("f: fn() -> f32", "f: fn() -> string");
+
+  const std::vector<ContextualError> exp_errors = {
+    {{SrcID{1}, {16, 17}},
+     "no matching overload found",
+     {"deduced fn() -> i32 [2 candidate(s)]", "  fn() -> f32", "  fn() -> string"}},
+  };
+
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn g() -> i32 = f()")));
+}
+
 BOOST_AUTO_TEST_CASE(borrow_partial) {
   const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
   check_eq("errors", exp_errors, check_error(run_sema({}, "fn f(x) -> _ { let _ = &x; () }")));
