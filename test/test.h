@@ -51,7 +51,9 @@
 #define check_range(expected, actual)                                                                                  \
   [](const auto& e, const auto& a) {                                                                                   \
     BOOST_REQUIRE_EQUAL(std::distance(e.begin(), e.end()), std::distance(a.begin(), a.end()));                         \
-    for(int i = 0; i < int(e.size()); ++i) BOOST_CHECK_EQUAL(e[i], a[i]);                                              \
+    auto exp_it = e.begin();                                                                                           \
+    auto act_it = a.begin();                                                                                           \
+    while(exp_it != e.end()) BOOST_CHECK_EQUAL(*exp_it++, *act_it++);                                                  \
   }(expected, actual)
 
 #define check_any(expected, actual)                                                                                    \

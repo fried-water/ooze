@@ -203,4 +203,22 @@ constexpr auto fail(knot::Type<T>, E e, Ts... ts) {
   }
 }
 
+template <typename T, typename E, typename... Ts, typename F, typename Range, typename AddVal, typename AddErr>
+Result<T, E, Ts...> accumulate_result(Range&& range, Result<T, E, Ts...> result, F f, AddVal add_val, AddErr add_err) {
+  for(auto&& ele : range) {
+    if(Result<T, E, Ts...> temp_result = applied(f)(std::tuple_cat(std::tuple(ele), std::move(result.state())));
+       result && !temp_result) {
+      result = std::move(temp_result);
+    } else if(result && temp_result) {
+      result.value() = add_val(std::move(*result), std::move(*temp_result));
+      result.state() = std::move(temp_result).state();
+    } else if(!result && !temp_result) {
+      result.error() = add_err(std::move(result).error(), std::move(temp_result).error());
+      result.state() = std::move(temp_result).state();
+    }
+  }
+
+  return result;
+}
+
 } // namespace ooze

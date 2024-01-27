@@ -1,5 +1,6 @@
 #include "test.h"
 
+#include "frontend_helpers.h"
 #include "parser.h"
 #include "pretty_print.h"
 #include "sema.h"
@@ -12,26 +13,14 @@ template <typename Parser>
 void test(Parser p, std::string_view exp, std::string_view src) {
   const auto srcs = make_sv_array(src);
   const TypeNames names{{"T", TypeID{1}}};
-
-  const auto [ast, tg] = check_result(p({}, {}, SrcID{0}, src).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-    return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-      return std::tuple(std::move(ast), std::move(tg));
-    });
-  }));
-
+  const auto [ast, tg] = check_result(parse_and_name_resolution(p, srcs, names, {}, {}, SrcID{0}));
   BOOST_CHECK_EQUAL(exp, pretty_print(srcs, ast, tg, names));
 }
 
 void test_type(std::string_view exp, std::string_view src) {
   const auto srcs = make_sv_array(src);
   const TypeNames names{{"T", TypeID{1}}};
-
-  const auto [ast, tg] =
-    check_result(parse_type({}, {}, SrcID{0}, src).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
-    }));
+  const auto [ast, tg] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, {}, SrcID{0}));
   BOOST_CHECK_EQUAL(exp, pretty_print(srcs, tg, names, Type(tg.num_nodes() - 1)));
 }
 
@@ -131,14 +120,7 @@ BOOST_AUTO_TEST_CASE(ast) {
 BOOST_AUTO_TEST_CASE(fn_type) {
   const auto srcs = make_sv_array("fn(T) -> T");
   const TypeNames names{{"T", TypeID{1}}};
-
-  const TypeGraph tg =
-    std::get<1>(check_result(parse_type({}, {}, SrcID{0}, srcs[0]).and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
-    })));
-
+  const auto [ast, tg] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, {}, SrcID{0}));
   BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, tg, names, Type(tg.num_nodes() - 1)));
 }
 

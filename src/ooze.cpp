@@ -57,8 +57,8 @@ sema(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& native_types, 
   assert(srcs.size() == 2);
 
   return p(std::move(ast), std::move(tg), SrcID{1}, srcs[1])
-    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+    .and_then([&](auto pr, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, native_types.names, pr.type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
         return std::tuple(std::move(ast), std::move(tg));
       });
     })
@@ -265,10 +265,9 @@ StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
 StringResult<void> type_check_binding(const Env& env, std::string_view binding) {
   const auto srcs = make_sv_array(env.src, binding);
   return parse_binding(env.ast, env.tg, SrcID{1}, srcs[1])
-    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
+    .and_then([&](ParserResult<ASTID> pr, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, env.native_types.names, pr.type_srcs, std::move(tg))
+        .map_state([&](TypeGraph tg) { return std::tuple(std::move(ast), std::move(tg)); });
     })
     .and_then([&](AST ast, TypeGraph tg) {
       const ASTID pattern_root{i32(ast.forest.size() - 1)};
@@ -293,17 +292,23 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
   const std::string env_src = env.src;
   const auto srcs = flatten(make_sv_array(env_src), files);
 
-  return accumulate_errors<std::pair<Type, SrcRef>, ContextualError>(
+  return accumulate_result(
+           id_range(SrcID(1), SrcID(int(srcs.size()))),
+           ContextualResult<ParserResult<std::vector<ASTID>>, AST, TypeGraph>{
+             ParserResult<std::vector<ASTID>>{}, env.ast, env.tg},
            [&srcs](SrcID src, AST ast, TypeGraph tg) {
              return parse(std::move(ast), std::move(tg), src, srcs[src.get()]);
            },
-           id_range(SrcID(1), SrcID(int(srcs.size()))),
-           env.ast,
-           env.tg)
-    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, env.native_types.names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
+           [](auto x, auto y) {
+             return ParserResult<std::vector<ASTID>>{
+               to_vec(std::move(y.parsed), std::move(x.parsed)),
+               to_vec(std::move(y.type_srcs), std::move(x.type_srcs)),
+             };
+           },
+           [](auto x, auto y) { return to_vec(std::move(y), std::move(x)); })
+    .and_then([&](ParserResult<std::vector<ASTID>> pr, AST ast, TypeGraph tg) {
+      return type_name_resolution(srcs, env.native_types.names, pr.type_srcs, std::move(tg))
+        .map_state([&](TypeGraph tg) { return std::tuple(std::move(ast), std::move(tg)); });
     })
     .and_then([&](AST ast, TypeGraph tg) {
       const TypeCache tc = create_type_cache(tg);

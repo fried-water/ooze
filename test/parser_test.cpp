@@ -11,11 +11,21 @@ namespace {
      const TypeGraph& exp_tg,                                                                                          \
      const std::vector<std::pair<Type, SrcRef>>& exp_type_srcs,                                                        \
      auto result) {                                                                                                    \
-    const auto [type_srcs, ast, tg] = check_result(std::move(result));                                                 \
-    check_eq("type_srcs", exp_type_srcs, type_srcs);                                                                   \
+    const auto [pd, ast, tg] = check_result(std::move(result));                                                        \
+    check_eq("type_srcs", exp_type_srcs, pd.type_srcs);                                                                \
     check_eq("ast", exp_ast, ast);                                                                                     \
     check_eq("tg", exp_tg, tg);                                                                                        \
+    check_range(ast.forest.root_ids(), std::array{pd.parsed});                                                         \
   }(_EXP_AST, _EXP_TYPES, _EXP_SRCS, _ACT)
+
+#define check_parse_type(_EXP_TYPES, _EXP_SRCS, _SRC)                                                                  \
+  [](const TypeGraph& exp_tg, const std::vector<std::pair<Type, SrcRef>>& exp_type_srcs, std::string_view src) {       \
+    const auto [pd, ast, tg] = check_result(parse_type({}, {}, {}, src));                                              \
+    check_eq("type_srcs", exp_type_srcs, pd.type_srcs);                                                                \
+    check_eq("ast", AST{}, ast);                                                                                       \
+    check_eq("tg", exp_tg, tg);                                                                                        \
+    check_eq("type", Type(tg.num_nodes() - 1), pd.parsed);                                                             \
+  }(_EXP_TYPES, _EXP_SRCS, _SRC)
 
 template <typename T, typename... Ts>
 void check_single_error(ContextualError expected, ContextualResult<T, Ts...> result) {
@@ -122,61 +132,61 @@ BOOST_AUTO_TEST_CASE(pattern_tuple_nested) {
 BOOST_AUTO_TEST_CASE(type_ident) {
   const std::string_view src = "A";
   const TypeGraph tg = make_tg({TypeTag::Leaf});
-  check_pass({}, tg, type_refs(src, {{0, "A"}}), parse_type({}, {}, {}, src));
+  check_parse_type(tg, type_refs(src, {{0, "A"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(type_floating) {
   const std::string_view src = "_";
   const TypeGraph tg = make_tg({TypeTag::Floating});
-  check_pass({}, tg, {}, parse_type({}, {}, {}, src));
+  check_parse_type(tg, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(type_borrowed) {
   const std::string_view src = "&A";
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Borrow}, {{}, {0}});
-  check_pass({}, tg, type_refs(src, {{0, "A"}}), parse_type({}, {}, {}, src));
+  check_parse_type(tg, type_refs(src, {{0, "A"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(type_borrowed_floating) {
   const std::string_view src = "&_";
   const TypeGraph tg = make_tg({TypeTag::Floating, TypeTag::Borrow}, {{}, {0}});
-  check_pass({}, tg, {}, parse_type({}, {}, {}, src));
+  check_parse_type(tg, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple) {
   const std::string_view src = "()";
   const TypeGraph tg = make_tg({TypeTag::Tuple});
-  check_pass({}, tg, {}, parse_type({}, {}, {}, src));
+  check_parse_type(tg, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple1) {
   const std::string_view src = "(A)";
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple}, {{}, {0}});
-  check_pass({}, tg, type_refs(src, {{0, "A"}}), parse_type({}, {}, {}, src));
+  check_parse_type(tg, type_refs(src, {{0, "A"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple2) {
   const std::string_view src = "(A, _)";
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Floating, TypeTag::Tuple}, {{}, {}, {0, 1}});
-  check_pass({}, tg, type_refs(src, {{0, "A"}}), parse_type({}, {}, {}, src));
+  check_parse_type(tg, type_refs(src, {{0, "A"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(type_tuple_nested) {
   const std::string_view src = "(())";
   const TypeGraph tg = make_tg({TypeTag::Tuple, TypeTag::Tuple}, {{}, {0}});
-  check_pass({}, tg, {}, parse_type({}, {}, {}, src));
+  check_parse_type(tg, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(type_fn) {
   const std::string_view src = "fn() -> A";
   const TypeGraph tg = make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {}, {0, 1}});
-  check_pass({}, tg, type_refs(src, {{1, "A"}}), parse_type({}, {}, {}, src));
+  check_parse_type(tg, type_refs(src, {{1, "A"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(type_fn_arg) {
   const std::string_view src = "fn(A) -> B";
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {0}, {}, {1, 2}});
-  check_pass({}, tg, type_refs(src, {{0, "A"}, {2, "B"}}), parse_type({}, {}, {}, src));
+  check_parse_type(tg, type_refs(src, {{0, "A"}, {2, "B"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(expr_literal) {
@@ -481,20 +491,27 @@ BOOST_AUTO_TEST_CASE(fn_return_fn) {
                    as_invalid_refs({{0, 2}, {18, 19}, {0, 19}}),
                    {Type{-1}, Type{2}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {}, {0, 1}});
+
   check_pass(ast, tg, type_refs(src, {{1, "T"}}), parse_fn({}, {}, {}, src));
 }
 
-BOOST_AUTO_TEST_CASE(ast_empty) { check_pass({}, {}, {}, parse({}, {}, {}, "")); }
+BOOST_AUTO_TEST_CASE(ast_empty) {
+  const auto res = check_result(parse({}, {}, {}, ""));
+  check_eq("parsed", decltype(res){}, res);
+}
 
 BOOST_AUTO_TEST_CASE(ast_fn) {
   const std::string_view src = "fn f() -> T = x";
-  const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
-                               {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
-                               {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}}),
-                   as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}}),
-                   {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}}};
-  const TypeGraph tg = make_tg({TypeTag::Leaf});
-  check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse({}, {}, {}, src));
+  const AST exp_ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
+                                   {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
+                                   {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}}),
+                       as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}}),
+                       {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}}};
+  const auto [pr, act_ast, act_tg] = check_result(parse({}, {}, {}, src));
+  check_eq("ast", exp_ast, act_ast);
+  check_eq("tg", make_tg({TypeTag::Leaf}), act_tg);
+  check_eq("type_srcs", type_refs(src, {{0, "T"}}), pr.type_srcs);
+  check_range(act_ast.forest.root_ids(), pr.parsed);
 }
 
 BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
@@ -508,53 +525,60 @@ BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
   f.merge_path(f2, std::array{ASTTag::PatternIdent});
   f.merge_path(f2, std::array{ASTTag::Fn, ASTTag::PatternTuple});
   f.merge_path(f2, std::array{ASTTag::Fn, ASTTag::ExprIdent});
-  const AST ast = {
+  const AST exp_ast = {
     std::move(f),
     as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}, {19, 20}, {20, 22}, {30, 31}, {20, 31}, {16, 31}}),
     {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}, Type{-1}, Type{1}, Type{-1}, Type{-1}}};
 
-  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}});
-  const std::vector<std::pair<Type, SrcRef>> type_srcs = {
+  const TypeGraph exp_tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}});
+  const std::vector<std::pair<Type, SrcRef>> exp_type_srcs = {
     {Type{0}, SrcRef{SrcID{}, {10, 11}}}, {Type{1}, SrcRef{SrcID{}, {26, 27}}}};
-  check_pass(ast, tg, type_srcs, parse({}, {}, {}, src));
+
+  const auto [pr, act_ast, act_tg] = check_result(parse({}, {}, {}, src));
+  check_eq("ast", exp_ast, act_ast);
+  check_eq("tg", exp_tg, act_tg);
+  check_eq("type_srcs", exp_type_srcs, pr.type_srcs);
+  check_range(act_ast.forest.root_ids(), pr.parsed);
 }
 
 BOOST_AUTO_TEST_CASE(repl_expr) {
   const std::string_view src = "x";
 
-  const auto [expr_type_srcs, exp_ast, exp_tg] = check_result(parse_expr({}, {}, {}, src));
-  const auto [act_type_srcs, act_ast, act_tg] = check_result(parse_repl({}, {}, {}, src));
+  const auto [expr_pr, exp_ast, exp_tg] = check_result(parse_expr({}, {}, {}, src));
+  const auto [act_pr, act_ast, act_tg] = check_result(parse_repl({}, {}, {}, src));
 
-  BOOST_CHECK(expr_type_srcs == act_type_srcs);
-  BOOST_CHECK(exp_ast == act_ast);
-  BOOST_CHECK(exp_tg == act_tg);
+  check_eq("ast", exp_ast, act_ast);
+  check_eq("tg", exp_tg, act_tg);
+  check_eq("pr", expr_pr, act_pr);
 }
 
 BOOST_AUTO_TEST_CASE(repl_assignment) {
   const std::string_view src = "let x: T = y";
 
-  const auto [expr_type_srcs, exp_ast, exp_tg] = check_result(parse_assignment({}, {}, {}, src));
-  const auto [act_type_srcs, act_ast, act_tg] = check_result(parse_repl({}, {}, {}, src));
+  const auto [expr_pr, exp_ast, exp_tg] = check_result(parse_assignment({}, {}, {}, src));
+  const auto [act_pr, act_ast, act_tg] = check_result(parse_repl({}, {}, {}, src));
 
-  BOOST_CHECK(expr_type_srcs == act_type_srcs);
-  BOOST_CHECK(exp_ast == act_ast);
-  BOOST_CHECK(exp_tg == act_tg);
+  check_eq("ast", exp_ast, act_ast);
+  check_eq("tg", exp_tg, act_tg);
+  check_eq("pr", expr_pr, act_pr);
 }
 
 BOOST_AUTO_TEST_CASE(parse_consecutive) {
   AST ast;
   TypeGraph tg;
-  std::vector<std::pair<Type, SrcRef>> type_srcs;
-  std::tie(type_srcs, ast, tg) = check_result(parse({}, {}, SrcID{0}, "fn f() -> T = x"));
-  std::tie(type_srcs, ast, tg) = check_result(parse(std::move(ast), std::move(tg), SrcID{0}, "fn g() -> T = y"));
+  ParserResult<std::vector<ASTID>> pr1;
+  ParserResult<std::vector<ASTID>> pr2;
+  std::tie(pr1, ast, tg) = check_result(parse({}, {}, SrcID{0}, "fn f() -> T = x"));
+  std::tie(pr2, ast, tg) = check_result(parse(std::move(ast), std::move(tg), SrcID{0}, "fn g() -> T = y"));
 
-  auto [exp_type_srcs, exp_ast, exp_tg] = check_result(parse({}, {}, SrcID{0}, "fn f() -> T = x fn g() -> T = y"));
+  auto [exp_pd, exp_ast, exp_tg] = check_result(parse({}, {}, SrcID{0}, "fn f() -> T = x fn g() -> T = y"));
 
-  ast.srcs = {};
-  exp_ast.srcs = {};
+  BOOST_CHECK_EQUAL(1, pr1.parsed.size());
+  BOOST_CHECK_EQUAL(1, pr2.parsed.size());
+  check_eq("roots", to_vec(std::move(pr2.parsed), std::move(pr1.parsed)), exp_pd.parsed);
 
-  BOOST_CHECK(exp_ast == ast);
-  BOOST_CHECK(exp_tg == tg);
+  check_eq("forest", exp_ast.forest, ast.forest);
+  check_eq("tg", exp_tg, tg);
 }
 
 BOOST_AUTO_TEST_CASE(no_fn) { check_single_error({{{}, {0, 1}}, "expected 'fn'"}, parse({}, {}, {}, "f")); }

@@ -8,12 +8,11 @@ namespace ooze {
 template <typename Parser>
 auto parse_and_name_resolution(
   Parser p, Span<std::string_view> srcs, const TypeNames& names, AST ast, TypeGraph tg, SrcID src_id) {
-  return p(std::move(ast), std::move(tg), src_id, srcs[src_id.get()])
-    .and_then([&](auto type_srcs, AST ast, TypeGraph tg) {
-      return type_name_resolution(srcs, names, type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
-        return std::tuple(std::move(ast), std::move(tg));
-      });
+  return p(std::move(ast), std::move(tg), src_id, srcs[src_id.get()]).and_then([&](auto pr, AST ast, TypeGraph tg) {
+    return type_name_resolution(srcs, names, pr.type_srcs, std::move(tg)).map_state([&](TypeGraph tg) {
+      return std::tuple(std::move(ast), std::move(tg));
     });
+  });
 }
 
 inline NativeTypeInfo basic_types() {
@@ -35,13 +34,12 @@ inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view>
   std::string src;
   AST ast;
   TypeGraph tg;
-
-  std::vector<std::pair<Type, SrcRef>> type_srcs;
+  ParserResult<ASTID> pr;
 
   for(std::string_view binding : globals) {
     const auto srcs = make_sv_array(binding);
-    std::tie(type_srcs, ast, tg) = check_result(parse_binding(std::move(ast), std::move(tg), SrcID{0}, binding));
-    tg = check_result(type_name_resolution(srcs, types.names, type_srcs, std::move(tg)));
+    std::tie(pr, ast, tg) = check_result(parse_binding(std::move(ast), std::move(tg), SrcID{0}, binding));
+    tg = check_result(type_name_resolution(srcs, types.names, pr.type_srcs, std::move(tg)));
 
     const ASTID pattern_id{i32(ast.forest.size() - 1)};
 
