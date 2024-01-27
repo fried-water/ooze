@@ -462,7 +462,7 @@ BOOST_AUTO_TEST_CASE(fn) {
                    slices(src, {"()", "x", "() -> T = x"}),
                    {Type{-1}, Type{0}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf});
-  check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_function({}, {}, {}, src));
+  check_pass(ast, tg, type_refs(src, {{0, "T"}}), parse_fn({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(fn_one_arg) {
@@ -472,7 +472,7 @@ BOOST_AUTO_TEST_CASE(fn_one_arg) {
     slices(src, {"x", "(x: T1)", "y", "(x: T1) -> T2 = y"}),
     {Type{0}, Type{-1}, Type{1}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}});
-  check_pass(ast, tg, type_refs(src, {{0, "T1"}, {1, "T2"}}), parse_function({}, {}, {}, src));
+  check_pass(ast, tg, type_refs(src, {{0, "T1"}, {1, "T2"}}), parse_fn({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(fn_return_fn) {
@@ -481,7 +481,7 @@ BOOST_AUTO_TEST_CASE(fn_return_fn) {
                    as_invalid_refs({{0, 2}, {18, 19}, {0, 19}}),
                    {Type{-1}, Type{2}, Type{-1}}};
   const TypeGraph tg = make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {}, {0, 1}});
-  check_pass(ast, tg, type_refs(src, {{1, "T"}}), parse_function({}, {}, {}, src));
+  check_pass(ast, tg, type_refs(src, {{1, "T"}}), parse_fn({}, {}, {}, src));
 }
 
 BOOST_AUTO_TEST_CASE(ast_empty) { check_pass({}, {}, {}, parse({}, {}, {}, "")); }
@@ -570,7 +570,7 @@ BOOST_AUTO_TEST_CASE(no_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(no_return_type) {
-  check_single_error({{{}, {6, 7}}, "expected '&'" /* ? */}, parse_function({}, {}, {}, "() -> { 1 }"));
+  check_single_error({{{}, {6, 7}}, "expected '&'" /* ? */}, parse_fn({}, {}, {}, "() -> { 1 }"));
 }
 
 BOOST_AUTO_TEST_CASE(fn_no_tupl) {

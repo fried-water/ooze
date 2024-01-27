@@ -256,7 +256,7 @@ StringResult<void> type_check_expr(const Env& env, std::string_view expr) {
 
 StringResult<void> type_check_fn(const Env& env, std::string_view fn) {
   const auto srcs = make_sv_array(env.src, fn);
-  return sema(parse_function, srcs, env.native_types, env.ast, env.tg)
+  return sema(parse_fn, srcs, env.native_types, env.ast, env.tg)
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });

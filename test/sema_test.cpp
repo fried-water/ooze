@@ -11,7 +11,7 @@ namespace ooze {
 namespace {
 
 auto run_nr(const NativeTypeInfo& types, std::string_view src) {
-  return parse_and_name_resolution(parse_function, make_sv_array(src), types.names, {}, {}, SrcID{0})
+  return parse_and_name_resolution(parse_fn, make_sv_array(src), types.names, {}, {}, SrcID{0})
     .map_state([](AST, TypeGraph tg) { return std::get<2>(std::move(tg).decompose()); });
 }
 
@@ -347,7 +347,7 @@ BOOST_AUTO_TEST_CASE(nested) {
 BOOST_AUTO_TEST_CASE(fn) {
   // x, (), x, fn
   const auto srcs = make_sv_array("(x) -> T = x");
-  const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
+  const AST ast = std::get<1>(check_result(parse_fn({}, {}, SrcID{0}, srcs[0])));
   const Graph<ASTID> ident_graph = check_result(calculate_ident_graph(srcs, ast));
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{2}}, {}, {ASTID{0}}, {}};
@@ -357,7 +357,7 @@ BOOST_AUTO_TEST_CASE(fn) {
 BOOST_AUTO_TEST_CASE(fn_tuple) {
   // x, y, (), x, y, (), fn
   const auto srcs = make_sv_array("(x, y) -> T = (x, y)");
-  const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
+  const AST ast = std::get<1>(check_result(parse_fn({}, {}, SrcID{0}, srcs[0])));
   const Graph<ASTID> ident_graph = check_result(calculate_ident_graph(srcs, ast));
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{{ASTID{3}}, {ASTID{4}}, {}, {ASTID{0}}, {ASTID{1}}, {}, {}};
@@ -367,7 +367,7 @@ BOOST_AUTO_TEST_CASE(fn_tuple) {
 BOOST_AUTO_TEST_CASE(fn_unbound) {
   // (), x, fn
   const auto srcs = make_sv_array("() -> T = x");
-  const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
+  const AST ast = std::get<1>(check_result(parse_fn({}, {}, SrcID{0}, srcs[0])));
   const auto errors = check_error(calculate_ident_graph(srcs, ast));
   const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {10, 11}}, "undeclared binding 'x'"}};
   BOOST_CHECK(exp_errors == errors);
@@ -376,7 +376,7 @@ BOOST_AUTO_TEST_CASE(fn_unbound) {
 BOOST_AUTO_TEST_CASE(fn_unused) {
   // x, (), 1, fn
   const auto srcs = make_sv_array("(x) -> T = 1");
-  const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
+  const AST ast = std::get<1>(check_result(parse_fn({}, {}, SrcID{0}, srcs[0])));
   const Graph<ASTID> ident_graph = check_result(calculate_ident_graph(srcs, ast));
 
   BOOST_CHECK_EQUAL(0, ident_graph.num_edges());
@@ -385,7 +385,7 @@ BOOST_AUTO_TEST_CASE(fn_unused) {
 BOOST_AUTO_TEST_CASE(fn_nested) {
   // x, (), ((x, ((x, x, assign), x, with), assign), x, assign) fn
   const auto srcs = make_sv_array("(x) -> T { let x = { let x = x; x }; x}");
-  const AST ast = std::get<1>(check_result(parse_function({}, {}, SrcID{0}, srcs[0])));
+  const AST ast = std::get<1>(check_result(parse_fn({}, {}, SrcID{0}, srcs[0])));
   const Graph<ASTID> ident_graph = check_result(calculate_ident_graph(srcs, ast));
 
   const Graph<ASTID> exp = std::vector<std::vector<ASTID>>{

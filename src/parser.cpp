@@ -250,7 +250,7 @@ ParseResult<ASTID> non_call_expr(State& s, Span<Token> tokens, ParseLocation loc
                 scope_cond_expr)(s, tokens, loc);
 }
 
-auto function() {
+auto fn() {
   return transform(seq(transform(tuple(binding()), ASTAppender{ASTTag::PatternTuple}),
                        symbol("->"),
                        type,
@@ -261,7 +261,7 @@ auto function() {
                    });
 }
 
-auto root() { return n(transform(seq(keyword("fn"), ident(), function()), ASTAppender{ASTTag::Assignment})); }
+auto root() { return n(transform(seq(keyword("fn"), ident(), fn()), ASTAppender{ASTTag::Assignment})); }
 
 template <typename Parser>
 ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
@@ -297,8 +297,8 @@ parse_repl(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
   return parse_ast(choose(assignment(), expr), std::move(ast), std::move(tg), id, src);
 }
 ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
-parse_function(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
-  return parse_ast(function(), std::move(ast), std::move(tg), id, src);
+parse_fn(AST ast, TypeGraph tg, SrcID id, std::string_view src) {
+  return parse_ast(fn(), std::move(ast), std::move(tg), id, src);
 }
 ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 parse(AST ast, TypeGraph tg, SrcID id, std::string_view src) {

@@ -11,7 +11,7 @@ ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
 ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
   parse_repl(AST, TypeGraph, SrcID, std::string_view);
 ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph>
-  parse_function(AST, TypeGraph, SrcID, std::string_view);
+  parse_fn(AST, TypeGraph, SrcID, std::string_view);
 ContextualResult<std::vector<std::pair<Type, SrcRef>>, AST, TypeGraph> parse(AST, TypeGraph, SrcID, std::string_view);
 
 // Exposed for unit testing

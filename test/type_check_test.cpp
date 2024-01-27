@@ -57,7 +57,7 @@ void compare_tc(R exp_result, R act_result) {
 }
 
 void test_tc(TestEnv env, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse_function, env, exp, debug)), check_result(run_tc(parse_function, env, src)));
+  compare_tc(check_result(run_tc(parse_fn, env, exp, debug)), check_result(run_tc(parse_fn, env, src)));
 }
 
 void test_tc_fns(TestEnv env, std::string_view src, std::string_view exp, bool debug = false) {
@@ -76,7 +76,7 @@ void test_tc_error(Parser parser,
 
 void test_tc_error(
   TestEnv env, std::string_view src, const std::vector<ContextualError>& expected_errors, bool debug = false) {
-  test_tc_error(parse_function, std::move(env), src, expected_errors, debug);
+  test_tc_error(parse_fn, std::move(env), src, expected_errors, debug);
 }
 
 TypeGraph type_graph_of(Span<std::string_view> srcs, const TypeNames& names, SrcID src, TypeGraph tg) {

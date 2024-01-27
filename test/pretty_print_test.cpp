@@ -116,11 +116,11 @@ BOOST_AUTO_TEST_CASE(scope) {
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
-  test(parse_function, "() -> T = x", "() -> T = x");
-  test(parse_function, "(x) -> T = x", "(x) -> T = x");
-  test(parse_function, "(x: T) -> T = x", "(x: T) -> T = x");
-  test(parse_function, "(x: T, _) -> T = x", "(x: T, _) -> T = x");
-  test(parse_function, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
+  test(parse_fn, "() -> T = x", "() -> T = x");
+  test(parse_fn, "(x) -> T = x", "(x) -> T = x");
+  test(parse_fn, "(x: T) -> T = x", "(x: T) -> T = x");
+  test(parse_fn, "(x: T, _) -> T = x", "(x: T, _) -> T = x");
+  test(parse_fn, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
 }
 
 BOOST_AUTO_TEST_CASE(ast) {
