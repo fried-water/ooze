@@ -60,6 +60,7 @@ struct AST {
   Forest<ASTTag, ASTID> forest;
   std::vector<SrcRef> srcs;
   std::vector<Type> types;
+  TypeGraph tg;
   std::vector<std::pair<ASTID, Literal>> literals;
 
   KNOT_COMPAREABLE(AST);
@@ -112,9 +113,10 @@ inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID
   return ast.forest.append_root_post_order(tag, children);
 }
 
-inline ASTID add_global(AST& ast, SrcRef ref, Type type, Type unit) {
+inline ASTID add_global(AST& ast, SrcRef ref, Type type) {
   const ASTID ident_id = append_root(ast, ASTTag::PatternIdent, ref, type);
   const ASTID fn_id = append_root(ast, ASTTag::EnvValue, ref, type);
+  const Type unit = ast.tg.add_node(TypeTag::Tuple, TypeID{});
   append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{ident_id, fn_id});
   return ident_id;
 }

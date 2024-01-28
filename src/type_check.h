@@ -35,23 +35,18 @@ std::tuple<ASTID, Type, int>
 overload_resolution(const TypeCache&, TypeGraph&, const Graph<ASTID>& ident_graph, const std::vector<Type>&, ASTID);
 
 std::vector<ContextualError> check_fully_resolved(
-  Span<std::string_view>,
-  const std::vector<std::vector<ASTPropagation>>&,
-  const AST&,
-  const TypeGraph&,
-  const TypeNames&);
+  Span<std::string_view>, const std::vector<std::vector<ASTPropagation>>&, const AST&, const TypeNames&);
 
-ContextualResult<void, AST, TypeGraph>
-apply_language_rules(Span<std::string_view>, const TypeCache&, const TypeNames&, AST, TypeGraph, Span<ASTID>);
+ContextualResult<void, AST>
+apply_language_rules(Span<std::string_view>, const TypeCache&, const TypeNames&, AST, Span<ASTID>);
 
-ContextualResult<void, AST, TypeGraph> constraint_propagation(
+ContextualResult<void, AST> constraint_propagation(
   Span<std::string_view>,
   const TypeCache&,
   const NativeTypeInfo& native_types,
   const Graph<ASTID>& ident_graph,
   const std::vector<std::vector<ASTPropagation>>&,
   AST,
-  TypeGraph,
   bool debug = false);
 
 } // namespace ooze

@@ -21,7 +21,6 @@ struct Env {
   std::string src;
 
   AST ast;
-  TypeGraph tg;
 
   NativeTypeInfo native_types;
 
@@ -31,15 +30,14 @@ struct Env {
 
   ASTID add_function(std::string_view name, Type type, Inst fn) {
     const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
-    const Type unit = tg.add_node(TypeTag::Tuple, TypeID{});
-    const ASTID id = add_global(ast, ref, type, unit);
+    const ASTID id = add_global(ast, ref, type);
     functions.emplace(id, fn);
     return id;
   }
 
   template <typename F>
   ASTID add_function(std::string_view name, F&& f) {
-    return add_function(name, add_fn(tg, decay(knot::Type<F>{})), program.add(std::forward<F>(f)));
+    return add_function(name, add_fn(ast.tg, decay(knot::Type<F>{})), program.add(std::forward<F>(f)));
   }
 
   template <typename T>

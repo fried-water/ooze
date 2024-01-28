@@ -135,7 +135,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
         return i32(acc) > i32(ele_state) ? acc : ele_state;
       });
 
-    tree_ss << pretty_print(make_sv_array(env.src), env.tg, env.native_types.names, binding.type);
+    tree_ss << pretty_print(make_sv_array(env.src), env.ast.tg, env.native_types.names, binding.type);
     output.push_back(fmt::format(
       "  {}: {}{}",
       binding_name,
@@ -173,9 +173,9 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
   for(const ASTID id : env.ast.forest.root_ids()) {
     const ASTID ident = *env.ast.forest.first_child(id);
     const Type type = env.ast.types[ident.get()];
-    if(env.tg.get<TypeTag>(type) == TypeTag::Fn) {
+    if(env.ast.tg.get<TypeTag>(type) == TypeTag::Fn) {
       const std::string_view name = sv(srcs, env.ast.srcs[ident.get()]);
-      functions.emplace_back(name, pretty_print_fn_type(srcs, env.tg, env.native_types.names, type));
+      functions.emplace_back(name, pretty_print_fn_type(srcs, env.ast.tg, env.native_types.names, type));
     }
   }
 
@@ -351,7 +351,7 @@ int repl_main(int argc, const char** argv, Env env) {
         return std::tuple(std::move(e), std::move(b));
       };
 
-      const Type arg_type = env.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::vector<std::string>>{}));
+      const Type arg_type = env.ast.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::vector<std::string>>{}));
       Bindings bindings;
       bindings.emplace("args", Binding{arg_type, make_vector(AsyncValue{Future{Any{std::move(cli.run_args)}}})});
 

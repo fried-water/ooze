@@ -27,7 +27,7 @@ StringResult<std::pair<Type, std::vector<Any>>, Env> run(Env env, std::string_vi
 template <typename T>
 void check_binding(
   const Env& e, const std::pair<Type, std::vector<Any>>& binding, std::string_view exp_type, const T& exp_value) {
-  BOOST_CHECK_EQUAL(exp_type, pretty_print(make_sv_array(e.src), e.tg, e.native_types.names, binding.first));
+  BOOST_CHECK_EQUAL(exp_type, pretty_print(make_sv_array(e.src), e.ast.tg, e.native_types.names, binding.first));
   compare(exp_value, binding.second);
 }
 
@@ -45,8 +45,8 @@ assign(Env env, std::string_view script, std::string_view expr) {
     .append_state(Bindings{})
     .and_then([&](Env env, Bindings bindings) { return run(executor, std::move(env), std::move(bindings), expr); })
     .map([&](Binding output, Env env, Bindings bindings) {
-      BOOST_REQUIRE(TypeTag::Tuple == env.tg.get<TypeTag>(output.type));
-      BOOST_REQUIRE_EQUAL(0, env.tg.fanout(output.type).size());
+      BOOST_REQUIRE(TypeTag::Tuple == env.ast.tg.get<TypeTag>(output.type));
+      BOOST_REQUIRE_EQUAL(0, env.ast.tg.fanout(output.type).size());
       BOOST_REQUIRE_EQUAL(0, output.values.size());
 
       std::unordered_map<std::string, std::pair<Type, std::vector<Any>>> results;
@@ -844,7 +844,6 @@ BOOST_AUTO_TEST_CASE(script_parse_error_env_same) {
 
   BOOST_CHECK_EQUAL(e.src, e2.src);
   BOOST_CHECK(e.ast == e2.ast);
-  BOOST_CHECK(e.tg == e2.tg);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

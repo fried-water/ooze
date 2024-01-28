@@ -15,44 +15,37 @@ namespace {
 
 template <typename Parser>
 auto run_tc(Parser p, TestEnv env, std::string_view src, bool debug = false) {
-  const TypeCache tc = create_type_cache(env.tg);
+  const TypeCache tc = create_type_cache(env.ast.tg);
 
   const auto srcs = make_sv_array(env.src, src);
-  return parse_and_name_resolution(p, srcs, env.types.names, std::move(env.ast), std::move(env.tg), SrcID{1})
-    .and_then([&](auto roots, AST ast, TypeGraph tg) {
-      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), std::move(tg), as_span(roots));
+  return parse_and_name_resolution(p, srcs, env.types.names, std::move(env.ast), SrcID{1})
+    .and_then([&](auto roots, AST ast) {
+      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), as_span(roots));
     })
-    .and_then([&](AST ast, TypeGraph tg) {
-      return calculate_ident_graph(srcs, ast).append_state(std::move(ast), std::move(tg));
-    })
-    .map([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
+    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast).append_state(std::move(ast)); })
+    .map([&](Graph<ASTID> ig, AST ast) {
       auto propagations = calculate_propagations(ig, ast.forest);
-      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
+      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
     })
-    .and_then(flattened([&](Graph<ASTID> ident_graph, auto propagations, AST ast, TypeGraph tg) {
-      return constraint_propagation(
-        srcs, tc, env.types, ident_graph, propagations, std::move(ast), std::move(tg), debug);
+    .and_then(flattened([&](Graph<ASTID> ident_graph, auto propagations, AST ast) {
+      return constraint_propagation(srcs, tc, env.types, ident_graph, propagations, std::move(ast), debug);
     }));
 }
 
-template <typename R>
-void compare_tc(R exp_result, R act_result) {
-  auto [exp_ast, exp_tg] = std::move(exp_result);
-  auto [act_ast, act_tg] = std::move(act_result);
-
+void compare_tc(AST exp_ast, AST act_ast) {
   BOOST_REQUIRE(act_ast.forest == exp_ast.forest);
 
   for(const ASTID id : exp_ast.forest.ids()) {
     const Type exp_type = exp_ast.types[id.get()];
     const Type act_type = act_ast.types[id.get()];
 
-    if(!compare_dags(exp_tg, act_tg, exp_type, act_type)) {
+    if(!compare_dags(exp_ast.tg, act_ast.tg, exp_type, act_type)) {
       fmt::print("ID {}\n", id.get());
-      fmt::print("E {}\n", knot::debug(exp_tg.template get<TypeTag>(exp_type)));
-      fmt::print("A {}\n", knot::debug(act_tg.template get<TypeTag>(act_type)));
+      fmt::print("E {}\n", knot::debug(exp_ast.tg.get<TypeTag>(exp_type)));
+      fmt::print("A {}\n", knot::debug(act_ast.tg.get<TypeTag>(act_type)));
     }
 
-    BOOST_CHECK(compare_dags(exp_tg, act_tg, exp_type, act_type));
+    BOOST_CHECK(compare_dags(exp_ast.tg, act_ast.tg, exp_type, act_type));
   }
 }
 
@@ -81,16 +74,17 @@ void test_tc_error(
 
 std::tuple<Type, TypeGraph>
 type_graph_of(Span<std::string_view> srcs, const TypeNames& names, SrcID src, TypeGraph tg) {
-  auto [type, _, tg2] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, std::move(tg), src));
-  return {type, std::move(tg2)};
+  auto [type, ast2] =
+    check_result(parse_and_name_resolution(parse_type, srcs, names, {{}, {}, {}, std::move(tg)}, src));
+  return {type, std::move(ast2.tg)};
 };
 
 void test_unify(std::string_view exp, std::string_view x, std::string_view y, bool recurse = true) {
   TestEnv env = basic_test_env();
-  const TypeCache tc = create_type_cache(env.tg);
+  const TypeCache tc = create_type_cache(env.ast.tg);
   const auto srcs = make_sv_array(env.src, x, y, exp);
 
-  auto [xid, tg2] = type_graph_of(srcs, env.types.names, SrcID{1}, std::move(env.tg));
+  auto [xid, tg2] = type_graph_of(srcs, env.types.names, SrcID{1}, std::move(env.ast.tg));
   auto [yid, tg3] = type_graph_of(srcs, env.types.names, SrcID{2}, std::move(tg2));
   auto [exp_type, tg] = type_graph_of(srcs, env.types.names, SrcID{3}, std::move(tg3));
 
@@ -101,45 +95,42 @@ void test_unify(std::string_view exp, std::string_view x, std::string_view y, bo
 
 void test_unify_error(std::string_view x, std::string_view y, bool recurse = true) {
   TestEnv env = basic_test_env();
-  const TypeCache tc = create_type_cache(env.tg);
+  const TypeCache tc = create_type_cache(env.ast.tg);
   const auto srcs = make_sv_array(env.src, x, y);
 
-  auto [xid, tg2] = type_graph_of(srcs, env.types.names, SrcID{1}, std::move(env.tg));
+  auto [xid, tg2] = type_graph_of(srcs, env.types.names, SrcID{1}, std::move(env.ast.tg));
   auto [yid, tg] = type_graph_of(srcs, env.types.names, SrcID{2}, std::move(tg2));
 
   BOOST_REQUIRE(unify(tc, tg, xid, yid, recurse) == Type::Invalid());
 }
 
 template <typename Parser>
-auto run_alr(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& types, AST ast, TypeGraph tg) {
-  const TypeCache tc = create_type_cache(tg);
-  return parse_and_name_resolution(p, srcs, types.names, std::move(ast), std::move(tg), SrcID{1})
-    .and_then([&](auto roots, AST ast, TypeGraph tg) {
-      return apply_language_rules(srcs, tc, types.names, std::move(ast), std::move(tg), as_span(roots));
-    });
+auto run_alr(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& types, AST ast) {
+  const TypeCache tc = create_type_cache(ast.tg);
+  return parse_and_name_resolution(p, srcs, types.names, std::move(ast), SrcID{1}).and_then([&](auto roots, AST ast) {
+    return apply_language_rules(srcs, tc, types.names, std::move(ast), as_span(roots));
+  });
 }
 
 template <typename Parser>
 void test_alr(Parser p, std::string_view src, std::vector<std::string> exp) {
-  auto [types, env_src, ast, tg] = basic_test_env();
+  auto [types, env_src, ast] = basic_test_env();
   const auto srcs = make_sv_array(env_src, src);
 
   const size_t initial_ast_size = ast.forest.size();
 
-  std::tie(ast, tg) = check_result(run_alr(p, srcs, types, std::move(ast), std::move(tg)));
+  ast = check_result(run_alr(p, srcs, types, std::move(ast)));
 
   BOOST_REQUIRE_EQUAL(exp.size(), ast.types.size() - initial_ast_size);
   for(int i = 0; i < exp.size(); i++) {
-    BOOST_CHECK_EQUAL(exp[i], pretty_print(srcs, tg, types.names, ast.types[i + initial_ast_size]));
+    BOOST_CHECK_EQUAL(exp[i], pretty_print(srcs, ast.tg, types.names, ast.types[i + initial_ast_size]));
   }
 }
 
 template <typename Parser>
 void test_alr_error(Parser p, std::string_view src, std::vector<ContextualError> exp) {
-  auto [types, env_src, ast, tg] = basic_test_env();
-  const auto srcs = make_sv_array(env_src, src);
-
-  check_eq("error", exp, check_error(run_alr(p, srcs, types, std::move(ast), std::move(tg))));
+  auto [types, env_src, ast] = basic_test_env();
+  check_eq("error", exp, check_error(run_alr(p, make_sv_array(env_src, src), types, std::move(ast))));
 }
 
 } // namespace
@@ -221,20 +212,20 @@ BOOST_AUTO_TEST_CASE(assign) {
 }
 
 BOOST_AUTO_TEST_CASE(partial) {
-  auto [types, env_src, ast, tg] = basic_test_env();
-  const TypeCache tc = create_type_cache(tg);
+  auto [types, env_src, ast] = basic_test_env();
+  const TypeCache tc = create_type_cache(ast.tg);
   const auto srcs = make_sv_array(env_src, "let x = 5", "7", "9");
 
   ASTID root_x;
   ASTID root_y;
   ASTID root_z;
 
-  std::tie(root_x, ast, tg) =
-    check_result(parse_and_name_resolution(parse_repl, srcs, types.names, std::move(ast), std::move(tg), SrcID{1}));
-  std::tie(root_y, ast, tg) =
-    check_result(parse_and_name_resolution(parse_repl, srcs, types.names, std::move(ast), std::move(tg), SrcID{2}));
-  std::tie(root_z, ast, tg) =
-    check_result(parse_and_name_resolution(parse_repl, srcs, types.names, std::move(ast), std::move(tg), SrcID{3}));
+  std::tie(root_x, ast) =
+    check_result(parse_and_name_resolution(parse_repl, srcs, types.names, std::move(ast), SrcID{1}));
+  std::tie(root_y, ast) =
+    check_result(parse_and_name_resolution(parse_repl, srcs, types.names, std::move(ast), SrcID{2}));
+  std::tie(root_z, ast) =
+    check_result(parse_and_name_resolution(parse_repl, srcs, types.names, std::move(ast), SrcID{3}));
 
   // Make types under X and Z incorrect to ensure its only checking Y
   for(const ASTID id : ast.forest.post_order_ids(root_x)) {
@@ -242,9 +233,8 @@ BOOST_AUTO_TEST_CASE(partial) {
   }
   ast.types[root_z.get()] = tc.unit;
 
-  std::tie(ast, tg) =
-    check_result(apply_language_rules(srcs, tc, types.names, std::move(ast), std::move(tg), as_span(root_y)));
-  BOOST_CHECK_EQUAL("i32", pretty_print(srcs, tg, types.names, ast.types[root_y.get()]));
+  ast = check_result(apply_language_rules(srcs, tc, types.names, std::move(ast), as_span(root_y)));
+  BOOST_CHECK_EQUAL("i32", pretty_print(srcs, ast.tg, types.names, ast.types[root_y.get()]));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

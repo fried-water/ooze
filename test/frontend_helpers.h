@@ -18,21 +18,19 @@ struct TestEnv {
   NativeTypeInfo types;
   std::string src;
   AST ast;
-  TypeGraph tg;
 };
 
 inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view> globals = {}) {
   std::string src;
   AST ast;
-  TypeGraph tg;
 
-  const Type unit = tg.add_node(TypeTag::Tuple, TypeID{});
+  const Type unit = ast.tg.add_node(TypeTag::Tuple, TypeID{});
 
   for(std::string_view binding : globals) {
     const auto srcs = make_sv_array(binding);
     ASTID pattern;
-    std::tie(pattern, ast, tg) = check_result(
-      parse_and_name_resolution(parse_binding, srcs, types.names, std::move(ast), std::move(tg), SrcID{0}));
+    std::tie(pattern, ast) =
+      check_result(parse_and_name_resolution(parse_binding, srcs, types.names, std::move(ast), SrcID{0}));
 
     BOOST_REQUIRE(ASTTag::PatternIdent == ast.forest[pattern]);
 
@@ -41,7 +39,7 @@ inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view>
     append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{pattern, value_id});
   }
 
-  return {std::move(types), std::move(src), std::move(ast), std::move(tg)};
+  return {std::move(types), std::move(src), std::move(ast)};
 }
 
 template <typename... Bindings>

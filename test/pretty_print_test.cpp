@@ -13,15 +13,15 @@ template <typename Parser>
 void test(Parser p, std::string_view exp, std::string_view src) {
   const auto srcs = make_sv_array(src);
   const TypeNames names{{"T", TypeID{1}}};
-  const auto [roots, ast, tg] = check_result(parse_and_name_resolution(p, srcs, names, {}, {}, SrcID{0}));
-  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, ast, tg, names));
+  const auto [roots, ast] = check_result(parse_and_name_resolution(p, srcs, names, {}, SrcID{0}));
+  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, ast, names));
 }
 
 void test_type(std::string_view exp, std::string_view src) {
   const auto srcs = make_sv_array(src);
   const TypeNames names{{"T", TypeID{1}}};
-  const auto [type, ast, tg] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, {}, SrcID{0}));
-  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, tg, names, type));
+  const auto [type, ast] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, SrcID{0}));
+  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, ast.tg, names, type));
 }
 
 } // namespace
@@ -61,17 +61,15 @@ BOOST_AUTO_TEST_CASE(native_fn) {
   constexpr static std::string_view src = "f";
 
   AST ast;
-  TypeGraph tg;
-  const Type unit = tg.add_node(TypeTag::Tuple, TypeID{});
 
-  const Type t = tg.add_node(TypeTag::Leaf, TypeID{1});
-  const Type tuple_t = tg.add_node({t}, TypeTag::Tuple, TypeID{});
-  const Type fn_t = tg.add_node({tuple_t, t}, TypeTag::Fn, TypeID{});
+  const Type t = ast.tg.add_node(TypeTag::Leaf, TypeID{1});
+  const Type tuple_t = ast.tg.add_node({t}, TypeTag::Tuple, TypeID{});
+  const Type fn_t = ast.tg.add_node({tuple_t, t}, TypeTag::Fn, TypeID{});
 
-  const ASTID global = *ast.forest.parent(add_global(ast, SrcRef{SrcID{0}, {0, 1}}, fn_t, unit));
+  const ASTID global = *ast.forest.parent(add_global(ast, SrcRef{SrcID{0}, {0, 1}}, fn_t));
 
   BOOST_CHECK_EQUAL("let f: fn(T) -> T = <env_value>",
-                    pretty_print(make_sv_array(src), ast, tg, {{"T", TypeID{1}}}, global));
+                    pretty_print(make_sv_array(src), ast, {{"T", TypeID{1}}}, global));
 }
 
 BOOST_AUTO_TEST_CASE(expr) {
@@ -121,8 +119,8 @@ BOOST_AUTO_TEST_CASE(ast) {
 BOOST_AUTO_TEST_CASE(fn_type) {
   const auto srcs = make_sv_array("fn(T) -> T");
   const TypeNames names{{"T", TypeID{1}}};
-  const auto [type, ast, tg] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, {}, SrcID{0}));
-  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, tg, names, type));
+  const auto [type, ast] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, SrcID{0}));
+  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, ast.tg, names, type));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

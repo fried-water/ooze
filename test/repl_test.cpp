@@ -145,7 +145,7 @@ BOOST_AUTO_TEST_CASE(binding_not_ready) {
   auto [promise, future] = make_promise_future();
 
   Bindings b;
-  b.emplace("x", Binding{e.tg.add_node(TypeTag::Leaf, I), make_vector(AsyncValue{std::move(future)})});
+  b.emplace("x", Binding{e.ast.tg.add_node(TypeTag::Leaf, I), make_vector(AsyncValue{std::move(future)})});
 
   const std::vector<std::string> exp_not_ready{"1 binding(s)", "  x: *i32"};
   std::tie(e, b) = step_and_compare(exp_not_ready, ":b", std::move(e), std::move(b));
@@ -161,7 +161,7 @@ BOOST_AUTO_TEST_CASE(binding_borrowed) {
   e.add_type<i32>("i32");
 
   Bindings b;
-  b.emplace("x", Binding{e.tg.add_node(TypeTag::Leaf, I), make_vector(AsyncValue{Future(Any(0))})});
+  b.emplace("x", Binding{e.ast.tg.add_node(TypeTag::Leaf, I), make_vector(AsyncValue{Future(Any(0))})});
 
   auto borrowed = borrow(b["x"].values[0]);
 

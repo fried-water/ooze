@@ -78,13 +78,12 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   };
 }
 
-ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph> overload_resolution(
+ContextualResult<Map<ASTID, ASTID>, AST> overload_resolution(
   Span<std::string_view> srcs,
   const TypeCache& tc,
   const TypeNames& type_names,
   const Graph<ASTID>& ident_graph,
-  AST ast,
-  TypeGraph tg) {
+  AST ast) {
   Map<ASTID, ASTID> binding_of;
 
   std::vector<ContextualError> errors;
@@ -94,7 +93,7 @@ ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph> overload_resolution(
 
     assert(ident_graph.num_fanout(id) > 0);
 
-    if(auto [overload, type, matches] = overload_resolution(tc, tg, ident_graph, ast.types, id); matches == 1) {
+    if(auto [overload, type, matches] = overload_resolution(tc, ast.tg, ident_graph, ast.types, id); matches == 1) {
       binding_of.emplace(id, overload);
     } else if(matches == 0) {
       errors.push_back(
@@ -102,9 +101,9 @@ ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph> overload_resolution(
          "no matching overload found",
          transform_to_vec(
            ident_graph.fanout(id),
-           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, type_names, ast.types[id.get()])); },
+           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()])); },
            make_vector(fmt::format("deduced {} [{} candidate(s)]",
-                                   pretty_print(srcs, tg, type_names, ast.types[id.get()]),
+                                   pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]),
                                    ident_graph.fanout(id).size())))});
     } else {
       errors.push_back(
@@ -112,13 +111,13 @@ ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph> overload_resolution(
          "ambiguous overload",
          transform_to_vec(
            ident_graph.fanout(id),
-           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, tg, type_names, ast.types[id.get()])); },
+           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()])); },
            make_vector(fmt::format(
-             "deduced {} [{} candidate(s)]", pretty_print(srcs, tg, type_names, ast.types[id.get()]), matches)))});
+             "deduced {} [{} candidate(s)]", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]), matches)))});
     }
   }
 
-  return value_or_errors(std::move(binding_of), std::move(errors), std::move(ast), std::move(tg));
+  return value_or_errors(std::move(binding_of), std::move(errors), std::move(ast));
 }
 
 } // namespace
@@ -165,36 +164,28 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
              })}};
 }
 
-ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph>
-sema(Span<std::string_view> srcs,
-     const TypeCache& tc,
-     const NativeTypeInfo& native_types,
-     AST ast,
-     TypeGraph tg,
-     Span<ASTID> roots) {
-  return apply_language_rules(srcs, tc, native_types.names, std::move(ast), std::move(tg), roots)
-    .and_then([&](AST ast, TypeGraph tg) {
-      return calculate_ident_graph(srcs, ast).append_state(std::move(ast), std::move(tg));
-    })
-    .map([&](Graph<ASTID> ig, AST ast, TypeGraph tg) {
+ContextualResult<Map<ASTID, ASTID>, AST>
+sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, Span<ASTID> roots) {
+  return apply_language_rules(srcs, tc, native_types.names, std::move(ast), roots)
+    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast).append_state(std::move(ast)); })
+    .map([&](Graph<ASTID> ig, AST ast) {
       auto propagations = calculate_propagations(ig, ast.forest);
-      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
+      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
     })
-    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
-      return constraint_propagation(srcs, tc, native_types, ig, propagations, std::move(ast), std::move(tg))
-        .map([&](AST ast, TypeGraph tg) {
-          return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast), std::move(tg));
+    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast) {
+      return constraint_propagation(srcs, tc, native_types, ig, propagations, std::move(ast)).map([&](AST ast) {
+        return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
+      });
+    }))
+    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast) {
+      return overload_resolution(srcs, tc, native_types.names, ig, std::move(ast))
+        .map([&](Map<ASTID, ASTID> overloads, AST ast) {
+          return std::tuple(std::tuple(std::move(overloads), std::move(propagations)), std::move(ast));
         });
     }))
-    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast, TypeGraph tg) {
-      return overload_resolution(srcs, tc, native_types.names, ig, std::move(ast), std::move(tg))
-        .map([&](Map<ASTID, ASTID> overloads, AST ast, TypeGraph tg) {
-          return std::tuple(std::tuple(std::move(overloads), std::move(propagations)), std::move(ast), std::move(tg));
-        });
-    }))
-    .and_then(flattened([&](Map<ASTID, ASTID> overloads, auto propagations, AST ast, TypeGraph tg) {
-      auto errors = check_fully_resolved(srcs, propagations, ast, tg, native_types.names);
-      return value_or_errors(std::move(overloads), std::move(errors), std::move(ast), std::move(tg));
+    .and_then(flattened([&](Map<ASTID, ASTID> overloads, auto propagations, AST ast) {
+      auto errors = check_fully_resolved(srcs, propagations, ast, native_types.names);
+      return value_or_errors(std::move(overloads), std::move(errors), std::move(ast));
     }));
 }
 

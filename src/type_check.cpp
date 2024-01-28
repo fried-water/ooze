@@ -111,11 +111,8 @@ cluster_adjacent(const std::vector<std::vector<ASTPropagation>>& propagations, s
   return groups;
 }
 
-ContextualError generate_error(Span<std::string_view> srcs,
-                               const AST& ast,
-                               const TypeGraph& tg,
-                               const TypeNames& type_names,
-                               const TypeCheckError& error) {
+ContextualError
+generate_error(Span<std::string_view> srcs, const AST& ast, const TypeNames& type_names, const TypeCheckError& error) {
   const Type type = ast.types[error.id.get()];
   const SrcRef ref = ast.srcs[error.id.get()];
   return std::visit(
@@ -123,12 +120,12 @@ ContextualError generate_error(Span<std::string_view> srcs,
       [&](const MismatchedType& m) {
         return ContextualError{ref,
                                fmt::format("expected {}, given {}",
-                                           pretty_print(srcs, tg, type_names, type),
-                                           pretty_print(srcs, tg, type_names, m.conflicting_type))};
+                                           pretty_print(srcs, ast.tg, type_names, type),
+                                           pretty_print(srcs, ast.tg, type_names, m.conflicting_type))};
       },
       [&](const UnableToDeduce&) {
         return ContextualError{
-          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(srcs, tg, type_names, type))};
+          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(srcs, ast.tg, type_names, type))};
       },
       [&](const ReturnBorrow&) {
         return ContextualError{ref, "cannot return a borrowed value"};
@@ -146,12 +143,10 @@ ContextualError generate_error(Span<std::string_view> srcs,
     error.type);
 }
 
-std::vector<ContextualError>
-generate_errors(Span<std::string_view> srcs,
-                const AST& ast,
-                const TypeGraph& tg,
-                const TypeNames& type_names,
-                std::vector<std::vector<TypeCheckError>> error_clusters) {
+std::vector<ContextualError> generate_errors(Span<std::string_view> srcs,
+                                             const AST& ast,
+                                             const TypeNames& type_names,
+                                             std::vector<std::vector<TypeCheckError>> error_clusters) {
   // Find most *relevant* error per cluster
   return sorted(
     transform_to_vec(
@@ -159,7 +154,7 @@ generate_errors(Span<std::string_view> srcs,
       [&](const std::vector<TypeCheckError>& group) {
         const auto projection = [&](const TypeCheckError& error) {
           const auto type_complexity = [&](auto self, Type t) -> i32 {
-            return knot::accumulate(tg.fanout(t), 1, [&](i32 acc, Type t) { return acc + self(self, t); });
+            return knot::accumulate(ast.tg.fanout(t), 1, [&](i32 acc, Type t) { return acc + self(self, t); });
           };
 
           const SrcRef ref = ast.srcs[error.id.get()];
@@ -180,11 +175,7 @@ generate_errors(Span<std::string_view> srcs,
         };
 
         return generate_error(
-          srcs,
-          ast,
-          tg,
-          type_names,
-          *std::min_element(group.begin(), group.end(), [&](const auto& lhs, const auto& rhs) {
+          srcs, ast, type_names, *std::min_element(group.begin(), group.end(), [&](const auto& lhs, const auto& rhs) {
             return projection(lhs) < projection(rhs);
           }));
       }),
@@ -290,15 +281,15 @@ std::tuple<TypeGraph, std::vector<Type>, std::vector<TypeCheckError>> constraint
           })};
 }
 
-void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<TypeCheckError>& errors, ASTID id) {
+void find_returned_borrows(const AST& ast, std::vector<TypeCheckError>& errors, ASTID id) {
   const auto has_borrow = [&](auto self, Type t) -> bool {
-    const TypeTag tag = tg.get<TypeTag>(t);
+    const TypeTag tag = ast.tg.get<TypeTag>(t);
     return tag == TypeTag::Borrow ||
-           (tag == TypeTag::Tuple && any_of(tg.fanout(t), [&](Type c) { return self(self, c); }));
+           (tag == TypeTag::Tuple && any_of(ast.tg.fanout(t), [&](Type c) { return self(self, c); }));
   };
 
   const Type type = ast.types[id.get()];
-  if(tg.get<TypeTag>(type) == TypeTag::Borrow) {
+  if(ast.tg.get<TypeTag>(type) == TypeTag::Borrow) {
     errors.push_back({ReturnBorrow{}, id});
   } else {
     switch(ast.forest[id]) {
@@ -310,7 +301,7 @@ void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<Type
       break;
     case ASTTag::ExprTuple:
       for(const ASTID id : ast.forest.child_ids(id)) {
-        find_returned_borrows(ast, tg, errors, id);
+        find_returned_borrows(ast, errors, id);
       }
       break;
     case ASTTag::ExprSelect:
@@ -319,7 +310,7 @@ void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<Type
       // Skip first child for both With (assignment) and Select/If (condition)
       auto [_, rest] = ast.forest.child_ids(id).match();
       for(const ASTID id : rest) {
-        find_returned_borrows(ast, tg, errors, id);
+        find_returned_borrows(ast, errors, id);
       }
 
       break;
@@ -329,16 +320,16 @@ void find_returned_borrows(const AST& ast, const TypeGraph& tg, std::vector<Type
   }
 }
 
-std::vector<TypeCheckError> find_returned_borrows(const AST& ast, const TypeGraph& tg) {
+std::vector<TypeCheckError> find_returned_borrows(const AST& ast) {
   std::vector<TypeCheckError> errors;
 
   for(const ASTID root_id : ast.forest.root_ids()) {
     const ASTID expr_id = is_expr(ast.forest[root_id]) ? root_id : ast.forest.child_ids(root_id).get<1>();
 
-    find_returned_borrows(ast, tg, errors, expr_id);
+    find_returned_borrows(ast, errors, expr_id);
 
     if(ast.forest[expr_id] == ASTTag::Fn) {
-      find_returned_borrows(ast, tg, errors, ast.forest.child_ids(expr_id).get<1>());
+      find_returned_borrows(ast, errors, ast.forest.child_ids(expr_id).get<1>());
     }
   }
 
@@ -382,16 +373,14 @@ bool has_conditional_overuse(const Forest<ASTTag, ASTID>& forest, Span<ASTID> us
     usage.begin(), usage.end(), applied([](ASTID, int left, int right) { return std::max(left, right) > 1; }));
 }
 
-std::vector<TypeCheckError> find_binding_usage_errors(
-  Span<std::string_view> srcs,
-  const std::unordered_set<TypeID>& copy_types,
-  const AST& ast,
-  const TypeGraph& tg,
-  const Graph<ASTID>& ident_graph) {
+std::vector<TypeCheckError> find_binding_usage_errors(Span<std::string_view> srcs,
+                                                      const std::unordered_set<TypeID>& copy_types,
+                                                      const AST& ast,
+                                                      const Graph<ASTID>& ident_graph) {
   const auto has_non_copy_type = [&](auto self, Type t) -> bool {
-    switch(tg.get<TypeTag>(t)) {
-    case TypeTag::Leaf: return copy_types.find(tg.get<TypeID>(t)) == copy_types.end();
-    case TypeTag::Tuple: return any_of(tg.fanout(t), [=](Type t) { return self(self, t); });
+    switch(ast.tg.get<TypeTag>(t)) {
+    case TypeTag::Leaf: return copy_types.find(ast.tg.get<TypeID>(t)) == copy_types.end();
+    case TypeTag::Tuple: return any_of(ast.tg.fanout(t), [=](Type t) { return self(self, t); });
     case TypeTag::Floating:
     case TypeTag::Borrow:
     case TypeTag::Fn: return false;
@@ -418,21 +407,21 @@ std::vector<TypeCheckError> find_binding_usage_errors(
   });
 }
 
-Type language_rule(const TypeCache& tc, const AST& ast, TypeGraph& g, ASTID id) {
+Type language_rule(const TypeCache& tc, AST& ast, ASTID id) {
   switch(ast.forest[id]) {
   case ASTTag::ExprLiteral: {
     const TypeID tid = std::visit(
       [](const auto& ele) { return type_id(knot::decay(knot::Type<decltype(ele)>{})); }, lookup_literal(ast, id));
-    return g.add_node(TypeTag::Leaf, tid);
+    return ast.tg.add_node(TypeTag::Leaf, tid);
   }
 
   case ASTTag::ExprBorrow: return tc.borrow_floating;
 
   case ASTTag::PatternTuple:
   case ASTTag::ExprTuple: {
-    const Type tuple = g.add_node(TypeTag::Tuple, TypeID{});
+    const Type tuple = ast.tg.add_node(TypeTag::Tuple, TypeID{});
     for(const ASTID _ : ast.forest.child_ids(id)) {
-      g.add_fanout_to_last_node(tc.floating);
+      ast.tg.add_fanout_to_last_node(tc.floating);
     }
     return tuple;
   }
@@ -497,22 +486,17 @@ Type unify(const TypeCache& tc, TypeGraph& g, Type x, Type y, bool recurse) {
   }
 }
 
-ContextualResult<void, AST, TypeGraph> apply_language_rules(
-  Span<std::string_view> srcs,
-  const TypeCache& tc,
-  const TypeNames& type_names,
-  AST ast,
-  TypeGraph tg,
-  Span<ASTID> roots) {
+ContextualResult<void, AST> apply_language_rules(
+  Span<std::string_view> srcs, const TypeCache& tc, const TypeNames& type_names, AST ast, Span<ASTID> roots) {
   std::vector<ContextualError> errors;
 
   const auto apply_type = [&](ASTID id, Type t) {
-    const Type unified = ast.types[id.get()].is_valid() ? unify(tc, tg, ast.types[id.get()], t, true) : t;
+    const Type unified = ast.types[id.get()].is_valid() ? unify(tc, ast.tg, ast.types[id.get()], t, true) : t;
     if(unified == Type::Invalid()) {
       errors.push_back({ast.srcs[id.get()],
                         fmt::format("expected {}, given {}",
-                                    pretty_print(srcs, tg, type_names, t),
-                                    pretty_print(srcs, tg, type_names, ast.types[id.get()]))});
+                                    pretty_print(srcs, ast.tg, type_names, t),
+                                    pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]))});
     } else {
       ast.types[id.get()] = unified;
     }
@@ -520,7 +504,7 @@ ContextualResult<void, AST, TypeGraph> apply_language_rules(
 
   for(const ASTID root_id : roots) {
     for(const ASTID id : ast.forest.post_order_ids(root_id)) {
-      apply_type(id, language_rule(tc, ast, tg, id));
+      apply_type(id, language_rule(tc, ast, id));
 
       if(const auto parent = ast.forest.parent(id); parent && ast.forest.first_child(*parent) == id) {
         if(const ASTTag tag = ast.forest[*parent]; tag == ASTTag::ExprCall) {
@@ -532,7 +516,7 @@ ContextualResult<void, AST, TypeGraph> apply_language_rules(
     }
   }
 
-  return void_or_errors(std::move(errors), std::move(ast), std::move(tg));
+  return void_or_errors(std::move(errors), std::move(ast));
 }
 
 std::tuple<ASTID, Type, int> overload_resolution(
@@ -628,43 +612,48 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
   return propagations;
 }
 
-std::vector<ContextualError> check_fully_resolved(
-  Span<std::string_view> srcs,
-  const std::vector<std::vector<ASTPropagation>>& propagations,
-  const AST& ast,
-  const TypeGraph& tg,
-  const TypeNames& type_names) {
+std::vector<ContextualError> check_fully_resolved(Span<std::string_view> srcs,
+                                                  const std::vector<std::vector<ASTPropagation>>& propagations,
+                                                  const AST& ast,
+                                                  const TypeNames& type_names) {
   return generate_errors(
-    srcs, ast, tg, type_names, cluster_adjacent(propagations, transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) {
-                                                  return has_floating(tg, ast.types[id.get()])
-                                                           ? std::optional(TypeCheckError{UnableToDeduce{}, id})
-                                                           : std::nullopt;
-                                                })));
+    srcs, ast, type_names, cluster_adjacent(propagations, transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) {
+                                              return has_floating(ast.tg, ast.types[id.get()])
+                                                       ? std::optional(TypeCheckError{UnableToDeduce{}, id})
+                                                       : std::nullopt;
+                                            })));
 }
 
-ContextualResult<void, AST, TypeGraph> constraint_propagation(
+ContextualResult<void, AST> constraint_propagation(
   Span<std::string_view> srcs,
   const TypeCache& tc,
   const NativeTypeInfo& native_types,
   const Graph<ASTID>& ident_graph,
   const std::vector<std::vector<ASTPropagation>>& propagations,
   AST ast,
-  TypeGraph tg,
   bool debug) {
 
   if(debug) {
-    fmt::print("Initial type graph size: {} ({} edges)\n", tg.num_nodes(), tg.num_edges());
+    fmt::print("Initial type graph size: {} ({} edges)\n", ast.tg.num_nodes(), ast.tg.num_edges());
   }
 
   std::vector<TypeCheckError> cp_errors;
-  std::tie(tg, ast.types, cp_errors) = constraint_propagation(
-    srcs, tc, native_types.names, propagations, ast.forest, ident_graph, std::move(tg), std::move(ast.types), debug);
+  std::tie(ast.tg, ast.types, cp_errors) = constraint_propagation(
+    srcs,
+    tc,
+    native_types.names,
+    propagations,
+    ast.forest,
+    ident_graph,
+    std::move(ast.tg),
+    std::move(ast.types),
+    debug);
 
-  const auto find_invalid_borrows = [](const AST& ast, const TypeGraph& tg) {
+  const auto find_invalid_borrows = [](const AST& ast) {
     return transform_filter_to_vec(ast.forest.ids(), [&](ASTID id) -> std::optional<TypeCheckError> {
       const Type type = ast.types[id.get()];
-      if(tg.get<TypeTag>(type) == TypeTag::Borrow) {
-        switch(tg.get<TypeTag>(tg.fanout(type)[0])) {
+      if(ast.tg.get<TypeTag>(type) == TypeTag::Borrow) {
+        switch(ast.tg.get<TypeTag>(ast.tg.fanout(type)[0])) {
         case TypeTag::Tuple: return std::optional(TypeCheckError{InvalidBorrow{"tuple"}, id});
         case TypeTag::Fn: return std::optional(TypeCheckError{InvalidBorrow{"function"}, id});
         case TypeTag::Borrow: return std::optional(TypeCheckError{InvalidBorrow{"borrow"}, id});
@@ -679,19 +668,18 @@ ContextualResult<void, AST, TypeGraph> constraint_propagation(
   std::vector<ContextualError> errors = generate_errors(
     srcs,
     ast,
-    tg,
     native_types.names,
     cluster_adjacent(propagations,
                      flatten(std::move(cp_errors),
-                             find_invalid_borrows(ast, tg),
-                             find_returned_borrows(ast, tg),
-                             find_binding_usage_errors(srcs, native_types.copyable, ast, tg, ident_graph))));
+                             find_invalid_borrows(ast),
+                             find_returned_borrows(ast),
+                             find_binding_usage_errors(srcs, native_types.copyable, ast, ident_graph))));
 
   if(debug) {
-    fmt::print("Final type graph size: {} ({} edges)\n", tg.num_nodes(), tg.num_edges());
+    fmt::print("Final type graph size: {} ({} edges)\n", ast.tg.num_nodes(), ast.tg.num_edges());
   }
 
-  return void_or_errors(std::move(errors), std::move(ast), std::move(tg));
+  return void_or_errors(std::move(errors), std::move(ast));
 }
 
 } // namespace ooze
