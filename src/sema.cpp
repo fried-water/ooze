@@ -166,8 +166,13 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
 }
 
 ContextualResult<Map<ASTID, ASTID>, AST, TypeGraph>
-sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, TypeGraph tg) {
-  return apply_language_rules(srcs, tc, native_types.names, std::move(ast), std::move(tg))
+sema(Span<std::string_view> srcs,
+     const TypeCache& tc,
+     const NativeTypeInfo& native_types,
+     AST ast,
+     TypeGraph tg,
+     Span<ASTID> roots) {
+  return apply_language_rules(srcs, tc, native_types.names, std::move(ast), std::move(tg), roots)
     .and_then([&](AST ast, TypeGraph tg) {
       return calculate_ident_graph(srcs, ast).append_state(std::move(ast), std::move(tg));
     })

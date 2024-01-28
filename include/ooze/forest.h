@@ -336,7 +336,7 @@ public:
     return IterRange(
       PostOrderIDIter(
         this, id == ABOVE_ROOTS ? (_first_root != INVALID ? first_leaf(_first_root) : INVALID) : first_leaf(id)),
-      PostOrderIDIter(this, id == ABOVE_ROOTS ? INVALID : PostOrderIDs{}(id)));
+      PostOrderIDIter(this, id == ABOVE_ROOTS ? INVALID : PostOrderIDs{}(*this, id)));
   }
 
   auto post_order(ID id = ABOVE_ROOTS) {

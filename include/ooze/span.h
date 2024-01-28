@@ -28,9 +28,6 @@ public:
 
   Span(std::initializer_list<T> il) : _begin(std::data(il)), _end(std::data(il) + il.size()) {}
 
-  Span(const std::optional<T>& opt)
-      : _begin(opt ? std::addressof(*opt) : nullptr), _end(opt ? std::addressof(*opt) + 1 : nullptr) {}
-
   const T* begin() const { return _begin; }
   const T* end() const { return _end; }
 
@@ -67,5 +64,20 @@ public:
 
   friend bool operator!=(const Span<T>& lhs, const Span<T>& rhs) { return !(lhs == rhs); }
 };
+
+template <typename T>
+Span<T> as_span(const T& t) {
+  return Span<T>(std::addressof(t), 1);
+}
+
+template <typename T>
+Span<T> as_span(const std::optional<T>& opt) {
+  return opt ? Span<T>(std::addressof(*opt), 1) : Span<T>{};
+}
+
+template <typename Range, typename T = typename std::decay_t<Range>::value_type>
+Span<T> as_span(Range&& rng) {
+  return Span<T>(std::data(rng), std::size(rng));
+}
 
 } // namespace ooze

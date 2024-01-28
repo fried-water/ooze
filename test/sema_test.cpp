@@ -12,6 +12,7 @@ namespace {
 
 auto run_nr(const NativeTypeInfo& types, std::string_view src) {
   return parse_and_name_resolution(parse_fn, make_sv_array(src), types.names, {}, {}, SrcID{0})
+    .map([](ASTID, AST ast, TypeGraph tg) { return std::tuple(std::move(ast), std::move(tg)); })
     .map_state([](AST, TypeGraph tg) { return std::get<2>(std::move(tg).decompose()); });
 }
 
@@ -46,10 +47,7 @@ void check_sema(Result sema_result, const std::vector<int>& exp_overload_indices
 }
 
 auto run_sema(TestEnv env, std::string_view src) {
-  const TypeCache tc = create_type_cache(env.tg);
-  const auto srcs = make_sv_array(env.src, src);
-  return parse_and_name_resolution(parse, srcs, env.types.names, std::move(env.ast), std::move(env.tg), SrcID{1})
-    .and_then([&](AST ast, TypeGraph tg) { return sema(srcs, tc, env.types, std::move(ast), std::move(tg)); });
+  return frontend(parse, make_sv_array(env.src, src), env.types, std::move(env.ast), std::move(env.tg));
 }
 
 } // namespace

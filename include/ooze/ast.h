@@ -112,10 +112,10 @@ inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID
   return ast.forest.append_root_post_order(tag, children);
 }
 
-inline ASTID add_global(AST& ast, SrcRef ref, Type type) {
+inline ASTID add_global(AST& ast, SrcRef ref, Type type, Type unit) {
   const ASTID ident_id = append_root(ast, ASTTag::PatternIdent, ref, type);
   const ASTID fn_id = append_root(ast, ASTTag::EnvValue, ref, type);
-  append_root(ast, ASTTag::Assignment, SrcRef{}, Type{}, std::array{ident_id, fn_id});
+  append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{ident_id, fn_id});
   return ident_id;
 }
 

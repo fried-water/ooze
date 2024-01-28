@@ -42,7 +42,7 @@ std::vector<ContextualError> check_fully_resolved(
   const TypeNames&);
 
 ContextualResult<void, AST, TypeGraph>
-apply_language_rules(Span<std::string_view>, const TypeCache&, const TypeNames&, AST, TypeGraph);
+apply_language_rules(Span<std::string_view>, const TypeCache&, const TypeNames&, AST, TypeGraph, Span<ASTID>);
 
 ContextualResult<void, AST, TypeGraph> constraint_propagation(
   Span<std::string_view>,

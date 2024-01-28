@@ -498,7 +498,12 @@ Type unify(const TypeCache& tc, TypeGraph& g, Type x, Type y, bool recurse) {
 }
 
 ContextualResult<void, AST, TypeGraph> apply_language_rules(
-  Span<std::string_view> srcs, const TypeCache& tc, const TypeNames& type_names, AST ast, TypeGraph tg) {
+  Span<std::string_view> srcs,
+  const TypeCache& tc,
+  const TypeNames& type_names,
+  AST ast,
+  TypeGraph tg,
+  Span<ASTID> roots) {
   std::vector<ContextualError> errors;
 
   const auto apply_type = [&](ASTID id, Type t) {
@@ -513,14 +518,16 @@ ContextualResult<void, AST, TypeGraph> apply_language_rules(
     }
   };
 
-  for(const ASTID id : ast.forest.ids()) {
-    apply_type(id, language_rule(tc, ast, tg, id));
+  for(const ASTID root_id : roots) {
+    for(const ASTID id : ast.forest.post_order_ids(root_id)) {
+      apply_type(id, language_rule(tc, ast, tg, id));
 
-    if(const auto parent = ast.forest.parent(id); parent && ast.forest.first_child(*parent) == id) {
-      if(const ASTTag tag = ast.forest[*parent]; tag == ASTTag::ExprCall) {
-        apply_type(id, tc.fn_floating);
-      } else if(tag == ASTTag::ExprSelect || tag == ASTTag::ExprIf) {
-        apply_type(id, tc.boolean);
+      if(const auto parent = ast.forest.parent(id); parent && ast.forest.first_child(*parent) == id) {
+        if(const ASTTag tag = ast.forest[*parent]; tag == ASTTag::ExprCall) {
+          apply_type(id, tc.fn_floating);
+        } else if(tag == ASTTag::ExprSelect || tag == ASTTag::ExprIf) {
+          apply_type(id, tc.boolean);
+        }
       }
     }
   }

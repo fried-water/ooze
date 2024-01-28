@@ -31,7 +31,8 @@ struct Env {
 
   ASTID add_function(std::string_view name, Type type, Inst fn) {
     const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
-    const ASTID id = add_global(ast, ref, type);
+    const Type unit = tg.add_node(TypeTag::Tuple, TypeID{});
+    const ASTID id = add_global(ast, ref, type, unit);
     functions.emplace(id, fn);
     return id;
   }
