@@ -20,17 +20,19 @@ auto run_tc(Parser p, TestEnv env, std::string_view src, bool debug = false) {
   const auto srcs = make_sv_array(env.src, src);
   return parse_and_name_resolution(p, srcs, env.types.names, std::move(env.ast), SrcID{1})
     .and_then([&](auto roots, AST ast) {
-      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), as_span(roots)).and_then([&](AST ast) {
-        return calculate_ident_graph(srcs, ast, as_span(roots)).append_state(std::move(ast));
-      });
-    })
-    .map([&](Graph<ASTID> ig, AST ast) {
-      auto propagations = calculate_propagations(ig, ast.forest);
-      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
-    })
-    .and_then(flattened([&](Graph<ASTID> ident_graph, auto propagations, AST ast) {
-      return constraint_propagation(srcs, tc, env.types, ident_graph, propagations, std::move(ast), debug);
-    }));
+      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), as_span(roots))
+        .and_then([&](AST ast) {
+          return calculate_ident_graph(srcs, ast, as_span(roots)).append_state(std::move(ast));
+        })
+        .map([&](Graph<ASTID> ig, AST ast) {
+          auto propagations = calculate_propagations(ig, ast.forest, as_span(roots));
+          return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
+        })
+        .and_then(flattened([&](Graph<ASTID> ident_graph, auto propagations, AST ast) {
+          return constraint_propagation(
+            srcs, tc, env.types, ident_graph, propagations, std::move(ast), as_span(roots), debug);
+        }));
+    });
 }
 
 void compare_tc(AST exp_ast, AST act_ast) {
@@ -51,7 +53,7 @@ void compare_tc(AST exp_ast, AST act_ast) {
 }
 
 void test_tc(TestEnv env, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse_fn, env, exp, debug)), check_result(run_tc(parse_fn, env, src)));
+  compare_tc(check_result(run_tc(parse_fn, env, exp)), check_result(run_tc(parse_fn, env, src, debug)));
 }
 
 void test_tc_fns(TestEnv env, std::string_view src, std::string_view exp, bool debug = false) {
@@ -599,6 +601,23 @@ BOOST_AUTO_TEST_CASE(return_borrow) {
                 "() -> _ = (&1, &2)",
                 {{{SrcID{1}, {11, 13}}, "cannot return a borrowed value"},
                  {{SrcID{1}, {15, 17}}, "cannot return a borrowed value"}});
+}
+
+BOOST_AUTO_TEST_CASE(ignore_errors_partial) {
+  TestEnv env = basic_test_env();
+
+  const auto srcs = make_sv_array(
+    env.src,
+    "fn f1() -> bool = 1"
+    "fn f2() -> _ = &1"
+    "fn f3(_x: &&i32) -> _ = 1"
+    "fn f4(x: bool) -> _ = 1");
+
+  env.ast =
+    std::get<1>(check_result(parse_and_name_resolution(parse, srcs, env.types.names, std::move(env.ast), SrcID{1})));
+
+  // Should not catch previous errors
+  check_result(run_tc(parse_expr, std::move(env), "1"));
 }
 
 BOOST_AUTO_TEST_CASE(return_borrow_root) {

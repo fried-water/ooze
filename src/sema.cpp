@@ -83,37 +83,41 @@ ContextualResult<Map<ASTID, ASTID>, AST> overload_resolution(
   const TypeCache& tc,
   const TypeNames& type_names,
   const Graph<ASTID>& ident_graph,
-  AST ast) {
+  AST ast,
+  Span<ASTID> roots) {
   Map<ASTID, ASTID> binding_of;
 
   std::vector<ContextualError> errors;
 
-  for(const ASTID id : ast.forest.ids()) {
-    if(ast.forest[id] != ASTTag::ExprIdent) continue;
+  for(const ASTID root : roots) {
+    for(const ASTID id : ast.forest.post_order_ids(root)) {
+      if(ast.forest[id] != ASTTag::ExprIdent) continue;
 
-    assert(ident_graph.num_fanout(id) > 0);
+      assert(ident_graph.num_fanout(id) > 0);
 
-    if(auto [overload, type, matches] = overload_resolution(tc, ast.tg, ident_graph, ast.types, id); matches == 1) {
-      binding_of.emplace(id, overload);
-    } else if(matches == 0) {
-      errors.push_back(
-        {ast.srcs[id.get()],
-         "no matching overload found",
-         transform_to_vec(
-           ident_graph.fanout(id),
-           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()])); },
-           make_vector(fmt::format("deduced {} [{} candidate(s)]",
-                                   pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]),
-                                   ident_graph.fanout(id).size())))});
-    } else {
-      errors.push_back(
-        {ast.srcs[id.get()],
-         "ambiguous overload",
-         transform_to_vec(
-           ident_graph.fanout(id),
-           [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()])); },
-           make_vector(fmt::format(
-             "deduced {} [{} candidate(s)]", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]), matches)))});
+      if(auto [overload, type, matches] = overload_resolution(tc, ast.tg, ident_graph, ast.types, id); matches == 1) {
+        binding_of.emplace(id, overload);
+      } else if(matches == 0) {
+        errors.push_back(
+          {ast.srcs[id.get()],
+           "no matching overload found",
+           transform_to_vec(
+             ident_graph.fanout(id),
+             [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()])); },
+             make_vector(fmt::format("deduced {} [{} candidate(s)]",
+                                     pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]),
+                                     ident_graph.fanout(id).size())))});
+      } else {
+        errors.push_back(
+          {ast.srcs[id.get()],
+           "ambiguous overload",
+           transform_to_vec(
+             ident_graph.fanout(id),
+             [&](ASTID id) { return fmt::format("  {}", pretty_print(srcs, ast.tg, type_names, ast.types[id.get()])); },
+             make_vector(fmt::format("deduced {} [{} candidate(s)]",
+                                     pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]),
+                                     matches)))});
+      }
     }
   }
 
@@ -169,22 +173,22 @@ sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& nat
   return apply_language_rules(srcs, tc, native_types.names, std::move(ast), roots)
     .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast, roots).append_state(std::move(ast)); })
     .map([&](Graph<ASTID> ig, AST ast) {
-      auto propagations = calculate_propagations(ig, ast.forest);
+      auto propagations = calculate_propagations(ig, ast.forest, roots);
       return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
     })
     .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast) {
-      return constraint_propagation(srcs, tc, native_types, ig, propagations, std::move(ast)).map([&](AST ast) {
+      return constraint_propagation(srcs, tc, native_types, ig, propagations, std::move(ast), roots).map([&](AST ast) {
         return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
       });
     }))
     .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast) {
-      return overload_resolution(srcs, tc, native_types.names, ig, std::move(ast))
+      return overload_resolution(srcs, tc, native_types.names, ig, std::move(ast), roots)
         .map([&](Map<ASTID, ASTID> overloads, AST ast) {
           return std::tuple(std::tuple(std::move(overloads), std::move(propagations)), std::move(ast));
         });
     }))
     .and_then(flattened([&](Map<ASTID, ASTID> overloads, auto propagations, AST ast) {
-      auto errors = check_fully_resolved(srcs, propagations, ast, native_types.names);
+      auto errors = check_fully_resolved(srcs, propagations, ast, native_types.names, roots);
       return value_or_errors(std::move(overloads), std::move(errors), std::move(ast));
     }));
 }

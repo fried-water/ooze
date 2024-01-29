@@ -197,15 +197,27 @@ BOOST_AUTO_TEST_CASE(fn_assign) {
              {0, 2}); //  f(), x
 }
 
+BOOST_AUTO_TEST_CASE(partial) {
+  TestEnv env = create_test_env({}, {"f: fn() -> ()"});
+
+  const std::string_view src1 = "fn g() -> _ = f()";
+  const std::string_view src2 = "fn h() -> _ = ()";
+
+  auto [bindings1, ast2] = check_result(frontend(parse, make_sv_array(env.src, src1), env.types, std::move(env.ast)));
+  auto [bindings2, ast3] = check_result(frontend(parse, make_sv_array(env.src, src2), env.types, std::move(ast2)));
+
+  // Bindings from g() should be ignored in the second call
+  BOOST_CHECK_EQUAL(1, bindings1.size());
+  BOOST_CHECK_EQUAL(0, bindings2.size());
+}
+
+BOOST_AUTO_TEST_CASE(ignore_unresolved_env_fn) {
+  check_sema(check_result(run_sema(create_test_env({}, {"f: fn() -> _"}), "")), {});
+}
+
 BOOST_AUTO_TEST_CASE(unresolved_fn) {
   const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
   check_eq("errors", exp_errors, check_error(run_sema({}, "fn f(x) -> _ = x")));
-}
-
-BOOST_AUTO_TEST_CASE(unresolved_env_fn) {
-  const std::vector<ContextualError> exp_errors = {
-    {{SrcID{0}, {0, 1}}, "unable to fully deduce type, deduced: fn() -> _"}};
-  check_eq("errors", exp_errors, check_error(run_sema(create_test_env({}, {"f: fn() -> _"}), "")));
 }
 
 BOOST_AUTO_TEST_CASE(ambiguous_overload) {
