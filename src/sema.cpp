@@ -143,7 +143,7 @@ type_name_resolution(Span<std::string_view> srcs,
   return void_or_errors(std::move(errors), std::move(tg));
 }
 
-ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast) {
+ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast, Span<ASTID> roots) {
   IdentGraphCtx ctx = {
     std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
       return ast.forest[id] == ASTTag::Assignment
@@ -152,7 +152,7 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
                : std::nullopt;
     })};
 
-  for(const ASTID root : ast.forest.root_ids()) {
+  for(const ASTID root : roots) {
     calculate_ident_graph(ctx, root, srcs, ast);
   }
 
@@ -167,7 +167,7 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
 ContextualResult<Map<ASTID, ASTID>, AST>
 sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, Span<ASTID> roots) {
   return apply_language_rules(srcs, tc, native_types.names, std::move(ast), roots)
-    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast).append_state(std::move(ast)); })
+    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast, roots).append_state(std::move(ast)); })
     .map([&](Graph<ASTID> ig, AST ast) {
       auto propagations = calculate_propagations(ig, ast.forest);
       return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));

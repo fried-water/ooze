@@ -20,9 +20,10 @@ auto run_tc(Parser p, TestEnv env, std::string_view src, bool debug = false) {
   const auto srcs = make_sv_array(env.src, src);
   return parse_and_name_resolution(p, srcs, env.types.names, std::move(env.ast), SrcID{1})
     .and_then([&](auto roots, AST ast) {
-      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), as_span(roots));
+      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), as_span(roots)).and_then([&](AST ast) {
+        return calculate_ident_graph(srcs, ast, as_span(roots)).append_state(std::move(ast));
+      });
     })
-    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast).append_state(std::move(ast)); })
     .map([&](Graph<ASTID> ig, AST ast) {
       auto propagations = calculate_propagations(ig, ast.forest);
       return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
