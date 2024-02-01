@@ -44,6 +44,10 @@ ooze::Env create_env() {
   e.add_function("create_u", create_u);
   e.add_function("take_u", take_u);
 
+  e.add_function("add", [](int x, int y) { return x + y; });
+  e.add_function("sub", [](int x, int y) { return x - y; });
+  e.add_function("le", [](int x, int y) { return x <= y; });
+
   return e;
 }
 
