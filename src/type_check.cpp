@@ -120,12 +120,12 @@ generate_error(Span<std::string_view> srcs, const AST& ast, const TypeNames& typ
       [&](const MismatchedType& m) {
         return ContextualError{ref,
                                fmt::format("expected {}, given {}",
-                                           pretty_print(srcs, ast.tg, type_names, type),
-                                           pretty_print(srcs, ast.tg, type_names, m.conflicting_type))};
+                                           pretty_print(ast.tg, type_names, type),
+                                           pretty_print(ast.tg, type_names, m.conflicting_type))};
       },
       [&](const UnableToDeduce&) {
         return ContextualError{
-          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(srcs, ast.tg, type_names, type))};
+          ref, fmt::format("unable to fully deduce type, deduced: {}", pretty_print(ast.tg, type_names, type))};
       },
       [&](const ReturnBorrow&) {
         return ContextualError{ref, "cannot return a borrowed value"};
@@ -183,7 +183,6 @@ std::vector<ContextualError> generate_errors(Span<std::string_view> srcs,
 }
 
 std::tuple<TypeGraph, std::vector<Type>, std::vector<TypeCheckError>> constraint_propagation(
-  Span<std::string_view> srcs,
   const TypeCache& tc,
   const TypeNames& type_names,
   const std::vector<std::vector<ASTPropagation>>& propagations,
@@ -221,8 +220,8 @@ std::tuple<TypeGraph, std::vector<Type>, std::vector<TypeCheckError>> constraint
       fmt::print("Processing {} {}\n   propagated {}\n   existing   {}\n",
                  id.get(),
                  knot::debug(forest[id]),
-                 pretty_print(srcs, tg, type_names, type),
-                 pretty_print(srcs, tg, type_names, original_type));
+                 pretty_print(tg, type_names, type),
+                 pretty_print(tg, type_names, original_type));
     }
 
     // Apply propagated type
@@ -240,7 +239,7 @@ std::tuple<TypeGraph, std::vector<Type>, std::vector<TypeCheckError>> constraint
     }
 
     if(debug) {
-      fmt::print("   final      {}\n", pretty_print(srcs, tg, type_names, types[id.get()]));
+      fmt::print("   final      {}\n", pretty_print(tg, type_names, types[id.get()]));
     }
 
     if(!compare_dags(tg, original_type, types[id.get()])) {
@@ -264,13 +263,11 @@ std::tuple<TypeGraph, std::vector<Type>, std::vector<TypeCheckError>> constraint
     fmt::print("Final types\n");
     for(const ASTID root : roots) {
       for(const ASTID id : forest.post_order_ids(root)) {
-        fmt::print("    {:<4} {:<25} = {}",
-                   id.get(),
-                   knot::debug(forest[id]),
-                   pretty_print(srcs, tg, type_names, types[id.get()]));
+        fmt::print(
+          "    {:<4} {:<25} = {}", id.get(), knot::debug(forest[id]), pretty_print(tg, type_names, types[id.get()]));
 
         if(conflicting_types[id.get()].is_valid()) {
-          fmt::print(" (conflicting {})", pretty_print(srcs, tg, type_names, conflicting_types[id.get()]));
+          fmt::print(" (conflicting {})", pretty_print(tg, type_names, conflicting_types[id.get()]));
         }
 
         fmt::print("\n");
@@ -508,8 +505,8 @@ Type unify(const TypeCache& tc, TypeGraph& g, Type x, Type y, bool recurse) {
   }
 }
 
-ContextualResult<void, AST> apply_language_rules(
-  Span<std::string_view> srcs, const TypeCache& tc, const TypeNames& type_names, AST ast, Span<ASTID> roots) {
+ContextualResult<void, AST>
+apply_language_rules(const TypeCache& tc, const TypeNames& type_names, AST ast, Span<ASTID> roots) {
   std::vector<ContextualError> errors;
 
   const auto apply_type = [&](ASTID id, Type t) {
@@ -517,8 +514,8 @@ ContextualResult<void, AST> apply_language_rules(
     if(unified == Type::Invalid()) {
       errors.push_back({ast.srcs[id.get()],
                         fmt::format("expected {}, given {}",
-                                    pretty_print(srcs, ast.tg, type_names, t),
-                                    pretty_print(srcs, ast.tg, type_names, ast.types[id.get()]))});
+                                    pretty_print(ast.tg, type_names, t),
+                                    pretty_print(ast.tg, type_names, ast.types[id.get()]))});
     } else {
       ast.types[id.get()] = unified;
     }
@@ -674,7 +671,6 @@ ContextualResult<void, AST> constraint_propagation(
 
   std::vector<TypeCheckError> cp_errors;
   std::tie(ast.tg, ast.types, cp_errors) = constraint_propagation(
-    srcs,
     tc,
     native_types.names,
     propagations,

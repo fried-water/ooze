@@ -135,7 +135,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
         return i32(acc) > i32(ele_state) ? acc : ele_state;
       });
 
-    tree_ss << pretty_print(make_sv_array(env.src), env.ast.tg, env.native_types.names, binding.type);
+    tree_ss << pretty_print(env.ast.tg, env.native_types.names, binding.type);
     output.push_back(fmt::format(
       "  {}: {}{}",
       binding_name,
@@ -175,7 +175,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
     const Type type = env.ast.types[ident.get()];
     if(env.ast.tg.get<TypeTag>(type) == TypeTag::Fn) {
       const std::string_view name = sv(srcs, env.ast.srcs[ident.get()]);
-      functions.emplace_back(name, pretty_print_fn_type(srcs, env.ast.tg, env.native_types.names, type));
+      functions.emplace_back(name, pretty_print_fn_type(env.ast.tg, env.native_types.names, type));
     }
   }
 

@@ -27,7 +27,7 @@ StringResult<std::pair<Type, std::vector<Any>>, Env> run(Env env, std::string_vi
 template <typename T>
 void check_binding(
   const Env& e, const std::pair<Type, std::vector<Any>>& binding, std::string_view exp_type, const T& exp_value) {
-  BOOST_CHECK_EQUAL(exp_type, pretty_print(make_sv_array(e.src), e.ast.tg, e.native_types.names, binding.first));
+  BOOST_CHECK_EQUAL(exp_type, pretty_print(e.ast.tg, e.native_types.names, binding.first));
   compare(exp_value, binding.second);
 }
 

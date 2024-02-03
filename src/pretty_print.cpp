@@ -24,8 +24,7 @@ void print_literal(std::ostream& os, const Literal& l) {
     l);
 }
 
-void pretty_print(
-  std::ostream& os, Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, Type t) {
+void pretty_print(std::ostream& os, const TypeGraph& g, const TypeNames& type_names, Type t) {
   const auto children = g.fanout(t);
 
   switch(g.get<TypeTag>(t)) {
@@ -33,20 +32,19 @@ void pretty_print(
   case TypeTag::Floating: os << "_"; return;
   case TypeTag::Borrow:
     assert(children.size() == 1);
-    pretty_print(os << "&", srcs, g, type_names, children.front());
+    pretty_print(os << "&", g, type_names, children.front());
     return;
   case TypeTag::Fn:
     assert(children.size() == 2);
-    pretty_print(
-      os << (g.get<TypeTag>(children[0]) == TypeTag::Tuple ? "fn" : "fn "), srcs, g, type_names, children[0]);
-    pretty_print(os << " -> ", srcs, g, type_names, children[1]);
+    pretty_print(os << (g.get<TypeTag>(children[0]) == TypeTag::Tuple ? "fn" : "fn "), g, type_names, children[0]);
+    pretty_print(os << " -> ", g, type_names, children[1]);
     return;
   case TypeTag::Tuple:
     os << '(';
     if(!children.empty()) {
-      pretty_print(os, srcs, g, type_names, children.front());
+      pretty_print(os, g, type_names, children.front());
       std::for_each(children.begin() + 1, children.end(), [&](Type ele) {
-        pretty_print(os << ", ", srcs, g, type_names, ele);
+        pretty_print(os << ", ", g, type_names, ele);
       });
     }
     os << ')';
@@ -63,7 +61,7 @@ void pretty_print(std::ostream& os,
   const auto print_binding = [&](std::ostream& os, ASTID pattern_id) {
     pretty_print(os, srcs, ast, type_names, pattern_id, indentation);
     if(const Type t = ast.types[pattern_id.get()]; t.is_valid() && ast.tg.get<TypeTag>(t) != TypeTag::Floating) {
-      pretty_print(os << ": ", srcs, ast.tg, type_names, t);
+      pretty_print(os << ": ", ast.tg, type_names, t);
     }
   };
 
@@ -136,7 +134,7 @@ void pretty_print(std::ostream& os,
     os << ')';
 
     if(const Type t = ast.types[expr.get()]; t.is_valid()) {
-      pretty_print(os << " -> ", srcs, ast.tg, type_names, t);
+      pretty_print(os << " -> ", ast.tg, type_names, t);
     } else {
       os << " -> _";
     }
@@ -191,20 +189,20 @@ pretty_print(Span<std::string_view> srcs, const AST& ast, const TypeNames& type_
   return std::move(os).str();
 }
 
-std::string pretty_print(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, Type t) {
+std::string pretty_print(const TypeGraph& g, const TypeNames& type_names, Type t) {
   std::ostringstream os;
-  pretty_print(os, srcs, g, type_names, t);
+  pretty_print(os, g, type_names, t);
   return std::move(os).str();
 }
 
-std::string pretty_print_fn_type(Span<std::string_view> srcs, const TypeGraph& g, const TypeNames& type_names, Type t) {
+std::string pretty_print_fn_type(const TypeGraph& g, const TypeNames& type_names, Type t) {
   assert(g.get<TypeTag>(t) == TypeTag::Fn);
 
   std::ostringstream os;
 
   const auto children = g.fanout(t);
-  pretty_print(os, srcs, g, type_names, children[0]);
-  pretty_print(os << " -> ", srcs, g, type_names, children[1]);
+  pretty_print(os, g, type_names, children[0]);
+  pretty_print(os << " -> ", g, type_names, children[1]);
   return std::move(os).str();
 }
 

@@ -37,8 +37,7 @@ overload_resolution(const TypeCache&, TypeGraph&, const Graph<ASTID>& ident_grap
 std::vector<ContextualError> check_fully_resolved(
   Span<std::string_view>, const std::vector<std::vector<ASTPropagation>>&, const AST&, const TypeNames&, Span<ASTID>);
 
-ContextualResult<void, AST>
-apply_language_rules(Span<std::string_view>, const TypeCache&, const TypeNames&, AST, Span<ASTID>);
+ContextualResult<void, AST> apply_language_rules(const TypeCache&, const TypeNames&, AST, Span<ASTID>);
 
 ContextualResult<void, AST> constraint_propagation(
   Span<std::string_view>,

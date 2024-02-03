@@ -18,10 +18,9 @@ void test(Parser p, std::string_view exp, std::string_view src) {
 }
 
 void test_type(std::string_view exp, std::string_view src) {
-  const auto srcs = make_sv_array(src);
   const TypeNames names{{"T", TypeID{1}}};
-  const auto [type, ast] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, SrcID{0}));
-  BOOST_CHECK_EQUAL(exp, pretty_print(srcs, ast.tg, names, type));
+  const auto [type, ast] = check_result(parse_and_name_resolution(parse_type, make_sv_array(src), names, {}, SrcID{0}));
+  BOOST_CHECK_EQUAL(exp, pretty_print(ast.tg, names, type));
 }
 
 } // namespace
@@ -54,7 +53,7 @@ BOOST_AUTO_TEST_CASE(unnamed_type) {
   TypeGraph g;
   const Type id = g.add_node(TypeTag::Leaf, int_type);
 
-  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", type_id(knot::Type<int>{}).id), pretty_print({{}}, g, {}, id));
+  BOOST_CHECK_EQUAL(fmt::format("type 0x{:x}", type_id(knot::Type<int>{}).id), pretty_print(g, {}, id));
 }
 
 BOOST_AUTO_TEST_CASE(native_fn) {
@@ -117,10 +116,10 @@ BOOST_AUTO_TEST_CASE(ast) {
 }
 
 BOOST_AUTO_TEST_CASE(fn_type) {
-  const auto srcs = make_sv_array("fn(T) -> T");
   const TypeNames names{{"T", TypeID{1}}};
-  const auto [type, ast] = check_result(parse_and_name_resolution(parse_type, srcs, names, {}, SrcID{0}));
-  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(srcs, ast.tg, names, type));
+  const auto [type, ast] =
+    check_result(parse_and_name_resolution(parse_type, make_sv_array("fn(T) -> T"), names, {}, SrcID{0}));
+  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(ast.tg, names, type));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

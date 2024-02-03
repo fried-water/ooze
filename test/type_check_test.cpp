@@ -20,7 +20,7 @@ auto run_tc(Parser p, TestEnv env, std::string_view src, bool debug = false) {
   const auto srcs = make_sv_array(env.src, src);
   return parse_and_name_resolution(p, srcs, env.types.names, std::move(env.ast), SrcID{1})
     .and_then([&](auto roots, AST ast) {
-      return apply_language_rules(srcs, tc, env.types.names, std::move(ast), as_span(roots))
+      return apply_language_rules(tc, env.types.names, std::move(ast), as_span(roots))
         .and_then([&](AST ast) {
           return calculate_ident_graph(srcs, ast, as_span(roots)).append_state(std::move(ast));
         })
@@ -111,22 +111,20 @@ template <typename Parser>
 auto run_alr(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& types, AST ast) {
   const TypeCache tc = create_type_cache(ast.tg);
   return parse_and_name_resolution(p, srcs, types.names, std::move(ast), SrcID{1}).and_then([&](auto roots, AST ast) {
-    return apply_language_rules(srcs, tc, types.names, std::move(ast), as_span(roots));
+    return apply_language_rules(tc, types.names, std::move(ast), as_span(roots));
   });
 }
 
 template <typename Parser>
 void test_alr(Parser p, std::string_view src, std::vector<std::string> exp) {
   auto [types, env_src, ast] = basic_test_env();
-  const auto srcs = make_sv_array(env_src, src);
-
   const size_t initial_ast_size = ast.forest.size();
 
-  ast = check_result(run_alr(p, srcs, types, std::move(ast)));
+  ast = check_result(run_alr(p, make_sv_array(env_src, src), types, std::move(ast)));
 
   BOOST_REQUIRE_EQUAL(exp.size(), ast.types.size() - initial_ast_size);
   for(int i = 0; i < exp.size(); i++) {
-    BOOST_CHECK_EQUAL(exp[i], pretty_print(srcs, ast.tg, types.names, ast.types[i + initial_ast_size]));
+    BOOST_CHECK_EQUAL(exp[i], pretty_print(ast.tg, types.names, ast.types[i + initial_ast_size]));
   }
 }
 
@@ -236,8 +234,8 @@ BOOST_AUTO_TEST_CASE(partial) {
   }
   ast.types[root_z.get()] = tc.unit;
 
-  ast = check_result(apply_language_rules(srcs, tc, types.names, std::move(ast), as_span(root_y)));
-  BOOST_CHECK_EQUAL("i32", pretty_print(srcs, ast.tg, types.names, ast.types[root_y.get()]));
+  ast = check_result(apply_language_rules(tc, types.names, std::move(ast), as_span(root_y)));
+  BOOST_CHECK_EQUAL("i32", pretty_print(ast.tg, types.names, ast.types[root_y.get()]));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
