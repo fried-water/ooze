@@ -37,14 +37,14 @@ bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& 
   return is_copyable;
 }
 
-Type copy_type(Span<std::string_view> srcs, Env& env, Map<Type, Type>& m, const TypeGraph& tg, Type type) {
+Type copy_type(Env& env, Map<Type, Type>& m, const TypeGraph& tg, Type type) {
   if(const auto it = m.find(type); it != m.end()) {
     return it->second;
   } else if(tg.get<TypeTag>(type) == TypeTag::Leaf) {
     return env.ast.tg.add_node(TypeTag::Leaf, tg.get<TypeID>(type));
   } else {
     std::vector<Type> children =
-      transform_to_vec(tg.fanout(type), [&](Type fanout) { return copy_type(srcs, env, m, tg, fanout); });
+      transform_to_vec(tg.fanout(type), [&](Type fanout) { return copy_type(env, m, tg, fanout); });
 
     const Type new_type = env.ast.tg.add_node(children, tg.get<TypeTag>(type), tg.get<TypeID>(type));
     m.emplace(type, new_type);
@@ -114,7 +114,6 @@ auto assign_values(
 }
 
 auto run_or_assign(ExecutorRef ex,
-                   Span<std::string_view> srcs,
                    const AST& ast,
                    const Map<ASTID, ASTID>& binding_of,
                    Map<Type, Type>& to_env_type,
@@ -124,7 +123,7 @@ auto run_or_assign(ExecutorRef ex,
   assert(ast.forest.is_root(id));
 
   const bool expr = is_expr(ast.forest[id]);
-  const Type type = copy_type(srcs, env, to_env_type, ast.tg, ast.types[id.get()]);
+  const Type type = copy_type(env, to_env_type, ast.tg, ast.types[id.get()]);
 
   std::vector<AsyncValue> values;
   std::tie(values, bindings) = run_function(
@@ -160,10 +159,10 @@ Env generate_functions(Span<std::string_view> srcs, Env env, const AST& ast, con
     if(ast.forest[value_id] == ASTTag::Fn) {
       const Inst inst = env.program.placeholder();
       fns.emplace_back(value_id, inst);
-      to_env_id.emplace(ident_id,
-                        env.add_function(sv(srcs, ast.srcs[ident_id.get()]),
-                                         copy_type(srcs, env, to_env_type, ast.tg, ast.types[ident_id.get()]),
-                                         inst));
+      to_env_id.emplace(
+        ident_id,
+        env.add_function(
+          sv(srcs, ast.srcs[ident_id.get()]), copy_type(env, to_env_type, ast.tg, ast.types[ident_id.get()]), inst));
     } else {
       to_env_id.emplace(ident_id, ident_id);
     }
@@ -215,7 +214,7 @@ to_str_bindings(Span<std::string_view> srcs,
   Bindings str_bindings;
   for(auto& [id, values] : bindings) {
     str_bindings.emplace(std::string(sv(srcs, ast.srcs[id.get()])),
-                         Binding{copy_type(srcs, env, to_env_type, ast.tg, ast.types[id.get()]), std::move(values)});
+                         Binding{copy_type(env, to_env_type, ast.tg, ast.types[id.get()]), std::move(values)});
   }
   return {std::move(env), std::move(str_bindings)};
 }
@@ -302,7 +301,7 @@ StringResult<Binding, Env, Bindings> run(ExecutorRef ex, Env env, Bindings str_b
     .map([&](Map<ASTID, ASTID> overloads, AST ast, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       Binding result;
       std::tie(result, env, bindings) = run_or_assign(
-        ex, srcs, ast, overloads, to_env_type, std::move(env), std::move(bindings), ASTID{i32(ast.forest.size() - 1)});
+        ex, ast, overloads, to_env_type, std::move(env), std::move(bindings), ASTID{i32(ast.forest.size() - 1)});
       return std::tuple(std::move(result), std::move(ast), std::move(env), std::move(bindings));
     })
     .map_state([&](AST ast, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
@@ -349,7 +348,7 @@ run_to_string(ExecutorRef ex, Env env, Bindings str_bindings, std::string_view e
     .map([&](Map<ASTID, ASTID> overloads, AST ast, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       Binding result;
       std::tie(result, env, bindings) = run_or_assign(
-        ex, srcs, ast, overloads, to_env_type, std::move(env), std::move(bindings), ASTID{i32(ast.forest.size() - 1)});
+        ex, ast, overloads, to_env_type, std::move(env), std::move(bindings), ASTID{i32(ast.forest.size() - 1)});
       return std::tuple(std::move(result), std::move(ast), std::move(env), std::move(bindings));
     })
     .map_state([&](AST ast, Env env, Map<ASTID, std::vector<AsyncValue>> bindings) {
