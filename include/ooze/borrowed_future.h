@@ -1,6 +1,11 @@
 #pragma once
 
+#include "ooze/any.h"
 #include "ooze/future.h"
+
+#include <functional>
+#include <mutex>
+#include <vector>
 
 namespace ooze {
 
