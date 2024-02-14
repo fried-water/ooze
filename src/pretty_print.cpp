@@ -163,6 +163,21 @@ void pretty_print(std::ostream& os,
     os << "<env_value>";
     return;
   }
+
+  case ASTTag::Module: {
+    os << "mod " << sv(srcs, ast.srcs[id.get()]) << " {\n";
+
+    for(const ASTID child : ast.forest.child_ids(id)) {
+      for(int i = 0; i < indentation; i++) os << "  ";
+      pretty_print(os, srcs, ast, type_names, child, indentation);
+      os << "\n";
+    }
+
+    os << "\n";
+    for(int i = 0; i < indentation; i++) os << "  ";
+    os << "}";
+    return;
+  }
   }
 }
 

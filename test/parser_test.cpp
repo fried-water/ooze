@@ -17,6 +17,17 @@ namespace {
     check_range(ast.forest.root_ids(), std::array{pd.parsed});                                                         \
   }(_PARSER, _EXP_AST, _EXP_SRCS, _SRC)
 
+#define check_pass_roots(_PARSER, _EXP_AST, _EXP_SRCS, _SRC)                                                           \
+  [](auto parser,                                                                                                      \
+     const AST& exp_ast,                                                                                               \
+     const std::vector<std::pair<Type, SrcRef>>& exp_type_srcs,                                                        \
+     std::string_view src) {                                                                                           \
+    const auto [pd, ast] = check_result(parser({}, {}, src));                                                          \
+    check_eq("type_srcs", exp_type_srcs, pd.type_srcs);                                                                \
+    check_eq("ast", exp_ast, ast);                                                                                     \
+    check_range(ast.forest.root_ids(), pd.parsed);                                                                     \
+  }(_PARSER, _EXP_AST, _EXP_SRCS, _SRC)
+
 #define check_parse_type(_EXP_TYPES, _EXP_SRCS, _SRC)                                                                  \
   [](const TypeGraph& exp_tg, const std::vector<std::pair<Type, SrcRef>>& exp_type_srcs, std::string_view src) {       \
     auto [pd, ast] = check_result(parse_type({}, {}, src));                                                            \
@@ -495,6 +506,42 @@ BOOST_AUTO_TEST_CASE(fn_return_fn) {
                    {Type{-1}, Type{2}, Type{-1}},
                    make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {}, {0, 1}})};
   check_pass(parse_fn, ast, type_refs(src, {{1, "T"}}), src);
+}
+
+BOOST_AUTO_TEST_CASE(mod_empty) {
+  const std::string_view src = "mod x {}";
+  const AST ast = {ast_forest({{ASTTag::Module}}), slices(src, {"x"}), types(1)};
+  check_pass_roots(parse, ast, {}, src);
+}
+
+BOOST_AUTO_TEST_CASE(mod_nested) {
+  const std::string_view src = "mod x { mod y {} }";
+  const AST ast = {ast_forest({{ASTTag::Module, ASTTag::Module}}), slices(src, {"y", "x"}), types(2)};
+  check_pass_roots(parse, ast, {}, src);
+}
+
+BOOST_AUTO_TEST_CASE(mod_fn) {
+  const std::string_view src = "mod x { fn f() -> () = () }";
+  const AST ast = {ast_forest({{ASTTag::Module, ASTTag::Assignment, ASTTag::PatternIdent},
+                               {ASTTag::Module, ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
+                               {ASTTag::Module, ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprTuple}}),
+                   as_invalid_refs({{11, 12}, {12, 14}, {23, 25}, {12, 25}, {8, 25}, {4, 5}}),
+                   {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}},
+                   make_tg({TypeTag::Tuple}, {{}})};
+  check_pass_roots(parse, ast, {}, src);
+}
+
+BOOST_AUTO_TEST_CASE(mod_fn_adj) {
+  const std::string_view src = "fn f() -> () = () mod x {}";
+  const AST ast = {
+    ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
+                {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
+                {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprTuple},
+                {ASTTag::Module}}),
+    as_invalid_refs({{3, 4}, {4, 6}, {15, 17}, {4, 17}, {0, 17}, {22, 23}}),
+    {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}},
+    make_tg({TypeTag::Tuple}, {{}})};
+  check_pass_roots(parse, ast, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(ast_empty) {

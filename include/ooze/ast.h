@@ -6,6 +6,7 @@
 #include "ooze/src_map.h"
 #include "ooze/type.h"
 
+#include <fmt/core.h>
 #include <knot/core.h>
 
 #include <algorithm>
@@ -32,7 +33,8 @@ enum class ASTTag {
   Fn,
   EnvValue,
 
-  Assignment
+  Assignment,
+  Module
 };
 
 constexpr auto names(knot::Type<ASTTag>) {
@@ -51,7 +53,8 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprIdent",
      "Fn",
      "EnvValue",
-     "Assignment"});
+     "Assignment",
+     "Module"});
 }
 
 using ASTID = StrongID<struct ASTSpace>;
@@ -97,14 +100,17 @@ inline bool is_pattern(ASTTag tag) {
 }
 
 inline bool is_global(const Forest<ASTTag, ASTID>& f, ASTID id) {
-  if(f[id] == ASTTag::PatternIdent) {
-    while(!f.is_root(id) && is_pattern(f[id])) {
-      id = *f.parent(id);
-    }
-    return f.is_root(id) && f[id] == ASTTag::Assignment;
-  } else {
-    return false;
+  assert(f[id] == ASTTag::Assignment || is_expr(f[id]));
+  const auto parent = f.parent(id);
+  return !parent || f[*parent] == ASTTag::Module;
+}
+
+inline bool is_global_pattern(const Forest<ASTTag, ASTID>& f, ASTID id) {
+  assert(f[id] == ASTTag::PatternIdent);
+  while(!f.is_root(id) && is_pattern(f[id])) {
+    id = *f.parent(id);
   }
+  return f[id] == ASTTag::Assignment && is_global(f, id);
 }
 
 inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID> children = {}) {

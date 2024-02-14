@@ -323,21 +323,24 @@ void find_returned_borrows(const AST& ast, std::vector<TypeCheckError>& errors, 
 
       break;
     }
+    case ASTTag::Fn: find_returned_borrows(ast, errors, ast.forest.child_ids(id).get<1>()); break;
     default: break;
     }
   }
 }
 
-std::vector<TypeCheckError> find_returned_borrows(const AST& ast, Span<ASTID> roots) {
+template <typename Roots>
+std::vector<TypeCheckError> find_returned_borrows(const AST& ast, Roots roots) {
   std::vector<TypeCheckError> errors;
 
   for(const ASTID root_id : roots) {
-    const ASTID expr_id = is_expr(ast.forest[root_id]) ? root_id : ast.forest.child_ids(root_id).get<1>();
-
-    find_returned_borrows(ast, errors, expr_id);
-
-    if(ast.forest[expr_id] == ASTTag::Fn) {
-      find_returned_borrows(ast, errors, ast.forest.child_ids(expr_id).get<1>());
+    const ASTTag tag = ast.forest[root_id];
+    if(tag == ASTTag::Module) {
+      errors = to_vec(find_returned_borrows(ast, ast.forest.child_ids(root_id)), std::move(errors));
+    } else if(tag == ASTTag::Assignment) {
+      find_returned_borrows(ast, errors, ast.forest.child_ids(root_id).get<1>());
+    } else {
+      find_returned_borrows(ast, errors, root_id);
     }
   }
 
@@ -410,7 +413,8 @@ std::vector<TypeCheckError> find_binding_usage_errors(
       [&](ASTID id) -> std::optional<TypeCheckError> {
         if(ast.forest[id] == ASTTag::PatternIdent) {
           if(sv(srcs, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
-            return is_global(ast.forest, id) ? std::nullopt : std::optional(TypeCheckError{UnusedBinding{}, id});
+            return is_global_pattern(ast.forest, id) ? std::nullopt
+                                                     : std::optional(TypeCheckError{UnusedBinding{}, id});
           } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
                     has_non_copy_type(has_non_copy_type, ast.types[id.get()]) &&
                     has_conditional_overuse(ast.forest, ident_graph.fanout(id))) {
@@ -447,7 +451,8 @@ Type language_rule(const TypeCache& tc, AST& ast, ASTID id) {
 
   case ASTTag::Fn: return tc.fn_floating;
 
-  case ASTTag::Assignment: return tc.unit;
+  case ASTTag::Assignment:
+  case ASTTag::Module: return tc.unit;
 
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
@@ -613,7 +618,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       }
       case ASTTag::ExprIdent: {
         for(const ASTID pattern : ident_graph.fanout(id)) {
-          if(is_global(forest, pattern)) {
+          if(is_global_pattern(forest, pattern)) {
             // Only propogate one way
             propagations[pattern.get()].push_back(
               {id, true, ident_graph.num_fanout(id) == 1 ? Propagation{DirectProp{}} : Propagation{FloatingProp{}}});
@@ -625,7 +630,8 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       case ASTTag::EnvValue:
       case ASTTag::ExprLiteral:
       case ASTTag::PatternIdent:
-      case ASTTag::PatternWildCard: break;
+      case ASTTag::PatternWildCard:
+      case ASTTag::Module: break;
       }
     }
   }

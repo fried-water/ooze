@@ -197,6 +197,10 @@ BOOST_AUTO_TEST_CASE(fn_assign) {
              {0, 2}); //  f(), x
 }
 
+BOOST_AUTO_TEST_CASE(mod_fn) {
+  check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "mod x { fn g() -> _ = f() }")), {0});
+}
+
 BOOST_AUTO_TEST_CASE(partial) {
   TestEnv env = create_test_env({}, {"f: fn() -> ()"});
 
@@ -485,6 +489,27 @@ BOOST_AUTO_TEST_CASE(unused_script_fn) {
   const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
   const auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
   check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, pr.parsed)));
+}
+
+BOOST_AUTO_TEST_CASE(mod_fn) {
+  const auto srcs = make_sv_array("mod x { fn g() -> _ = f() } fn f() -> _ = 1");
+  const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
+  auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
+
+  fanout[2] = {ASTID{8}};
+  fanout[8] = {ASTID{2}};
+
+  check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, pr.parsed)));
+  check_eq("ident_graph",
+           Graph<ASTID>(fanout),
+           check_result(calculate_ident_graph(srcs, ast, std::array{*ast.forest.first_root()})));
+}
+
+BOOST_AUTO_TEST_CASE(inaccessible_mod_fn) {
+  const auto srcs = make_sv_array("mod x { fn g() -> _ = 1 } fn f() -> () = g()");
+  const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {41, 42}}, "undeclared binding 'g'"}};
+  check_eq("ig_errors", exp_errors, check_error(calculate_ident_graph(srcs, ast, pr.parsed)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

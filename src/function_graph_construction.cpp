@@ -345,6 +345,7 @@ add_expr(const AST& ast,
   case ASTTag::PatternTuple:
   case ASTTag::Fn:
   case ASTTag::Assignment:
+  case ASTTag::Module:
   case ASTTag::EnvValue: assert(false); return {};
   case ASTTag::ExprLiteral: {
     std::vector<Oterm> terms =

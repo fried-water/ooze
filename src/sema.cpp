@@ -16,6 +16,20 @@ struct IdentGraphCtx {
   std::vector<ASTID> undeclared_bindings;
 };
 
+template <typename IDRange>
+IdentGraphCtx add_globals(Span<std::string_view> srcs, const AST& ast, IdentGraphCtx ctx, IDRange range) {
+  ctx.globals = transform_filter_to_vec(
+    range,
+    [&](ASTID id) {
+      return ast.forest[id] == ASTTag::Assignment
+               ? std::optional(std::pair(
+                   sv(srcs, ast.srcs[ast.forest.child_ids(id).get<0>().get()]), ast.forest.child_ids(id).get<0>()))
+               : std::nullopt;
+    },
+    std::move(ctx.globals));
+  return ctx;
+}
+
 void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> srcs, const AST& ast) {
   switch(ast.forest[id]) {
   case ASTTag::PatternIdent: ctx.stack.emplace_back(sv(srcs, ast.srcs[id.get()]), id); break;
@@ -57,7 +71,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
     calculate_ident_graph(ctx, expr, srcs, ast);
 
     // Skip identifier of globals, already added up front
-    if(!ast.forest.is_root(id)) {
+    if(!is_global(ast.forest, id)) {
       calculate_ident_graph(ctx, pattern, srcs, ast);
     }
     break;
@@ -75,6 +89,15 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
       calculate_ident_graph(ctx, child, srcs, ast);
     }
     break;
+  case ASTTag::Module: {
+    const size_t initial_size = ctx.globals.size();
+    ctx = add_globals(srcs, ast, std::move(ctx), ast.forest.child_ids(id));
+    for(const ASTID child : ast.forest.child_ids(id)) {
+      calculate_ident_graph(ctx, child, srcs, ast);
+    }
+    ctx.globals.erase(ctx.globals.begin() + i64(initial_size), ctx.globals.end());
+    break;
+  }
   };
 }
 
@@ -147,13 +170,8 @@ type_name_resolution(Span<std::string_view> srcs,
 }
 
 ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast, Span<ASTID> roots) {
-  IdentGraphCtx ctx = {
-    std::vector<std::vector<ASTID>>(ast.forest.size()), transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID id) {
-      return ast.forest[id] == ASTTag::Assignment
-               ? std::optional(std::pair(
-                   sv(srcs, ast.srcs[ast.forest.child_ids(id).get<0>().get()]), ast.forest.child_ids(id).get<0>()))
-               : std::nullopt;
-    })};
+  IdentGraphCtx ctx =
+    add_globals(srcs, ast, IdentGraphCtx{std::vector<std::vector<ASTID>>(ast.forest.size())}, ast.forest.root_ids());
 
   for(const ASTID root : roots) {
     calculate_ident_graph(ctx, root, srcs, ast);

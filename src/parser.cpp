@@ -69,27 +69,19 @@ Slice char_slice(Span<Token> tokens, Slice token_slice) {
 SrcRef join(SrcRef x, SrcRef y) { return {x.file, {x.slice.begin, y.slice.end}}; }
 
 auto token_parser(TokenType type) {
-  return transform(filter(any(), "token", [=](Token t) { return t.type == type; }), [](State& s, Token t) {
-    return std::string_view(s.src.begin() + t.ref.begin, t.ref.end - t.ref.begin);
-  });
+  return transform(filter(any(), "token", [=](Token t) { return t.type == type; }), [](Token t) { return t.ref; });
 }
 
 auto symbol(std::string_view sv) {
-  return nullify(
-    filter(token_parser(TokenType::Symbol), fmt::format("'{}'", sv), [=](std::string_view t) { return t == sv; }));
+  return nullify(filter(token_parser(TokenType::Symbol), fmt::format("'{}'", sv), [=](State& s, Slice ref) {
+    return sv == std::string_view(s.src.begin() + ref.begin, ref.end - ref.begin);
+  }));
 }
 
 auto keyword(std::string_view sv) {
-  return nullify(
-    filter(token_parser(TokenType::Keyword), fmt::format("'{}'", sv), [=](std::string_view t) { return t == sv; }));
-}
-
-template <typename P>
-auto debug(std::string_view msg, P p) {
-  return transform(p, [=](auto v) {
-    fmt::print("{}\n", msg);
-    return v;
-  });
+  return nullify(filter(token_parser(TokenType::Keyword), fmt::format("'{}'", sv), [=](State& s, Slice ref) {
+    return sv == std::string_view(s.src.begin() + ref.begin, ref.end - ref.begin);
+  }));
 }
 
 template <typename P>
@@ -260,7 +252,18 @@ auto fn() {
                    });
 }
 
-auto root() { return n(transform(seq(keyword("fn"), ident(), fn()), ASTAppender{ASTTag::Assignment})); }
+ParseResult<ASTID> module(State&, Span<Token>, ParseLocation);
+
+auto root_element() {
+  return choose(transform(seq(keyword("fn"), ident(), fn()), ASTAppender{ASTTag::Assignment}), module);
+}
+
+ParseResult<ASTID> module(State& s, Span<Token> tokens, ParseLocation loc) {
+  return transform(seq(keyword("mod"), token_parser(TokenType::Ident), symbol("{"), n(root_element()), symbol("}")),
+                   [](State& s, Slice name_ref, std::vector<ASTID> children) {
+                     return ASTAppender{ASTTag::Module}(s, {s.src_id, name_ref}, children);
+                   })(s, tokens, loc);
+}
 
 template <typename Parser>
 auto parse_ast(Parser p, AST ast, SrcID src_id, std::string_view src) {
@@ -291,7 +294,7 @@ auto parse_ast(Parser p, AST ast, SrcID src_id, std::string_view src) {
 } // namespace
 
 ContextualResult<ParserResult<std::vector<ASTID>>, AST> parse(AST ast, SrcID id, std::string_view src) {
-  return parse_ast(root(), std::move(ast), id, src);
+  return parse_ast(n(root_element()), std::move(ast), id, src);
 }
 
 ContextualResult<ParserResult<ASTID>, AST> parse_repl(AST ast, SrcID id, std::string_view src) {
