@@ -6,7 +6,6 @@
 #include "ooze/src_map.h"
 #include "ooze/type.h"
 
-#include <fmt/core.h>
 #include <knot/core.h>
 
 #include <algorithm>
@@ -117,6 +116,12 @@ inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID
   ast.srcs.push_back(ref);
   ast.types.push_back(type);
   return ast.forest.append_root_post_order(tag, children);
+}
+
+inline void pop_last_root(AST& ast) {
+  ast.srcs.pop_back();
+  ast.types.pop_back();
+  ast.forest.pop_last_root();
 }
 
 inline ASTID add_global(AST& ast, SrcRef ref, Type type) {
