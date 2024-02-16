@@ -152,13 +152,18 @@ auto count_if(const Range& range, F f) {
 }
 
 template <typename Range, typename T>
-auto find(const Range& range, const T& t) {
+auto find(Range&& range, const T& t) {
   return std::find(range.begin(), range.end(), t);
 }
 
 template <typename Range, typename F>
-auto find_if(const Range& range, F f) {
+auto find_if(Range&& range, F f) {
   return std::find_if(range.begin(), range.end(), f);
+}
+
+template <typename Range>
+auto distance(const Range& range) {
+  return std::distance(range.begin(), range.end());
 }
 
 } // namespace ooze
