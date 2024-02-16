@@ -107,39 +107,13 @@ auto assign_values(
   return bindings;
 }
 
-auto run_or_assign(ExecutorRef ex,
-                   const AST& ast,
-                   const Map<ASTID, ASTID>& binding_of,
-                   Env env,
-                   Map<ASTID, std::vector<AsyncValue>> bindings,
-                   ASTID id) {
-  assert(is_global(ast.forest, id));
-
-  const bool expr = is_expr(ast.forest[id]);
-  const Type type = copy_type(env, ast.tg, ast.types[id.get()]);
-
-  std::vector<AsyncValue> values;
-  std::tie(values, bindings) = run_function(
-    ast,
-    binding_of,
-    env.native_types.copyable,
-    env.functions,
-    env.program,
-    ex,
-    std::move(bindings),
-    expr ? id : ast.forest.child_ids(id).get<1>());
-
-  return expr ? std::tuple(Binding{type, std::move(values)}, std::move(env), std::move(bindings))
-              : std::tuple(Binding{type},
-                           std::move(env),
-                           assign_values(ast, std::move(bindings), std::move(values), *ast.forest.first_child(id)));
-}
-
 Env generate_functions(Span<std::string_view> srcs, Env env, const AST& ast, const Map<ASTID, ASTID>& overloads) {
   Map<ASTID, ASTID> to_env_id;
   std::vector<std::pair<ASTID, Inst>> fns;
 
   for(const ASTID root : ast.forest.root_ids()) {
+    assert(ast.forest[root] == ASTTag::Assignment || ast.forest[root] == ASTTag::Module);
+    if(ast.forest[root] == ASTTag::Module) continue;
     const auto [ident_id, value_id] = ast.forest.child_ids(root).take<2>();
 
     if(ast.forest[value_id] == ASTTag::Fn) {
@@ -201,6 +175,34 @@ to_str_bindings(Span<std::string_view> srcs, const AST& ast, Env env, Map<ASTID,
                          Binding{copy_type(env, ast.tg, ast.types[id.get()]), std::move(values)});
   }
   return {std::move(env), std::move(str_bindings)};
+}
+
+auto run_or_assign(ExecutorRef ex,
+                   const AST& ast,
+                   const Map<ASTID, ASTID>& binding_of,
+                   Env env,
+                   Map<ASTID, std::vector<AsyncValue>> bindings,
+                   ASTID id) {
+  assert(is_global(ast.forest, id));
+
+  const bool expr = is_expr(ast.forest[id]);
+  const Type type = copy_type(env, ast.tg, ast.types[id.get()]);
+
+  std::vector<AsyncValue> values;
+  std::tie(values, bindings) = run_function(
+    ast,
+    binding_of,
+    env.native_types.copyable,
+    env.functions,
+    env.program,
+    ex,
+    std::move(bindings),
+    expr ? id : ast.forest.child_ids(id).get<1>());
+
+  return expr ? std::tuple(Binding{type, std::move(values)}, std::move(env), std::move(bindings))
+              : std::tuple(Binding{type},
+                           std::move(env),
+                           assign_values(ast, std::move(bindings), std::move(values), *ast.forest.first_child(id)));
 }
 
 } // namespace
