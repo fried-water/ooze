@@ -99,16 +99,20 @@ struct GraphContext {
 
 std::pair<GraphContext, int>
 append_bindings(const AST& ast, ASTID pattern, const std::vector<Oterm>& terms, GraphContext ctx, int offset = 0) {
+  assert(offset <= terms.size());
   auto it = terms.begin() + offset;
+
   for(const ASTID id : ast.forest.pre_order_ids(pattern)) {
     if(ast.forest[id] == ASTTag::PatternWildCard) {
       it += size_of(ast.tg, ast.types[id.get()]);
     } else if(ast.forest[id] == ASTTag::PatternIdent) {
       const auto count = size_of(ast.tg, ast.types[id.get()]);
+      assert(offset + count <= terms.size());
       ctx.bindings[id] = std::vector<Oterm>(it, it + count);
       it += count;
     }
   }
+
   return {std::move(ctx), int(std::distance(terms.begin(), it))};
 }
 
