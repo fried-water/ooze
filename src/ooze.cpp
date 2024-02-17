@@ -46,47 +46,42 @@ Type copy_type(Env& env, const TypeGraph& tg, Type type) {
                tg.get<TypeID>(type));
 }
 
-std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_function(
-  const AST& ast,
-  const Map<ASTID, ASTID>& binding_of,
-  const std::unordered_set<TypeID>& copy_types,
-  const std::unordered_map<ASTID, Inst>& functions,
-  Program p,
-  ExecutorRef ex,
-  Map<ASTID, std::vector<AsyncValue>> bindings,
-  ASTID expr_id) {
-  assert(is_expr(ast.forest[expr_id]));
+std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>>
+run_function(const AST& ast,
+             const std::unordered_set<TypeID>& copy_types,
+             const std::unordered_map<ASTID, Inst>& functions,
+             ExecutorRef ex,
+             FunctionGraphData fg_data,
+             Map<ASTID, std::vector<AsyncValue>> bindings) {
+  const Inst graph_inst = fg_data.program.add(std::move(fg_data.graph));
 
-  auto [p2, value_inputs, borrow_inputs, fg] = create_graph(std::move(p), ast, copy_types, binding_of, expr_id);
-  const Inst graph_inst = p2.add(std::move(fg));
-
-  std::vector<BorrowedFuture> borrowed;
-  for(const ASTID id : borrow_inputs) {
+  auto borrowed = fold(fg_data.captured_borrows, std::vector<BorrowedFuture>{}, [&](auto acc, ASTID id) {
     const auto it = bindings.find(id);
     assert(it != bindings.end());
-    borrowed = transform_to_vec(
-      it->second, [](AsyncValue& v) { return borrow(v); }, std::move(borrowed));
-  }
+    return transform_to_vec(
+      it->second, [](AsyncValue& v) { return borrow(v); }, std::move(acc));
+  });
 
-  std::vector<Future> futures;
-  for(const ASTID id : value_inputs) {
+  auto futures = fold(fg_data.captured_values, std::vector<Future>{}, [&](auto acc, ASTID id) {
     if(const auto it = bindings.find(id); it == bindings.end()) {
       const auto fn_it = functions.find(id);
       assert(fn_it != functions.end());
-      futures.emplace_back(Any(fn_it->second));
+      acc.emplace_back(Any(fn_it->second));
     } else if(is_binding_copyable(ast.tg, copy_types, ast.types[id.get()])) {
-      futures = transform_to_vec(
-        it->second, [](AsyncValue& v) { return borrow(v).then([](const Any& a) { return a; }); }, std::move(futures));
+      acc = transform_to_vec(
+        it->second, [](AsyncValue& v) { return borrow(v).then([](const Any& a) { return a; }); }, std::move(acc));
     } else {
-      futures = transform_to_vec(
-        std::move(it->second), [](AsyncValue v) { return take(std::move(v)); }, std::move(futures));
+      acc = transform_to_vec(
+        std::move(it->second), [](AsyncValue v) { return take(std::move(v)); }, std::move(acc));
       bindings.erase(it);
     }
-  }
+    return acc;
+  });
 
   return std::tuple(
     transform_to_vec(
-      execute(std::make_shared<Program>(std::move(p2)), graph_inst, ex, std::move(futures), std::move(borrowed)),
+      execute(
+        std::make_shared<Program>(std::move(fg_data.program)), graph_inst, ex, std::move(futures), std::move(borrowed)),
       Construct<AsyncValue>{}),
     std::move(bindings));
 }
@@ -107,50 +102,50 @@ auto assign_values(
   return bindings;
 }
 
-Env generate_functions(Span<std::string_view> srcs, Env env, const AST& ast, const Map<ASTID, ASTID>& overloads) {
-  Map<ASTID, ASTID> to_env_id;
-  std::vector<std::pair<ASTID, Inst>> fns;
+std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>>
+generate_fns(Program prog,
+             const AST& ast,
+             const std::unordered_map<ASTID, Inst>& existing_fns,
+             const std::unordered_set<TypeID>& copy_types,
+             const Map<ASTID, ASTID>& overloads) {
+  std::vector<std::tuple<ASTID, ASTID, Inst>> fns =
+    transform_filter_to_vec(ast.forest.root_ids(), [&](ASTID root) -> std::optional<std::tuple<ASTID, ASTID, Inst>> {
+      assert(ast.forest[root] == ASTTag::Assignment || ast.forest[root] == ASTTag::Module);
+      if(ast.forest[root] == ASTTag::Assignment) {
+        const auto [pattern, expr] = ast.forest.child_ids(root).take<2>();
+        if(ast.forest[expr] == ASTTag::Fn) {
+          return std::optional(std::tuple(pattern, expr, prog.placeholder()));
+        }
+      }
+      return std::nullopt;
+    });
 
-  for(const ASTID root : ast.forest.root_ids()) {
-    assert(ast.forest[root] == ASTTag::Assignment || ast.forest[root] == ASTTag::Module);
-    if(ast.forest[root] == ASTTag::Module) continue;
-    const auto [ident_id, value_id] = ast.forest.child_ids(root).take<2>();
+  prog = fold(fns, std::move(prog), flattened([&](Program p0, ASTID, ASTID expr, Inst inst) {
+                auto [p, captured_values, captured_borrows, graph] =
+                  create_graph(std::move(p0), ast, copy_types, overloads, expr);
 
-    if(ast.forest[value_id] == ASTTag::Fn) {
-      const Inst inst = env.program.placeholder();
-      fns.emplace_back(value_id, inst);
-      to_env_id.emplace(
-        ident_id,
-        env.add_function(sv(srcs, ast.srcs[ident_id.get()]), copy_type(env, ast.tg, ast.types[ident_id.get()]), inst));
-    } else {
-      to_env_id.emplace(ident_id, ident_id);
-    }
-  }
+                assert(captured_borrows.empty());
 
-  for(const auto [id, inst] : fns) {
-    FunctionGraphData fg_data = create_graph(std::move(env.program), ast, env.native_types.copyable, overloads, id);
+                if(captured_values.empty()) {
+                  p.set(inst, std::move(graph));
+                } else {
+                  std::vector<Any> values = transform_to_vec(captured_values, [&](ASTID id) {
+                    if(const auto it = existing_fns.find(id); it != existing_fns.end()) {
+                      return Any(it->second);
+                    } else {
+                      const auto it2 = find_if(fns, flattened([&](ASTID pat, ASTID, Inst) { return pat == id; }));
+                      assert(it2 != fns.end());
+                      return Any(std::get<2>(*it2));
+                    }
+                  });
 
-    env.program = std::move(fg_data.program);
+                  p.set(inst, p.add(std::move(graph)), std::move(values));
+                }
 
-    assert(fg_data.captured_borrows.empty());
+                return std::move(p);
+              }));
 
-    if(fg_data.captured_values.empty()) {
-      env.program.set(inst, std::move(fg_data.graph));
-    } else {
-      std::vector<Any> values = transform_to_vec(fg_data.captured_values, [&](ASTID id) {
-        const auto it = to_env_id.find(id);
-        assert(it != to_env_id.end());
-        const auto fn_it = env.functions.find(it->second);
-        assert(fn_it != env.functions.end());
-        return Any(fn_it->second);
-      });
-
-      const Inst graph_inst = env.program.add(std::move(fg_data.graph));
-      env.program.set(inst, graph_inst, std::move(values));
-    }
-  }
-
-  return env;
+  return std::pair(std::move(prog), std::move(fns));
 }
 
 std::tuple<std::string, AST, std::vector<ASTID>, Map<ASTID, std::vector<AsyncValue>>>
@@ -179,7 +174,7 @@ to_str_bindings(Span<std::string_view> srcs, const AST& ast, Env env, Map<ASTID,
 
 auto run_or_assign(ExecutorRef ex,
                    const AST& ast,
-                   const Map<ASTID, ASTID>& binding_of,
+                   const Map<ASTID, ASTID>& overloads,
                    Env env,
                    Map<ASTID, std::vector<AsyncValue>> bindings,
                    ASTID id) {
@@ -191,13 +186,11 @@ auto run_or_assign(ExecutorRef ex,
   std::vector<AsyncValue> values;
   std::tie(values, bindings) = run_function(
     ast,
-    binding_of,
     env.native_types.copyable,
     env.functions,
-    env.program,
     ex,
-    std::move(bindings),
-    expr ? id : ast.forest.child_ids(id).get<1>());
+    create_graph(env.program, ast, env.native_types.copyable, overloads, expr ? id : ast.forest.child_ids(id).get<1>()),
+    std::move(bindings));
 
   return expr ? std::tuple(Binding{type, std::move(values)}, std::move(env), std::move(bindings))
               : std::tuple(Binding{type},
@@ -266,7 +259,16 @@ StringResult<void, Env> parse_scripts(Env env, Span<std::string_view> files) {
     })
     .append_state(std::move(env))
     .map([&](Map<ASTID, ASTID> overloads, AST ast, Env env) {
-      env = generate_functions(srcs, std::move(env), ast, overloads);
+      std::vector<std::tuple<ASTID, ASTID, Inst>> generated_fns;
+      std::tie(env.program, generated_fns) =
+        generate_fns(std::move(env.program), ast, env.functions, env.native_types.copyable, overloads);
+
+      for(const auto [pattern, expr, inst] : generated_fns) {
+        if(pattern.is_valid()) {
+          env.add_function(sv(srcs, ast.srcs[pattern.get()]), copy_type(env, ast.tg, ast.types[pattern.get()]), inst);
+        }
+      }
+
       return std::tuple(std::move(ast), std::move(env));
     })
     .map_state([](AST, Env env) { return env; })

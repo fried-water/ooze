@@ -107,6 +107,18 @@ auto transform_filter_to_vec(R&& range, F f, std::vector<T> v = {}) {
   return v;
 }
 
+template <typename Range, typename T, typename Op>
+T fold(Range&& range, T val, Op f) {
+  for(auto&& ele : range) {
+    if constexpr(std::is_lvalue_reference_v<Range>) {
+      val = f(std::move(val), ele);
+    } else {
+      val = f(std::move(val), std::move(ele));
+    }
+  }
+  return val;
+}
+
 template <typename... Rs, typename T = std::common_type_t<typename std::decay_t<Rs>::value_type...>>
 auto flatten(Rs&&... ranges) {
   std::vector<T> v;
