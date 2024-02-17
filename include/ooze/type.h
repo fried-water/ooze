@@ -4,8 +4,9 @@
 #include "ooze/strong_id.h"
 #include "ooze/traits.h"
 
+#include <algorithm>
+#include <numeric>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -97,21 +98,21 @@ Type add_fn(TypeGraph& g, knot::Type<F> f) {
   }
 }
 
-inline int size_of(const TypeGraph& g, const Type& t) {
-  int s = 0;
-
-  preorder(g, t, [&](Type t) {
-    switch(g.get<TypeTag>(t)) {
-    case TypeTag::Leaf:
-    case TypeTag::Fn: s += 1; return false;
-    case TypeTag::Floating: assert(false);
-    case TypeTag::Borrow:
-    case TypeTag::Tuple: break;
-    }
-    return true;
-  });
-
-  return s;
+inline int size_of(const TypeGraph& tg, const Type& t) {
+  switch(tg.get<TypeTag>(t)) {
+  case TypeTag::Leaf:
+  case TypeTag::Fn: return 1;
+  case TypeTag::Floating: assert(false);
+  case TypeTag::Borrow:
+  case TypeTag::Tuple: {
+    const auto children = tg.fanout(t);
+    return std::accumulate(children.begin(), children.end(), 0, [&](int acc, Type child) {
+      return acc + size_of(tg, child);
+    });
+  }
+  }
+  assert(false);
+  return 0;
 }
 
 } // namespace ooze
