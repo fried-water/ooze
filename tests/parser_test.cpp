@@ -212,6 +212,15 @@ BOOST_AUTO_TEST_CASE(expr_ident) {
   check_pass(parse_expr, ast, {}, src);
 }
 
+BOOST_AUTO_TEST_CASE(expr_qualified) {
+  const std::string_view src = "a::b::c";
+  auto f = ast_forest({{ASTTag::ExprQualified, ASTTag::ModuleRef}});
+  f.append_child(ASTID{0}, ASTTag::ModuleRef);
+  f.append_child(ASTID{0}, ASTTag::ExprIdent);
+  const AST ast = {std::move(f), slices(src, {"a", "b", "c", src}), types(4)};
+  check_pass(parse_expr, ast, {}, src);
+}
+
 BOOST_AUTO_TEST_CASE(expr_tuple) {
   const std::string_view src = "()";
   const AST ast = {ast_forest({{ASTTag::ExprTuple}}), slices(src, {src}), types(1)};

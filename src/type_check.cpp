@@ -623,6 +623,7 @@ Type language_rule(const TypeCache& tc, AST& ast, ASTID id) {
   case ASTTag::Fn: return tc.fn_floating;
 
   case ASTTag::Assignment:
+  case ASTTag::ModuleRef:
   case ASTTag::Module: return tc.unit;
 
   case ASTTag::ExprCall:
@@ -632,6 +633,7 @@ Type language_rule(const TypeCache& tc, AST& ast, ASTID id) {
   case ASTTag::PatternIdent:
   case ASTTag::ExprWith:
   case ASTTag::EnvValue:
+  case ASTTag::ExprQualified:
   case ASTTag::ExprIdent: return tc.floating;
   }
 
@@ -691,6 +693,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
         add_pair(id, expr, FnOutputProp{});
         break;
       }
+      case ASTTag::ExprQualified:
       case ASTTag::ExprIdent: {
         for(const ASTID pattern : ident_graph.fanout(id)) {
           if(is_global_pattern(forest, pattern)) {
@@ -706,6 +709,7 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       case ASTTag::ExprLiteral:
       case ASTTag::PatternIdent:
       case ASTTag::PatternWildCard:
+      case ASTTag::ModuleRef:
       case ASTTag::Module: break;
       }
     }

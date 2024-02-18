@@ -349,6 +349,7 @@ add_expr(const AST& ast,
   case ASTTag::PatternTuple:
   case ASTTag::Fn:
   case ASTTag::Assignment:
+  case ASTTag::ModuleRef:
   case ASTTag::Module:
   case ASTTag::EnvValue: assert(false); return {};
   case ASTTag::ExprLiteral: {
@@ -374,6 +375,7 @@ add_expr(const AST& ast,
         auto [ctx, terms] = add_expr(ast, copy_types, binding_of, tuple_element, std::move(pair.first));
         return std::pair(std::move(ctx), to_vec(std::move(terms), std::move(pair.second)));
       });
+  case ASTTag::ExprQualified:
   case ASTTag::ExprIdent: {
     const auto it = binding_of.find(id);
     assert(it != binding_of.end());

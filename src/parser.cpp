@@ -178,6 +178,24 @@ auto literal() {
   });
 }
 
+auto qualified_ident_expr() {
+  return transform(seq(token_parser(TokenType::Ident), n(seq(symbol("::"), token_parser(TokenType::Ident)))),
+                   [&](State& s, Span<Token> tokens, Slice ref, Slice first, std::vector<Slice> rest) {
+                     if(rest.empty()) {
+                       return append_root(s.ast, ASTTag::ExprIdent, SrcRef{s.src_id, first}, Type{});
+                     } else {
+                       std::vector<ASTID> ids;
+                       ids.reserve(rest.size() + 1);
+                       ids.push_back(append_root(s.ast, ASTTag::ModuleRef, SrcRef{s.src_id, first}, Type{}));
+                       std::transform(rest.begin(), rest.end() - 1, std::back_inserter(ids), [&](Slice ref) {
+                         return append_root(s.ast, ASTTag::ModuleRef, SrcRef{s.src_id, ref}, Type{});
+                       });
+                       ids.push_back(append_root(s.ast, ASTTag::ExprIdent, SrcRef{s.src_id, rest.back()}, Type{}));
+                       return ASTAppender{ASTTag::ExprQualified}(s, tokens, ref, ids);
+                     }
+                   });
+}
+
 ParseResult<ASTID> expr(State&, Span<Token>, ParseLocation);
 ParseResult<ASTID> call_expr(State&, Span<Token>, ParseLocation);
 ParseResult<ASTID> scope_cond_expr(State&, Span<Token>, ParseLocation);
@@ -234,7 +252,7 @@ ParseResult<ASTID> scope_cond_expr(State& s, Span<Token> tokens, ParseLocation l
 }
 
 ParseResult<ASTID> non_call_expr(State& s, Span<Token> tokens, ParseLocation loc) {
-  return choose(leaf_ast(TokenType::Ident, ASTTag::ExprIdent),
+  return choose(qualified_ident_expr(),
                 literal(),
                 transform(seq(symbol("&"), expr), ASTAppender{ASTTag::ExprBorrow}),
                 tuple_expr(),

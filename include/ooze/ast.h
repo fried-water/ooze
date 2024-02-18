@@ -29,10 +29,12 @@ enum class ASTTag {
   ExprWith,
   ExprTuple,
   ExprIdent,
+  ExprQualified,
   Fn,
   EnvValue,
 
   Assignment,
+  ModuleRef,
   Module
 };
 
@@ -50,9 +52,11 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprWith",
      "ExprTuple",
      "ExprIdent",
+     "ExprQualified",
      "Fn",
      "EnvValue",
      "Assignment",
+     "ModuleRef",
      "Module"});
 }
 

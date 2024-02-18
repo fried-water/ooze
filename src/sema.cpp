@@ -42,6 +42,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
     ctx.stack.erase(ctx.stack.begin() + i64(original_size), ctx.stack.end());
     break;
   }
+  case ASTTag::ExprQualified:
   case ASTTag::ExprIdent: {
     const std::string_view ident = sv(srcs, ast.srcs[id.get()]);
     const auto it = std::find_if(
@@ -98,6 +99,7 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
     ctx.globals.erase(ctx.globals.begin() + i64(initial_size), ctx.globals.end());
     break;
   }
+  case ASTTag::ModuleRef: break;
   };
 }
 

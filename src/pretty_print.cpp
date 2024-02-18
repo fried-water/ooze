@@ -69,6 +69,11 @@ void pretty_print(std::ostream& os,
   case ASTTag::PatternWildCard: os << "_"; return;
   case ASTTag::PatternIdent:
   case ASTTag::ExprIdent: os << sv(srcs, ast.srcs[id.get()]); return;
+  case ASTTag::ExprQualified:
+    for(const ASTID id : ast.forest.child_ids(id)) {
+      pretty_print(os, srcs, ast, type_names, id, indentation);
+    }
+    return;
   case ASTTag::ExprLiteral: print_literal(os, lookup_literal(ast, id)); return;
   case ASTTag::ExprCall: {
     const auto [callee, arg] = ast.forest.child_ids(id).take<2>();
@@ -159,12 +164,9 @@ void pretty_print(std::ostream& os,
     }
     os << ')';
     return;
-  case ASTTag::EnvValue: {
-    os << "<env_value>";
-    return;
-  }
-
-  case ASTTag::Module: {
+  case ASTTag::EnvValue: os << "<env_value>"; return;
+  case ASTTag::ModuleRef: os << sv(srcs, ast.srcs[id.get()]) << "::"; return;
+  case ASTTag::Module:
     os << "mod " << sv(srcs, ast.srcs[id.get()]) << " {\n";
 
     for(const ASTID child : ast.forest.child_ids(id)) {
@@ -177,7 +179,6 @@ void pretty_print(std::ostream& os,
     for(int i = 0; i < indentation; i++) os << "  ";
     os << "}";
     return;
-  }
   }
 }
 
