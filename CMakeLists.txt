@@ -74,8 +74,9 @@ target_link_libraries(ooze
   PRIVATE
     ctre fmt::fmt CLI11::CLI11)
 
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  add_subdirectory(example)
+option(OOZE_BUILD_TESTS "Build tests" ON)
+if(OOZE_BUILD_TESTS)
   enable_testing()
   add_subdirectory(test)
+  add_subdirectory(regtest)
 endif()

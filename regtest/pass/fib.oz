@@ -6,4 +6,4 @@ fn fib(x: i32) -> i32 {
   }
 }
 
-fn main() -> () = println(&to_string(&fib(30)))
+fn main() -> i32 = assert_eq(55, fib(10))
