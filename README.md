@@ -1,7 +1,6 @@
 # ooze
 **ooze** is a parallel scripting language. **ooze** takes a set of user defined types and functions and allows the creation and parallel execution of function DAGs. The original motivation was a DSL to define function DAGs that got a bit out of control.
 
-
 ## Example Script
 ```rust
 // script.oz
@@ -25,7 +24,7 @@ fn main() -> (Point, Point) {
 ```cpp
 // main.cpp
 
-#include "ooze/core.h"
+#include <ooze/repl.h>
 
 struct Point {
   int x;
@@ -33,7 +32,7 @@ struct Point {
 };
 
 int main(int argc, const char** argv) {
-  // Creates a basic environment with all the primative types and string
+  // Creates a basic environment with all the primitive types and string
   ooze::Env e = ooze::create_primative_env();
 
   e.add_type<Point>("Point");
@@ -78,14 +77,13 @@ Try :h for help. Use Ctrl^D to exit.
 
 Functions are expected to be pure (outside of IO), arguments cannot be taken by mutable& or raw ptr.
 
-Using fully owning types is preferable, any shared mutable state needs to be externally synchronized
+Using fully owning types is preferable, any shared mutable state needs to be externally synchronized.
 
-Currently **ooze** only supports function calls and assignment. It does not support any form of control flow or accessing subfields of a type
-
-No recursion.
+Currently **ooze** only supports function calls, assignment, conditionals. It does not support any form of type declaration, all types are registered via cpp.
 
 ## TODO
 
+While loops
 Select/Match statements
 Higher Order range functions (map/filter/reduce)
 
