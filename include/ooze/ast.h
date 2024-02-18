@@ -112,6 +112,10 @@ inline bool is_global_pattern(const Forest<ASTTag, ASTID>& f, ASTID id) {
   return f[id] == ASTTag::Assignment && is_global(f, id);
 }
 
+inline Type global_type(const AST& ast, ASTID root) {
+  return ast.types[ast.forest[root] == ASTTag::Assignment ? ast.forest.first_child(root)->get() : root.get()];
+}
+
 inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID> children = {}) {
   ast.srcs.push_back(ref);
   ast.types.push_back(type);

@@ -46,9 +46,15 @@ void check_sema(Result sema_result, const std::vector<int>& exp_overload_indices
   check_eq("overloads", exp_overloads, act_overloads);
 }
 
-auto run_sema(TestEnv env, std::string_view src) {
-  return frontend(parse, make_sv_array(env.src, src), env.types, std::move(env.ast));
+template <typename Parser>
+auto run_sema(Parser p, TestEnv env, std::string_view src) {
+  return frontend(p, make_sv_array(env.src, src), env.types, std::move(env.ast)).map([](SemaData s, AST ast) {
+    return std::tuple(std::move(s.overloads), std::move(ast));
+  });
+  ;
 }
+
+auto run_sema(TestEnv env, std::string_view src) { return run_sema(parse, std::move(env), src); }
 
 } // namespace
 
@@ -207,12 +213,12 @@ BOOST_AUTO_TEST_CASE(partial) {
   const std::string_view src1 = "fn g() -> _ = f()";
   const std::string_view src2 = "fn h() -> _ = ()";
 
-  auto [bindings1, ast2] = check_result(frontend(parse, make_sv_array(env.src, src1), env.types, std::move(env.ast)));
-  auto [bindings2, ast3] = check_result(frontend(parse, make_sv_array(env.src, src2), env.types, std::move(ast2)));
+  auto [s1, ast2] = check_result(frontend(parse, make_sv_array(env.src, src1), env.types, std::move(env.ast)));
+  auto [s2, ast3] = check_result(frontend(parse, make_sv_array(env.src, src2), env.types, std::move(ast2)));
 
   // Bindings from g() should be ignored in the second call
-  BOOST_CHECK_EQUAL(1, bindings1.size());
-  BOOST_CHECK_EQUAL(0, bindings2.size());
+  BOOST_CHECK_EQUAL(1, s1.overloads.size());
+  BOOST_CHECK_EQUAL(0, s2.overloads.size());
 }
 
 BOOST_AUTO_TEST_CASE(ignore_unresolved_env_fn) {
@@ -220,17 +226,14 @@ BOOST_AUTO_TEST_CASE(ignore_unresolved_env_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(unresolved_fn) {
-  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
-  check_eq("errors", exp_errors, check_error(run_sema({}, "fn f(x) -> _ = x")));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {1, 2}}, "unable to fully deduce type, deduced: _"}};
+  check_eq("errors", exp_errors, check_error(run_sema(parse_fn, {}, "(x) -> _ = x")));
 }
 
 BOOST_AUTO_TEST_CASE(ambiguous_overload) {
   const TestEnv env = basic_test_env("f: fn() -> i32", "f: fn() -> f32", "g: fn(i32) -> ()", "g: fn(f32) -> ()");
 
   const std::vector<ContextualError> exp_errors = {
-    {{SrcID{1}, {15, 16}},
-     "ambiguous overload",
-     {"deduced fn(_) -> () [2 candidate(s)]", "  fn(i32) -> ()", "  fn(f32) -> ()"}},
     {{SrcID{1}, {17, 18}},
      "ambiguous overload",
      {"deduced fn() -> _ [2 candidate(s)]", "  fn() -> i32", "  fn() -> f32"}}};
@@ -251,16 +254,16 @@ BOOST_AUTO_TEST_CASE(no_overload) {
 }
 
 BOOST_AUTO_TEST_CASE(borrow_partial) {
-  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: _"}};
-  check_eq("errors", exp_errors, check_error(run_sema({}, "fn f(x) -> _ { let _ = &x; () }")));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {1, 2}}, "unable to fully deduce type, deduced: _"}};
+  check_eq("errors", exp_errors, check_error(run_sema(parse_fn, {}, "(x) -> _ { let _ = &x; () }")));
 }
 
 BOOST_AUTO_TEST_CASE(tuple_partial) {
-  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: (_)"}};
-  check_eq("errors", exp_errors, check_error(run_sema({}, "fn f(x: (_)) -> _ = x")));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {1, 2}}, "unable to fully deduce type, deduced: (_)"}};
+  check_eq("errors", exp_errors, check_error(run_sema(parse_fn, {}, "(x: (_)) -> _ = x")));
 
-  const std::vector<ContextualError> exp_errors2 = {{{SrcID{1}, {5, 6}}, "unable to fully deduce type, deduced: (_)"}};
-  check_eq("errors", exp_errors2, check_error(run_sema({}, "fn f(x) -> (_) = x")));
+  const std::vector<ContextualError> exp_errors2 = {{{SrcID{1}, {1, 2}}, "unable to fully deduce type, deduced: (_)"}};
+  check_eq("errors", exp_errors2, check_error(run_sema(parse_fn, {}, "(x) -> (_) = x")));
 }
 
 BOOST_AUTO_TEST_CASE(undeclared_function) {

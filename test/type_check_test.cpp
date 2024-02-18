@@ -24,14 +24,9 @@ auto run_tc(Parser p, TestEnv env, std::string_view src, bool debug = false) {
         .and_then([&](AST ast) {
           return calculate_ident_graph(srcs, ast, as_span(roots)).append_state(std::move(ast));
         })
-        .map([&](Graph<ASTID> ig, AST ast) {
-          auto propagations = calculate_propagations(ig, ast.forest, as_span(roots));
-          return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
-        })
-        .and_then(flattened([&](Graph<ASTID> ident_graph, auto propagations, AST ast) {
-          return constraint_propagation(
-            srcs, tc, env.types, ident_graph, propagations, std::move(ast), as_span(roots), debug);
-        }));
+        .and_then([&](Graph<ASTID> ident_graph, AST ast) {
+          return constraint_propagation(srcs, tc, env.types, ident_graph, std::move(ast), as_span(roots), debug);
+        });
     });
 }
 
@@ -53,11 +48,13 @@ void compare_tc(AST exp_ast, AST act_ast) {
 }
 
 void test_tc(TestEnv env, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse_fn, env, exp)), check_result(run_tc(parse_fn, env, src, debug)));
+  compare_tc(std::get<1>(check_result(run_tc(parse_fn, env, exp))),
+             std::get<1>(check_result(run_tc(parse_fn, env, src, debug))));
 }
 
 void test_tc_fns(TestEnv env, std::string_view src, std::string_view exp, bool debug = false) {
-  compare_tc(check_result(run_tc(parse, env, exp, debug)), check_result(run_tc(parse, env, src)));
+  compare_tc(std::get<1>(check_result(run_tc(parse, env, exp, debug))),
+             std::get<1>(check_result(run_tc(parse, env, src))));
 }
 
 template <typename Parser>
@@ -503,7 +500,7 @@ BOOST_AUTO_TEST_CASE(scope) {
   test_tc(basic_test_env(), input, output);
 }
 
-BOOST_AUTO_TEST_CASE(function_identity) { test_tc(basic_test_env(), "(x) -> _ = x", "(x) -> _ = x"); }
+BOOST_AUTO_TEST_CASE(function_identity) { test_tc_fns(basic_test_env(), "fn f(x) -> _ = x", "fn f(x) -> _ = x"); }
 
 BOOST_AUTO_TEST_CASE(function_call) {
   test_tc(create_test_env({}, {"f: fn() -> ()"}), "() -> _ = f()", "() -> () = f()");
@@ -713,7 +710,9 @@ BOOST_AUTO_TEST_CASE(binding_reuse) {
     basic_test_env(), "(x: string) -> _ = (x, x)", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
 }
 
-BOOST_AUTO_TEST_CASE(binding_reuse_floating) { test_tc(basic_test_env(), "(x) -> _ = (x, x)", "(x) -> _ = (x, x)"); }
+BOOST_AUTO_TEST_CASE(binding_reuse_floating) {
+  test_tc_fns(basic_test_env(), "fn f(x) -> _ = (x, x)", "fn f(x) -> _ = (x, x)");
+}
 
 BOOST_AUTO_TEST_CASE(binding_reuse_if) {
   // Env with non-copyable bool
@@ -807,6 +806,10 @@ BOOST_AUTO_TEST_CASE(wrong_value_type) {
 BOOST_AUTO_TEST_CASE(empty_tuple_as_arg) {
   test_tc_error(
     basic_test_env("f: fn(i32) -> ()"), "() -> () = f(())", {{{SrcID{1}, {13, 15}}, "expected (), given i32"}});
+}
+
+BOOST_AUTO_TEST_CASE(unresolved_fn_expr) {
+  test_tc_error(basic_test_env(), "(x) -> _ = x", {{{SrcID{1}, {1, 2}}, "unable to fully deduce type, deduced: _"}});
 }
 
 BOOST_AUTO_TEST_CASE(wrong_type) {

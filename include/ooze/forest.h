@@ -333,7 +333,8 @@ public:
   }
 
   auto ancestors(ID id, bool include_self = false) const {
-    return IterRange(AncestorIter(this, include_self ? id : _connectivity[as_integral(id)].parent), AncestorIter());
+    return IterRange(AncestorConstIter(this, include_self ? id : _connectivity[as_integral(id)].parent),
+                     AncestorConstIter());
   }
 
   auto pre_order_ids(ID id = ABOVE_ROOTS) const {
@@ -413,5 +414,25 @@ public:
 
   friend bool operator!=(const Forest& f1, const Forest& f2) { return !(f1 == f2); }
 };
+
+template <typename T, typename ID, typename F>
+ID copy_tree(const Forest<T, ID>& src_forest, ID src_id, Forest<T, ID>& dst_forest, F f) {
+  const ID new_root_id = dst_forest.append_root(src_forest[src_id]);
+
+  f(src_id, new_root_id);
+  std::vector<std::pair<ID, ID>> to_visit = {{src_id, new_root_id}};
+
+  while(!to_visit.empty()) {
+    const auto [original_id, new_id] = to_visit.back();
+    to_visit.pop_back();
+    for(const ID child_id : src_forest.child_ids(original_id)) {
+      const ID new_child_id = dst_forest.append_child(new_id, src_forest[child_id]);
+      f(child_id, new_child_id);
+      to_visit.emplace_back(child_id, new_child_id);
+    }
+  }
+
+  return new_root_id;
+}
 
 } // namespace ooze

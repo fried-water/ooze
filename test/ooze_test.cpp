@@ -475,16 +475,37 @@ BOOST_AUTO_TEST_CASE(fibonacci) {
   check_run(env, script, "fib(6)", "i32", 8);
 }
 
-BOOST_AUTO_TEST_CASE(generic, *boost::unit_test::disabled()) {
+BOOST_AUTO_TEST_CASE(generic_script) {
+  constexpr std::string_view script =
+    "fn f(x : &_) -> string = to_string(x)\n"
+    "fn g(x: i32) -> string = f(&x)\n"
+    "fn h(x: f64) -> string = f(&x)\n";
+
+  Env e;
+  e.add_type<std::string>("string");
+  e.add_type<i32>("i32");
+  e.add_type<f64>("f64");
+
+  e.add_function("to_string", [](const i32& x) { return fmt::format("{}", x); });
+  e.add_function("to_string", [](const f64& x) { return fmt::format("{}", x); });
+
+  check_run(e, script, "(g(3), h(0.5))", "(string, string)", std::tuple(std::string("3"), std::string("0.5")));
+}
+
+BOOST_AUTO_TEST_CASE(generic) {
   constexpr std::string_view script =
     "fn f(x : &_) -> string = to_string(x)\n"
     "fn g(x: i32) -> string = f(&x)\n";
 
-  check_run(create_primative_env(),
-            script,
-            "(g(3), f(&0.5))",
-            "(string, string)",
-            std::tuple(std::string("3"), std::string("0.5")));
+  Env e;
+  e.add_type<std::string>("string");
+  e.add_type<i32>("i32");
+  e.add_type<f64>("f64");
+
+  e.add_function("to_string", [](const i32& x) { return fmt::format("{}", x); });
+  e.add_function("to_string", [](const f64& x) { return fmt::format("{}", x); });
+
+  check_run(e, script, "(g(3), f(&0.5))", "(string, string)", std::tuple(std::string("3"), std::string("0.5")));
 }
 
 BOOST_AUTO_TEST_CASE(assign_empty) {

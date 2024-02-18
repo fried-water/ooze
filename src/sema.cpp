@@ -101,49 +101,72 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   };
 }
 
-ContextualResult<Map<ASTID, ASTID>, AST> overload_resolution(
-  Span<std::string_view> srcs,
-  const TypeCache& tc,
-  const TypeNames& type_names,
-  const Graph<ASTID>& ident_graph,
-  AST ast,
-  Span<ASTID> roots) {
-  Map<ASTID, ASTID> binding_of;
+struct InternalSemaState {
+  std::vector<ASTID> roots;
+  Map<ASTID, ASTID> overloads;
+  std::vector<ASTID> resolved_roots;
+  std::vector<ASTID> generic_roots;
+};
 
-  std::vector<ContextualError> errors;
+std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, InternalSemaState s, AST ast) {
+  s.overloads.insert(ord.overloads.begin(), ord.overloads.end());
 
-  for(const ASTID root : roots) {
-    for(const ASTID id : ast.forest.post_order_ids(root)) {
-      if(ast.forest[id] != ASTTag::ExprIdent) continue;
-
-      assert(ident_graph.num_fanout(id) > 0);
-
-      if(auto [overload, type, matches] = overload_resolution(tc, ast.tg, ident_graph, ast.types, id); matches == 1) {
-        binding_of.emplace(id, overload);
-      } else if(matches == 0) {
-        errors.push_back(
-          {ast.srcs[id.get()],
-           "no matching overload found",
-           transform_to_vec(
-             ident_graph.fanout(id),
-             [&](ASTID id) { return fmt::format("  {}", pretty_print(ast.tg, type_names, ast.types[id.get()])); },
-             make_vector(fmt::format("deduced {} [{} candidate(s)]",
-                                     pretty_print(ast.tg, type_names, ast.types[id.get()]),
-                                     ident_graph.fanout(id).size())))});
-      } else {
-        errors.push_back(
-          {ast.srcs[id.get()],
-           "ambiguous overload",
-           transform_to_vec(
-             ident_graph.fanout(id),
-             [&](ASTID id) { return fmt::format("  {}", pretty_print(ast.tg, type_names, ast.types[id.get()])); },
-             make_vector(fmt::format(
-               "deduced {} [{} candidate(s)]", pretty_print(ast.tg, type_names, ast.types[id.get()]), matches)))});
+  const auto recurse = [&](auto self, ASTID id) -> void {
+    if(ast.forest[id] == ASTTag::Module) {
+      for(const ASTID child : ast.forest.child_ids(id)) {
+        self(self, child);
       }
+    } else if(is_resolved(ast.tg, global_type(ast, id))) {
+      s.resolved_roots.push_back(id);
+    } else {
+      s.generic_roots.push_back(id);
+    }
+  };
+
+  for(const ASTID id : s.roots) {
+    recurse(recurse, id);
+  }
+
+  s.roots.clear();
+
+  for(const auto& [overload, type, uses] : ord.instantiations) {
+    const ASTID root = *ast.forest.parent(overload);
+    assert(ast.forest.is_root(root));
+
+    const auto tree_size = distance(ast.forest.post_order_ids(root));
+
+    ast.types.resize(ast.forest.size() + tree_size, Type::Invalid());
+    ast.srcs.resize(ast.forest.size() + tree_size, SrcRef{});
+
+    const ASTID copy = copy_tree(ast.forest, root, ast.forest, [&](ASTID old_id, ASTID new_id) {
+      // TODO literals
+      ast.types[new_id.get()] = ast.types[old_id.get()];
+      ast.srcs[new_id.get()] = ast.srcs[old_id.get()];
+    });
+    const ASTID instantiation = *ast.forest.first_child(copy);
+
+    ast.types[instantiation.get()] = type;
+
+    s.roots.push_back(copy);
+
+    for(const ASTID use : uses) {
+      s.overloads.emplace(use, instantiation);
     }
   }
 
-  return value_or_errors(std::move(binding_of), std::move(errors), std::move(ast));
+  return std::tuple(std::move(s), std::move(ast));
+}
+
+ContextualResult<InternalSemaState, AST> sema_iter(
+  Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, InternalSemaState s) {
+  return apply_language_rules(tc, native_types.names, std::move(ast), s.roots)
+    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast, s.roots).append_state(std::move(ast)); })
+    .and_then([&](Graph<ASTID> ig, AST ast) {
+      return constraint_propagation(srcs, tc, native_types, ig, std::move(ast), s.roots);
+    })
+    .map([&](OverloadResolutionData ord, AST ast) {
+      return instantiate(std::move(ord), std::move(s), std::move(ast));
+    });
 }
 
 } // namespace
@@ -185,29 +208,19 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
              })}};
 }
 
-ContextualResult<Map<ASTID, ASTID>, AST>
+ContextualResult<SemaData, AST>
 sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, Span<ASTID> roots) {
-  return apply_language_rules(tc, native_types.names, std::move(ast), roots)
-    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast, roots).append_state(std::move(ast)); })
-    .map([&](Graph<ASTID> ig, AST ast) {
-      auto propagations = calculate_propagations(ig, ast.forest, roots);
-      return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
-    })
-    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast) {
-      return constraint_propagation(srcs, tc, native_types, ig, propagations, std::move(ast), roots).map([&](AST ast) {
-        return std::tuple(std::tuple(std::move(ig), std::move(propagations)), std::move(ast));
-      });
-    }))
-    .and_then(flattened([&](Graph<ASTID> ig, auto propagations, AST ast) {
-      return overload_resolution(srcs, tc, native_types.names, ig, std::move(ast), roots)
-        .map([&](Map<ASTID, ASTID> overloads, AST ast) {
-          return std::tuple(std::tuple(std::move(overloads), std::move(propagations)), std::move(ast));
-        });
-    }))
-    .and_then(flattened([&](Map<ASTID, ASTID> overloads, auto propagations, AST ast) {
-      auto errors = check_fully_resolved(srcs, propagations, ast, native_types.names, roots);
-      return value_or_errors(std::move(overloads), std::move(errors), std::move(ast));
-    }));
+  ContextualResult<InternalSemaState, AST> res{InternalSemaState{to_vec(roots)}, std::move(ast)};
+  while(res && !res.value().roots.empty()) {
+    res = std::move(res).and_then([&](InternalSemaState s, AST ast) {
+      return sema_iter(srcs, tc, native_types, std::move(ast), std::move(s));
+    });
+  }
+
+  return std::move(res).map([](InternalSemaState s, AST ast) {
+    return std::tuple(SemaData{std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots)},
+                      std::move(ast));
+  });
 }
 
 } // namespace ooze
