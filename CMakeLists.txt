@@ -77,6 +77,6 @@ target_link_libraries(ooze
 option(OOZE_BUILD_TESTS "Build tests" ON)
 if(OOZE_BUILD_TESTS)
   enable_testing()
-  add_subdirectory(test)
+  add_subdirectory(tests)
   add_subdirectory(regtest)
 endif()
