@@ -18,8 +18,8 @@ std::pair<Inst, Program> create_graph(int depth) {
 
   std::unordered_map<std::pair<int, int>, Oterm, knot::Hash> edges;
 
-  const Inst identity = program.add([](int x) { return x; });
-  const Inst sum = program.add([](const int& x, int y) { return x + y; });
+  const Inst identity = program.add_fn([](int x) { return x; });
+  const Inst sum = program.add_fn([](const int& x, int y) { return x + y; });
 
   auto [cg, input] = make_graph({false});
   const int num_inputs = 1 << depth;

@@ -28,6 +28,11 @@ constexpr TypeID type_id(knot::Type<T> t) {
   return {reinterpret_cast<uintptr_t>(&type_id<T>)};
 }
 
+template <typename T>
+constexpr TypeID type_id() {
+  return type_id(knot::Type<T>{});
+}
+
 } // namespace ooze
 
 template <>
@@ -80,7 +85,7 @@ Type add_type(TypeGraph& g, knot::Type<T> t) {
 }
 
 template <typename F>
-Type add_fn(TypeGraph& g, knot::Type<F> f) {
+Type add_fn_type(TypeGraph& g, knot::Type<F> f) {
   std::vector<Type> types;
   types.reserve(size(args(f)));
   visit(args(f), [&](auto t) { types.push_back(add_type(g, t)); });
@@ -98,7 +103,23 @@ Type add_fn(TypeGraph& g, knot::Type<F> f) {
   }
 }
 
-inline int size_of(const TypeGraph& tg, const Type& t) {
+inline std::vector<bool> borrows_of(const TypeGraph& g, Type t, std::vector<bool> borrows = {}) {
+  preorder(g, t, [&](Type t) {
+    switch(g.get<TypeTag>(t)) {
+    case TypeTag::Leaf:
+    case TypeTag::Fn: borrows.push_back(false); return false;
+    case TypeTag::Borrow: borrows.push_back(true); return false;
+    case TypeTag::Floating: assert(false);
+    case TypeTag::Tuple: return true;
+    }
+    assert(false);
+    return false;
+  });
+
+  return borrows;
+}
+
+inline int size_of(const TypeGraph& tg, Type t) {
   switch(tg.get<TypeTag>(t)) {
   case TypeTag::Leaf:
   case TypeTag::Fn: return 1;

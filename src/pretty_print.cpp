@@ -211,15 +211,4 @@ std::string pretty_print(const TypeGraph& g, const TypeNames& type_names, Type t
   return std::move(os).str();
 }
 
-std::string pretty_print_fn_type(const TypeGraph& g, const TypeNames& type_names, Type t) {
-  assert(g.get<TypeTag>(t) == TypeTag::Fn);
-
-  std::ostringstream os;
-
-  const auto children = g.fanout(t);
-  pretty_print(os, g, type_names, children[0]);
-  pretty_print(os << " -> ", g, type_names, children[1]);
-  return std::move(os).str();
-}
-
 } // namespace ooze

@@ -115,13 +115,6 @@ BOOST_AUTO_TEST_CASE(ast) {
   test(parse, "fn f() -> T = x\n\nfn g() -> T = x", "fn f() -> T = x fn g() -> T = x");
 }
 
-BOOST_AUTO_TEST_CASE(fn_type) {
-  const TypeNames names{{"T", TypeID{1}}};
-  const auto [type, ast] =
-    check_result(parse_and_name_resolution(parse_type, make_sv_array("fn(T) -> T"), names, {}, SrcID{0}));
-  BOOST_CHECK_EQUAL("(T) -> T", pretty_print_fn_type(ast.tg, names, type));
-}
-
 BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze

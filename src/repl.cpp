@@ -45,10 +45,9 @@ StringResult<void, Env> parse_scripts(Env e, const std::vector<std::string>& fil
     return r ? std::move(acc) : to_vec(std::move(r.error()), std::move(acc));
   });
 
-  return errors.empty()
-           ? parse_scripts(std::move(e),
-                           transform_to_vec(srcs, [](const auto& r) { return std::string_view{r.value()}; }))
-           : StringResult<void, Env>{Failure{std::move(errors)}, std::move(e)};
+  return errors.empty() ? std::move(e).parse_scripts(
+                            transform_to_vec(srcs, [](const auto& r) { return std::string_view{r.value()}; }))
+                        : StringResult<void, Env>{Failure{std::move(errors)}, std::move(e)};
 }
 
 struct HelpCmd {};
@@ -135,7 +134,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
         return i32(acc) > i32(ele_state) ? acc : ele_state;
       });
 
-    tree_ss << pretty_print(env.ast.tg, env.native_types.names, binding.type);
+    tree_ss << env.pretty_print(binding.type);
     output.push_back(fmt::format(
       "  {}: {}{}",
       binding_name,
@@ -158,7 +157,7 @@ constexpr auto convert_errors_futures = [](std::vector<std::string> errors, auto
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const EvalCmd& eval) {
   return read_text_file(eval.file)
     .append_state(std::move(env))
-    .and_then([](std::string script, Env env) { return parse_scripts(std::move(env), make_sv_array(script)); })
+    .and_then([](std::string script, Env env) { return std::move(env).parse_scripts(make_sv_array(script)); })
     .map([](Env env) { return std::tuple(std::vector<std::string>{}, std::move(env)); })
     .or_else(convert_errors)
     .append_state(std::move(bindings))
@@ -166,20 +165,9 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const FunctionsCmd&) {
-  std::vector<std::pair<std::string_view, std::string>> functions;
-
-  const auto srcs = make_sv_array(env.src);
-
-  for(const ASTID id : env.ast.forest.root_ids()) {
-    const ASTID ident = *env.ast.forest.first_child(id);
-    const Type type = env.ast.types[ident.get()];
-    if(env.ast.tg.get<TypeTag>(type) == TypeTag::Fn) {
-      const std::string_view name = sv(srcs, env.ast.srcs[ident.get()]);
-      functions.emplace_back(name, pretty_print_fn_type(env.ast.tg, env.native_types.names, type));
-    }
-  }
-
-  functions = sorted(std::move(functions));
+  const auto functions = sorted(transform_to_vec(env.globals(), flattened([&](std::string name, Type type) {
+                                                   return std::pair(std::move(name), env.pretty_print(type));
+                                                 })));
 
   std::vector<std::string> output{fmt::format("{} function(s)", functions.size())};
 
@@ -189,7 +177,7 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
     const auto next_it = std::find_if(it, functions.end(), [&](const auto& p) { return p.first != it->first; });
 
     if(const auto count = std::distance(it, next_it); count == 1) {
-      output.push_back(fmt::format("  {}{}", name, type));
+      output.push_back(fmt::format("  {}: {}", name, type));
     } else if(count <= 5) {
       std::for_each(it, next_it, [&](const auto& p) { output.push_back(fmt::format("  {}{}", p.first, p.second)); });
     } else {
@@ -203,9 +191,8 @@ std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bi
 }
 
 std::tuple<std::vector<std::string>, Env, Bindings> run(ExecutorRef, Env env, Bindings bindings, const TypesCmd&) {
-  const auto types = sorted(transform_to_vec(env.native_types.names, [&](const auto& p) {
-    return std::pair(p.first,
-                     type_check_fn(env, fmt::format("(x: &{}) -> string = to_string(x)", p.first)).has_value());
+  const auto types = sorted(transform_to_vec(env.native_types().names, [&](const auto& p) {
+    return std::pair(p.first, env.type_check_fn(fmt::format("(x: &{}) -> string = to_string(x)", p.first)).has_value());
   }));
 
   std::vector<std::string> output{fmt::format("{} type(s)", types.size())};
@@ -266,7 +253,8 @@ std::tuple<Future, Env, Bindings> step_repl(ExecutorRef executor, Env env, Bindi
       .or_else(convert_errors_futures)
       .value_and_state();
   } else {
-    return run_to_string(executor, std::move(env), std::move(bindings), line)
+    return std::move(env)
+      .run_to_string(executor, std::move(bindings), line)
       .map([](Future out, Env env, Bindings bindings) {
         return std::tuple(std::move(out).then([](Any any) {
           std::string output = any_cast<std::string>(std::move(any));
@@ -351,18 +339,28 @@ int repl_main(int argc, const char** argv, Env env) {
         return std::tuple(std::move(e), std::move(b));
       };
 
-      const Type arg_type = env.ast.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::vector<std::string>>{}));
-      Bindings bindings;
-      bindings.emplace("args", Binding{arg_type, make_vector(AsyncValue{Future{Any{std::move(cli.run_args)}}})});
+      const auto string_vec_result = env.parse_type("string_vector");
 
-      if(auto tc_result = type_check_binding(env, "main: fn(string_vector) -> i32"); tc_result) {
-        run(executor, std::move(env), std::move(bindings), "main(args)").map(extract_return).map_error(dump_error);
-      } else if(type_check_binding(env, "main: fn(string_vector) -> ()")) {
-        run(executor, std::move(env), std::move(bindings), "main(args)").map(return_success).map_error(dump_error);
-      } else if(type_check_binding(env, "main: fn() -> i32")) {
-        run(executor, std::move(env), std::move(bindings), "main()").map(extract_return).map_error(dump_error);
-      } else if(type_check_binding(env, "main: fn() -> ()")) {
-        run(executor, std::move(env), std::move(bindings), "main()").map(return_success).map_error(dump_error);
+      if(!string_vec_result) {
+        for(const std::string& line : string_vec_result.error()) {
+          fmt::print("{}\n", line);
+        }
+
+        return 1;
+      }
+
+      Bindings bindings;
+      bindings.emplace("args",
+                       Binding{*string_vec_result, make_vector(AsyncValue{Future{Any{std::move(cli.run_args)}}})});
+
+      if(auto tc_result = env.type_check_binding("main: fn(string_vector) -> i32"); tc_result) {
+        std::move(env).run(executor, std::move(bindings), "main(args)").map(extract_return).map_error(dump_error);
+      } else if(env.type_check_binding("main: fn(string_vector) -> ()")) {
+        std::move(env).run(executor, std::move(bindings), "main(args)").map(return_success).map_error(dump_error);
+      } else if(env.type_check_binding("main: fn() -> i32")) {
+        std::move(env).run(executor, std::move(bindings), "main()").map(extract_return).map_error(dump_error);
+      } else if(env.type_check_binding("main: fn() -> ()")) {
+        std::move(env).run(executor, std::move(bindings), "main()").map(return_success).map_error(dump_error);
       } else {
         std::move(tc_result).append_state(std::move(env), std::move(bindings)).map_error(dump_error);
       }

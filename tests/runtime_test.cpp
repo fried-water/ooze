@@ -43,11 +43,11 @@ i64 accumulate(const std::vector<int>& v) { return std::accumulate(v.begin(), v.
 
 auto create_pipeline(Program& p, int seed) {
   auto [cg, size] = make_graph({false});
-  const auto create_output = cg.add(p.add(create_vector), size, {PassBy::Copy}, 1);
-  const auto shuffle_output = cg.add(p.add(create_shuffle(seed)), create_output, {PassBy::Move}, 1);
+  const auto create_output = cg.add(p.add_fn(create_vector), size, {PassBy::Copy}, 1);
+  const auto shuffle_output = cg.add(p.add_fn(create_shuffle(seed)), create_output, {PassBy::Move}, 1);
   const auto sort_output =
-    cg.add(p.add([](std::vector<int> v) { return sorted(std::move(v)); }), shuffle_output, {PassBy::Move}, 1);
-  const auto acc_output = cg.add(p.add(accumulate), sort_output, {PassBy::Borrow}, 1);
+    cg.add(p.add_fn([](std::vector<int> v) { return sorted(std::move(v)); }), shuffle_output, {PassBy::Move}, 1);
+  const auto acc_output = cg.add(p.add_fn(accumulate), sort_output, {PassBy::Borrow}, 1);
   return std::move(cg).finalize(acc_output, {PassBy::Copy});
 }
 
@@ -64,7 +64,7 @@ auto create_graph(Program& p) {
     cg.add(create_pipeline(p, 6), size)[0],
     cg.add(create_pipeline(p, 7), size)[0]};
 
-  const Inst sumf = p.add([](i64 x, i64 y) { return x + y; });
+  const Inst sumf = p.add_fn([](i64 x, i64 y) { return x + y; });
 
   const auto pbs = std::array{PassBy::Copy, PassBy::Copy};
 
@@ -134,7 +134,7 @@ BOOST_AUTO_TEST_CASE(empty) {
 
 BOOST_AUTO_TEST_CASE(copy) {
   Program p;
-  const Inst take = p.add([](int i) { return i; });
+  const Inst take = p.add_fn([](int i) { return i; });
   auto [cg, s] = make_graph({false});
   FunctionGraph g = std::move(cg).finalize(cg.add(take, s, {PassBy::Copy}, 1), {PassBy::Copy});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
@@ -142,7 +142,7 @@ BOOST_AUTO_TEST_CASE(copy) {
 
 BOOST_AUTO_TEST_CASE(move) {
   Program p;
-  const Inst take = p.add([](int i) { return i; });
+  const Inst take = p.add_fn([](int i) { return i; });
   auto [cg, s] = make_graph({false});
   auto g = std::move(cg).finalize(cg.add(take, s, {PassBy::Move}, 1), {PassBy::Move});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_CASE(move) {
 
 BOOST_AUTO_TEST_CASE(borrow) {
   Program p;
-  const Inst take_ref = p.add([](const int& i) { return i; });
+  const Inst take_ref = p.add_fn([](const int& i) { return i; });
   auto [cg, s] = make_graph({false});
   auto g = std::move(cg).finalize(cg.add(take_ref, s, {PassBy::Borrow}, 1), {PassBy::Copy});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
@@ -158,9 +158,9 @@ BOOST_AUTO_TEST_CASE(borrow) {
 
 BOOST_AUTO_TEST_CASE(sentinal) {
   Program p;
-  const Inst take = p.add([](Sentinal sent) { return sent; });
+  const Inst take = p.add_fn([](Sentinal sent) { return sent; });
 
-  const Inst borrow = p.add([](const Sentinal& sent) {
+  const Inst borrow = p.add_fn([](const Sentinal& sent) {
     BOOST_CHECK_EQUAL(0, sent.copies);
     return sent;
   });
@@ -189,7 +189,7 @@ BOOST_AUTO_TEST_CASE(sentinal) {
 
 BOOST_AUTO_TEST_CASE(move_only) {
   Program p;
-  const Inst take = p.add([](std::unique_ptr<int> ptr) { return *ptr; });
+  const Inst take = p.add_fn([](std::unique_ptr<int> ptr) { return *ptr; });
   auto [cg, ptr] = make_graph({false});
   const Inst g = p.add(std::move(cg).finalize(cg.add(take, ptr, {PassBy::Move}, 1), {PassBy::Move}));
   compare(5, execute(std::make_shared<Program>(std::move(p)), g, std::tuple(std::make_unique<int>(5)), {}));
@@ -197,7 +197,7 @@ BOOST_AUTO_TEST_CASE(move_only) {
 
 BOOST_AUTO_TEST_CASE(fwd) {
   Program p;
-  const Inst fwd = p.add([](Sentinal&& s) -> Sentinal&& { return std::move(s); });
+  const Inst fwd = p.add_fn([](Sentinal&& s) -> Sentinal&& { return std::move(s); });
 
   auto [cg, inputs] = make_graph({false});
   const Inst g = p.add(std::move(cg).finalize(cg.add(fwd, inputs, {PassBy::Move}, 1), {PassBy::Move}));
@@ -218,7 +218,7 @@ BOOST_AUTO_TEST_CASE(borrow_fwd) {
 
   auto [cg, inputs] = make_graph({true, true});
   const auto outputs = cg.add(
-    p.add([](const Sentinal&, Sentinal) {}), std::array{inputs[0], inputs[0]}, {PassBy::Borrow, PassBy::Copy}, 0);
+    p.add_fn([](const Sentinal&, Sentinal) {}), std::array{inputs[0], inputs[0]}, {PassBy::Borrow, PassBy::Copy}, 0);
 
   const Inst g = p.add(std::move(cg).finalize({}, {}));
 
@@ -245,7 +245,7 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
   std::vector<Oterm> outputs;
 
   for(size_t i = 0; i < COUNT; i++) {
-    outputs.push_back(cg.add(p.add([=](const std::string& s) {
+    outputs.push_back(cg.add(p.add_fn([=](const std::string& s) {
       std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(i));
       return s + " out";
     }),
@@ -316,7 +316,7 @@ BOOST_AUTO_TEST_CASE(value) {
 BOOST_AUTO_TEST_CASE(fn) {
   const auto test_fn = [](auto exp, auto fn, auto values, auto borrows) {
     Program p;
-    const Inst inst = p.add(std::move(fn));
+    const Inst inst = p.add_fn(std::move(fn));
     compare(exp, execute_tbb(share(p), inst, std::move(values), std::move(borrows)));
   };
 
@@ -336,7 +336,7 @@ BOOST_AUTO_TEST_CASE(fn) {
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_value) {
   Program p;
-  const Inst fn = p.add([](Sentinal x) { return x; });
+  const Inst fn = p.add_fn([](Sentinal x) { return x; });
 
   std::vector<Any> results = execute(share(p), fn, make_vector(Any(Sentinal{})), {});
 
@@ -348,7 +348,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_value) {
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_rvalue) {
   Program p;
-  const Inst fn = p.add([](Sentinal&& x) { return x; });
+  const Inst fn = p.add_fn([](Sentinal&& x) { return x; });
 
   std::vector<Any> results = execute(share(p), fn, make_vector(Any(Sentinal{})), {});
 
@@ -359,7 +359,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_rvalue) {
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
   Program p;
-  const Inst fn = p.add([](const Sentinal& x) { return x; });
+  const Inst fn = p.add_fn([](const Sentinal& x) { return x; });
 
   auto [b, post_future] = ooze::borrow(Future(Any(Sentinal{})));
   std::vector<Future> results = execute(share(p), fn, make_seq_executor(), {}, std::vector{std::move(b)});
@@ -379,7 +379,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
 BOOST_AUTO_TEST_CASE(functional) {
   const auto test_fn = [](auto exp, auto fn, int output_count, auto values, auto borrows) {
     Program p;
-    const Inst inst = p.add(std::move(fn));
+    const Inst inst = p.add_fn(std::move(fn));
     const Inst functional = p.add(FunctionalInst{output_count});
     compare(exp,
             execute_tbb(share(p), functional, std::tuple_cat(std::tuple(inst), std::move(values)), std::move(borrows)));
@@ -401,7 +401,7 @@ BOOST_AUTO_TEST_CASE(functional) {
 
 BOOST_AUTO_TEST_CASE(curry_fn) {
   Program p;
-  const Inst add = p.add([](i32 x, i32 y) { return x + y; });
+  const Inst add = p.add_fn([](i32 x, i32 y) { return x + y; });
   const Inst add3 = p.curry(add, std::array{Any{3}});
   const Inst seven = p.curry(add3, std::array{Any{4}});
 
@@ -428,12 +428,12 @@ BOOST_AUTO_TEST_CASE(if_) {
 
   const Inst one = p.add(Any{1});
   const Inst two = p.add(Any{2});
-  const Inst identity = p.add([](int x) { return x; });
-  const Inst add1 = p.add([](int x) { return x + 1; });
-  const Inst identity_borrow = p.add([](const int& x) { return x; });
-  const Inst add1_borrow = p.add([](const int& x) { return x + 1; });
-  const Inst add = p.add([](int x, const int& y) { return x + y; });
-  const Inst mul = p.add([](int x, const int& y) { return x * y; });
+  const Inst identity = p.add_fn([](int x) { return x; });
+  const Inst add1 = p.add_fn([](int x) { return x + 1; });
+  const Inst identity_borrow = p.add_fn([](const int& x) { return x; });
+  const Inst add1_borrow = p.add_fn([](const int& x) { return x + 1; });
+  const Inst add = p.add_fn([](int x, const int& y) { return x + y; });
+  const Inst mul = p.add_fn([](int x, const int& y) { return x * y; });
 
   const Inst if_val = p.add(IfInst{one, two, 1});
   compare(1, execute_tbb(share(p), if_val, std::tuple(true), {}));
@@ -468,7 +468,7 @@ BOOST_AUTO_TEST_CASE(converge) {
   Program p;
 
   const Inst empty_body = p.add(Any{true});
-  const Inst body = p.add([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
+  const Inst body = p.add_fn([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
   const Inst converge = p.add(ConvergeInst{});
 
   compare(std::tuple(), execute_tbb(share(p), converge, std::tuple(empty_body, false), {}));
@@ -485,7 +485,7 @@ constexpr int NUM_EXECUTIONS = 100;
 
 BOOST_AUTO_TEST_CASE(any_function) {
   Program p;
-  const Inst fn = p.add([](int x, const int& y) { return x + y; });
+  const Inst fn = p.add_fn([](int x, const int& y) { return x + y; });
   const auto sp = share(std::move(p));
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     compare(i + 5, execute_tbb(sp, fn, std::tuple(5), std::tuple(i)));
@@ -496,7 +496,7 @@ BOOST_AUTO_TEST_CASE(functional) {
   Program p;
   const Inst functional = p.add(FunctionalInst{1});
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    const Inst fn = p.add([i](int x, const int& y) { return x + y + i; });
+    const Inst fn = p.add_fn([i](int x, const int& y) { return x + y + i; });
     compare(i + 12, execute_tbb(share(p), functional, std::tuple(fn, 5), std::tuple(7)));
   }
 }
@@ -511,7 +511,7 @@ BOOST_AUTO_TEST_CASE(select) {
 
 BOOST_AUTO_TEST_CASE(converge) {
   Program p;
-  const Inst body = p.add([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
+  const Inst body = p.add_fn([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
   const Inst converge = p.add(ConvergeInst{});
 
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
@@ -522,8 +522,8 @@ BOOST_AUTO_TEST_CASE(converge) {
 
 BOOST_AUTO_TEST_CASE(if_) {
   Program p;
-  const Inst identity = p.add([](int x) { return x; });
-  const Inst add1 = p.add([](int x) { return x + 1; });
+  const Inst identity = p.add_fn([](int x) { return x; });
+  const Inst add1 = p.add_fn([](int x) { return x + 1; });
   const Inst if_inst = p.add(IfInst{identity, add1, 1, 1, 1});
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     compare(i % 2, execute_tbb(share(p), if_inst, std::tuple(i % 2 == 0, 0), {}));

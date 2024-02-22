@@ -11,6 +11,4 @@ std::string pretty_print(Span<std::string_view>, const AST&, const TypeNames&, s
 
 std::string pretty_print(const TypeGraph&, const TypeNames&, Type);
 
-std::string pretty_print_fn_type(const TypeGraph&, const TypeNames&, Type);
-
 } // namespace ooze

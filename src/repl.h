@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ooze/core.h"
-#include "ooze/env.h"
 
 #include <string_view>
 

@@ -1,48 +1,15 @@
 #pragma once
 
 #include "ooze/any.h"
+#include "ooze/any_fn.h"
 #include "ooze/function_graph.h"
 #include "ooze/inst.h"
 #include "ooze/traits.h"
 
-#include <functional>
 #include <utility>
 #include <vector>
 
 namespace ooze {
-
-namespace details {
-
-template <typename T, typename... Elements>
-std::vector<T> make_vector(Elements&&... elements) {
-  std::vector<T> vec;
-  vec.reserve(sizeof...(Elements));
-  (vec.emplace_back(std::forward<Elements>(elements)), ...);
-  return vec;
-}
-
-template <typename... Ts, typename F, std::size_t... Is>
-std::vector<Any> call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
-  assert(inputs.size() == sizeof...(Ts));
-  assert((type_id(decay(knot::Type<Ts>{})) == inputs[Is]->type()) && ...);
-
-  if constexpr(knot::Type<void>{} == return_type(decay(knot::Type<F>({})))) {
-    std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
-    return {};
-  } else {
-    auto&& result = std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
-
-    if constexpr(is_tuple(decay(knot::Type<decltype(result)>{}))) {
-      return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
-    } else {
-      return make_vector<Any>(std::move(result));
-    }
-  }
-}
-
-} // namespace details
-
-using AnyFn = std::function<std::vector<Any>(Span<Any*>)>;
 
 enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry, Placeholder };
 
@@ -56,9 +23,11 @@ struct AnyFnInst {
   std::vector<bool> input_borrows;
   int output_count;
 };
+
 struct FunctionalInst {
   i32 output_count;
 };
+
 struct IfInst {
   Inst if_inst;
   Inst else_inst;
@@ -70,7 +39,9 @@ struct IfInst {
   i32 borrow_common_end = 0;
   i32 borrow_if_end = 0;
 };
+
 struct SelectInst {};
+
 struct ConvergeInst {};
 
 struct Program {
@@ -91,6 +62,14 @@ struct Program {
   Inst add(IfInst);
   Inst add(SelectInst);
   Inst add(ConvergeInst);
+
+  Inst add(AnyFn fn, std::vector<bool> input_borrows, int ret_size) {
+    inst.push_back(InstOp::Fn);
+    inst_data.push_back(int(fns.size()));
+    fns.push_back({std::move(fn), std::move(input_borrows), ret_size});
+    return Inst{i32(inst.size() - 1)};
+  }
+
   Inst curry(Inst, Span<Any>);
 
   Inst placeholder() {
@@ -103,41 +82,12 @@ struct Program {
   void set(Inst, Inst, Span<Any>);
 
   template <typename F>
-  Inst add(F&& f) {
+  Inst add_fn(F&& f) {
     constexpr auto f_type = decay(knot::Type<F>{});
-    constexpr auto fn_ret = return_types(f_type);
-    constexpr auto fn_args = args(f_type);
-
-    constexpr bool legal_return = none(fn_ret, [](auto t) { return knot::is_raw_pointer(decay(t)); }) &&
-                                  all(fn_ret, [](auto t) { return knot::is_decayed(t) || is_rref(t); });
-    constexpr bool legal_args =
-      none(fn_args, [](auto t) { return knot::is_raw_pointer(decay(t)); }) &&
-      all(fn_args, [](auto t) { return knot::is_decayed(t) || is_const_ref(t) || is_rref(t); });
-
-    if constexpr(legal_return && legal_args && is_const_function(f_type)) {
-      std::vector<bool> input_borrows;
-      input_borrows.reserve(size(fn_args));
-      visit(fn_args, [&](auto type) { input_borrows.push_back(is_const_ref(type)); });
-
-      inst.push_back(InstOp::Fn);
-      inst_data.push_back(int(fns.size()));
-      fns.push_back(AnyFnInst{[f = std::forward<F>(f), fn_args](Span<Any*> inputs) {
-                                return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
-                              },
-                              std::move(input_borrows),
-                              int(size(fn_ret))});
-
-      return Inst{i32(inst.size() - 1)};
-    } else {
-      static_assert(is_const_function(f_type), "No mutable lambdas and non-const operator().");
-      static_assert(legal_return,
-                    "Function return type must be void, a value or tuple of "
-                    "values (no refs or pointers).");
-      static_assert(legal_args,
-                    "Function arguments must either be values or "
-                    "const refs (no non-const refs or pointers).");
-      return Inst::Invalid();
-    }
+    std::vector<bool> input_borrows;
+    input_borrows.reserve(size(args(f_type)));
+    visit(args(f_type), [&](auto type) { input_borrows.push_back(is_const_ref(type)); });
+    return add(create_any_fn(std::forward<F>(f)), std::move(input_borrows), int(size(return_types(f_type))));
   }
 };
 

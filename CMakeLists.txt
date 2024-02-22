@@ -50,7 +50,6 @@ if(USE_CLANG_TIDY)
 endif()
 
 add_library(ooze
-  src/env.cpp
   src/constructing_graph.cpp
   src/function_graph_construction.cpp
   src/lexer.cpp
