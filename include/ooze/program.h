@@ -42,7 +42,7 @@ std::vector<Any> call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, 
 
 } // namespace details
 
-using AnyFunction = std::function<std::vector<Any>(Span<Any*>)>;
+using AnyFn = std::function<std::vector<Any>(Span<Any*>)>;
 
 enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry, Placeholder };
 
@@ -51,8 +51,8 @@ constexpr auto names(knot::Type<InstOp>) {
                      {"Value", "Fn", "Graph", "Functional", "If", "Select", "Converge", "Curry", "Placeholder"});
 }
 
-struct AnyFunctionInst {
-  AnyFunction fn;
+struct AnyFnInst {
+  AnyFn fn;
   std::vector<bool> input_borrows;
   int output_count;
 };
@@ -78,7 +78,7 @@ struct Program {
   std::vector<i32> inst_data;
 
   std::vector<Any> values;
-  std::vector<AnyFunctionInst> fns;
+  std::vector<AnyFnInst> fns;
   std::vector<FunctionGraph> graphs;
   std::vector<IfInst> ifs;
 
@@ -121,11 +121,11 @@ struct Program {
 
       inst.push_back(InstOp::Fn);
       inst_data.push_back(int(fns.size()));
-      fns.push_back(AnyFunctionInst{[f = std::forward<F>(f), fn_args](Span<Any*> inputs) {
-                                      return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
-                                    },
-                                    std::move(input_borrows),
-                                    int(size(fn_ret))});
+      fns.push_back(AnyFnInst{[f = std::forward<F>(f), fn_args](Span<Any*> inputs) {
+                                return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
+                              },
+                              std::move(input_borrows),
+                              int(size(fn_ret))});
 
       return Inst{i32(inst.size() - 1)};
     } else {

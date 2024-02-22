@@ -212,7 +212,7 @@ void invoke_async_converge_future(Future cond, ConvergeBlock* b) {
 }
 
 std::vector<Future>
-execute(const AnyFunction& fn,
+execute(const AnyFn& fn,
         const std::vector<bool>& input_borrows,
         int output_count,
         ExecutorRef ex,
