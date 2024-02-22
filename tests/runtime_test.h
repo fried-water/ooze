@@ -13,7 +13,7 @@ namespace ooze {
 template <typename... Ts>
 std::vector<Future> to_futures(std::tuple<Ts...> ts) {
   return tuple_to_vec<Future>(
-    std::move(ts), Overloaded{[](Any a) { return Future{std::move(a)}; }, Construct<Future>{}});
+    std::move(ts), Overloaded{[](auto x) { return Future{Any(std::move(x))}; }, Construct<Future>{}});
 }
 
 template <typename... Ts>

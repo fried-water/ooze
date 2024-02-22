@@ -22,13 +22,13 @@ BOOST_AUTO_TEST_CASE(basic) {
 
   BOOST_CHECK(!any.has_value());
 
-  any = 5;
+  any = Any(5);
 
   BOOST_CHECK(any.has_value());
   BOOST_CHECK(type_id(knot::Type<int>{}) == any.type());
   BOOST_CHECK(5 == any_cast<int>(any));
 
-  any = std::string("abc");
+  any = Any(std::string("abc"));
 
   BOOST_CHECK(any.has_value());
   BOOST_CHECK(type_id(knot::Type<std::string>{}) == any.type());
@@ -52,7 +52,7 @@ BOOST_AUTO_TEST_CASE(basic) {
 }
 
 BOOST_AUTO_TEST_CASE(move_only) {
-  Any any = MoveOnlyType();
+  Any any = Any(MoveOnlyType());
 
   BOOST_CHECK(any.has_value());
   BOOST_CHECK(type_id(knot::Type<MoveOnlyType>{}) == any.type());

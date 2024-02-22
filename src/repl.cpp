@@ -270,7 +270,7 @@ std::tuple<Future, Env, Bindings> step_repl(ExecutorRef executor, Env env, Bindi
       .map([](Future out, Env env, Bindings bindings) {
         return std::tuple(std::move(out).then([](Any any) {
           std::string output = any_cast<std::string>(std::move(any));
-          return output.empty() ? std::vector<std::string>{} : make_vector(std::move(output));
+          return Any(output.empty() ? std::vector<std::string>{} : make_vector(std::move(output)));
         }),
                           std::move(env),
                           std::move(bindings));

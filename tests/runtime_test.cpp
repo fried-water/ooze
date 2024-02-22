@@ -222,8 +222,8 @@ BOOST_AUTO_TEST_CASE(borrow_fwd) {
 
   const Inst g = p.add(std::move(cg).finalize({}, {}));
 
-  auto [b1, post_future1] = ooze::borrow(Future(Sentinal{}));
-  auto [b2, post_future2] = ooze::borrow(Future(Sentinal{}));
+  auto [b1, post_future1] = ooze::borrow(Future(Any(Sentinal{})));
+  auto [b2, post_future2] = ooze::borrow(Future(Any(Sentinal{})));
   const auto results =
     execute(std::make_shared<Program>(std::move(p)), g, ex, {}, std::vector{std::move(b1), std::move(b2)});
   const Sentinal input1 = any_cast<Sentinal>(await(std::move(post_future1)));
@@ -291,7 +291,7 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
   auto start = std::chrono::steady_clock::now();
 
   for(size_t i = 0; i < COUNT; i++) {
-    std::move(promises[i]).send(std::string(1, char('A' + i)));
+    std::move(promises[i]).send(Any(std::string(1, char('A' + i))));
   }
 
   ex.wait();
@@ -361,7 +361,7 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
   Program p;
   const Inst fn = p.add([](const Sentinal& x) { return x; });
 
-  auto [b, post_future] = ooze::borrow(Future(Sentinal{}));
+  auto [b, post_future] = ooze::borrow(Future(Any(Sentinal{})));
   std::vector<Future> results = execute(share(p), fn, make_seq_executor(), {}, std::vector{std::move(b)});
 
   BOOST_REQUIRE_EQUAL(1, results.size());

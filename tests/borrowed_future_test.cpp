@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE(forward) {
   auto [p, f] = make_promise_future();
   auto [b, f2] = borrow(std::move(f));
 
-  std::move(p).send(1);
+  std::move(p).send(Any(1));
   b = {};
 
   int x = 0;
@@ -50,13 +50,13 @@ BOOST_AUTO_TEST_CASE(send_then) {
 
   auto b2 = b;
 
-  std::move(p).send(1);
+  std::move(p).send(Any(1));
 
   b.then([](Any v) { BOOST_CHECK_EQUAL(1, any_cast<int>(v)); });
 
   b2.then([](Any v) {
       BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-      return 2;
+      return Any(2);
     })
     .then([](Any v) { BOOST_CHECK_EQUAL(2, any_cast<int>(v)); });
 }
@@ -71,11 +71,11 @@ BOOST_AUTO_TEST_CASE(then_send) {
 
   b2.then([](Any v) {
       BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-      return 2;
+      return Any(2);
     })
     .then([](Any v) { BOOST_CHECK_EQUAL(2, any_cast<int>(v)); });
 
-  std::move(p).send(1);
+  std::move(p).send(Any(1));
 }
 
 BOOST_AUTO_TEST_CASE(stress) {
@@ -91,7 +91,7 @@ BOOST_AUTO_TEST_CASE(stress) {
     auto [p, f] = make_promise_future();
     auto [b, f2] = borrow(std::move(f));
 
-    functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
+    functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(Any(1)); });
     functions.emplace_back([f2 = std::make_shared<Future>(std::move(f2)), &calls]() mutable {
       std::move(*f2).then([&](Any v) {
         BOOST_CHECK_EQUAL(1, any_cast<int>(v));

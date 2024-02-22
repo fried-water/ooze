@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_CASE(binding_not_ready) {
   const std::vector<std::string> exp_not_ready{"1 binding(s)", "  x: *i32"};
   std::tie(e, b) = step_and_compare(exp_not_ready, ":b", std::move(e), std::move(b));
 
-  std::move(promise).send(0);
+  std::move(promise).send(Any(0));
 
   const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
   step_and_compare(exp, ":b", std::move(e), std::move(b));

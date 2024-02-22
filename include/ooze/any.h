@@ -46,7 +46,7 @@ public:
   ~Any() = default;
 
   template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>
-  Any(T&& t)
+  explicit Any(T&& t)
       : _concept(std::make_unique<Concrete<std::decay_t<T>>>(std::forward<T>(t)))
       , _type(type_id(decay(knot::Type<T>{}))) {}
 
