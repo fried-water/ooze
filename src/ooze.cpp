@@ -175,13 +175,14 @@ EnvData copy_generic_fns(Span<std::string_view> srcs, EnvData env, const AST& as
     const Slice new_slice = append_src(env.src, sv(srcs, ast.srcs[root.get()]));
     const i32 new_offset = new_slice.begin;
 
-    const ASTID copy = copy_tree(ast.forest, root, env.ast.forest, [&](ASTID old_id, ASTID new_id) {
-      // TODO literals
-      env.ast.types[new_id.get()] = copy_type(env, ast.tg, ast.types[old_id.get()]);
-      const Slice old_slice = ast.srcs[old_id.get()].slice;
-      const i32 offset = new_offset + old_slice.begin - original_offset;
-      env.ast.srcs[new_id.get()] = SrcRef{SrcID(0), {offset, offset + size(old_slice)}};
-    });
+    const ASTID copy =
+      copy_tree_under(ast.forest, root, env.ast.forest, ast.forest.ABOVE_ROOTS, [&](ASTID old_id, ASTID new_id) {
+        // TODO literals
+        env.ast.types[new_id.get()] = copy_type(env, ast.tg, ast.types[old_id.get()]);
+        const Slice old_slice = ast.srcs[old_id.get()].slice;
+        const i32 offset = new_offset + old_slice.begin - original_offset;
+        env.ast.srcs[new_id.get()] = SrcRef{SrcID(0), {offset, offset + size(old_slice)}};
+      });
   }
 
   return env;

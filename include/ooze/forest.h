@@ -227,9 +227,25 @@ public:
   void move_first_child(ID parent, ID child) {
     disconnect(child);
 
-    _connectivity[as_integral(child)].next_sibling = _connectivity[as_integral(parent)].first_child;
-    _connectivity[as_integral(child)].parent = parent;
-    _connectivity[as_integral(parent)].first_child = child;
+    if(parent == ABOVE_ROOTS) {
+      _connectivity[as_integral(child)].next_sibling = _first_root;
+      _first_root = child;
+    } else {
+      _connectivity[as_integral(child)].next_sibling = _connectivity[as_integral(parent)].first_child;
+      _connectivity[as_integral(child)].parent = parent;
+      _connectivity[as_integral(parent)].first_child = child;
+    }
+  }
+
+  void move_last_child(ID parent, ID child) {
+    disconnect(child);
+
+    ID* slot = parent == ABOVE_ROOTS ? &_first_root : &_connectivity[as_integral(parent)].first_child;
+    while(*slot != INVALID) {
+      slot = &_connectivity[as_integral(*slot)].next_sibling;
+    }
+    *slot = child;
+    _connectivity[as_integral(child)].parent = parent == ABOVE_ROOTS ? INVALID : parent;
   }
 
   template <typename IDs>
@@ -416,7 +432,7 @@ public:
 };
 
 template <typename T, typename ID, typename F>
-ID copy_tree(const Forest<T, ID>& src_forest, ID src_id, Forest<T, ID>& dst_forest, F f) {
+ID copy_tree_under(const Forest<T, ID>& src_forest, ID src_id, Forest<T, ID>& dst_forest, ID dst_parent, F f) {
   const ID new_root_id = dst_forest.append_root(src_forest[src_id]);
 
   f(src_id, new_root_id);
@@ -431,6 +447,8 @@ ID copy_tree(const Forest<T, ID>& src_forest, ID src_id, Forest<T, ID>& dst_fore
       to_visit.emplace_back(child_id, new_child_id);
     }
   }
+
+  dst_forest.move_last_child(dst_parent, new_root_id);
 
   return new_root_id;
 }

@@ -140,11 +140,12 @@ std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, Inter
     ast.types.resize(ast.forest.size() + tree_size, Type::Invalid());
     ast.srcs.resize(ast.forest.size() + tree_size, SrcRef{});
 
-    const ASTID copy = copy_tree(ast.forest, root, ast.forest, [&](ASTID old_id, ASTID new_id) {
-      // TODO literals
-      ast.types[new_id.get()] = ast.types[old_id.get()];
-      ast.srcs[new_id.get()] = ast.srcs[old_id.get()];
-    });
+    const ASTID copy =
+      copy_tree_under(ast.forest, root, ast.forest, ast.forest.ABOVE_ROOTS, [&](ASTID old_id, ASTID new_id) {
+        // TODO literals
+        ast.types[new_id.get()] = ast.types[old_id.get()];
+        ast.srcs[new_id.get()] = ast.srcs[old_id.get()];
+      });
     const ASTID instantiation = *ast.forest.first_child(copy);
 
     ast.types[instantiation.get()] = type;

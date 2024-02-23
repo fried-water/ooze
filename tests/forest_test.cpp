@@ -129,6 +129,26 @@ BOOST_AUTO_TEST_CASE(append_post_order) {
   BOOST_CHECK_RANGE_EQUAL(exp_post, f.values());
 }
 
+BOOST_AUTO_TEST_CASE(copy_tree) {
+  auto f = Forest<std::string>();
+
+  const int a = f.append_root("a");
+  const int b = f.append_child(a, "b");
+  const int c = f.append_child(b, "c");
+  const int d = f.append_child(a, "d");
+  const int e = f.append_root("e");
+
+  copy_tree_under(f, b, f, a, nullify());
+
+  const std::array exp1 = {"a", "b", "c", "d", "b", "c", "e"};
+  BOOST_CHECK_RANGE_EQUAL(exp1, f.pre_order());
+
+  copy_tree_under(f, a, f, f.ABOVE_ROOTS, nullify());
+
+  const std::array exp2 = {"a", "b", "c", "d", "b", "c", "e", "a", "b", "c", "d", "b", "c"};
+  BOOST_CHECK_RANGE_EQUAL(exp2, f.pre_order());
+}
+
 BOOST_AUTO_TEST_CASE(forest_strong_id) {
   using ID = StrongID<struct S>;
 
