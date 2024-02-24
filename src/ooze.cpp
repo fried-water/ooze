@@ -20,17 +20,35 @@ struct EnvData {
   AST ast;
   NativeTypeInfo native_types;
   Program program;
-  std::unordered_map<ASTID, Inst> fns;
+  Map<ASTID, Inst> fns;
 
-  ASTID add_fn(std::string_view name, Type type, Inst fn) {
-    const auto ref = SrcRef{SrcID{0}, append_src(src, name)};
-    const ASTID id = add_global(ast, ref, type);
-    fns.emplace(id, fn);
-    return id;
-  }
+  TypeCache type_cache;
+  ASTID native_module;
+  std::vector<ASTID> parsed_roots;
+
+  SrcRef bindings_ref;
+  SrcRef scripts_ref;
+  SrcRef to_string_ref;
 };
 
 namespace {
+
+template <typename T>
+auto add_global(AST ast, Map<ASTID, T> ident_map, std::vector<ASTID> roots, T t, SrcRef ref, Type type, Type unit) {
+  const ASTID ident = append_root(ast, ASTTag::PatternIdent, ref, type);
+  const ASTID value = append_root(ast, ASTTag::EnvValue, ref, type);
+  const ASTID root = append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{ident, value});
+
+  ident_map.emplace(ident, std::move(t));
+  roots.push_back(root);
+  return std::tuple(std::move(ast), std::move(ident_map), std::move(roots));
+}
+
+void add_fn(EnvData& env, std::string_view name, Type type, Inst fn) {
+  const SrcRef ref = {SrcID{0}, append_src(env.src, name)};
+  std::tie(env.ast, env.fns, env.parsed_roots) =
+    add_global(std::move(env.ast), std::move(env.fns), std::move(env.parsed_roots), fn, ref, type, env.type_cache.unit);
+}
 
 bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& copy_types, Type type) {
   bool is_copyable = true;
@@ -53,6 +71,7 @@ bool is_binding_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& 
 }
 
 Type copy_type(EnvData& env, const TypeGraph& tg, Type type) {
+  assert(type.is_valid());
   return tg.get<TypeTag>(type) == TypeTag::Leaf
            ? env.ast.tg.add_node(TypeTag::Leaf, tg.get<TypeID>(type))
            : env.ast.tg.add_node(
@@ -64,7 +83,7 @@ Type copy_type(EnvData& env, const TypeGraph& tg, Type type) {
 std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>>
 run_function(const AST& ast,
              const std::unordered_set<TypeID>& copy_types,
-             const std::unordered_map<ASTID, Inst>& functions,
+             const Map<ASTID, Inst>& functions,
              ExecutorRef ex,
              FunctionGraphData fg_data,
              Map<ASTID, std::vector<AsyncValue>> bindings) {
@@ -120,21 +139,16 @@ auto assign_values(
 std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>>
 generate_fns(Program prog,
              const AST& ast,
-             const std::unordered_map<ASTID, Inst>& existing_fns,
+             const Map<ASTID, Inst>& existing_fns,
              const std::unordered_set<TypeID>& copy_types,
              const Map<ASTID, ASTID>& overloads,
              Span<ASTID> new_fns) {
-  std::vector<std::tuple<ASTID, ASTID, Inst>> fns =
-    transform_filter_to_vec(new_fns, [&](ASTID root) -> std::optional<std::tuple<ASTID, ASTID, Inst>> {
-      assert(ast.forest[root] == ASTTag::Assignment || ast.forest[root] == ASTTag::Module);
-      if(ast.forest[root] == ASTTag::Assignment) {
-        const auto [pattern, expr] = ast.forest.child_ids(root).take<2>();
-        if(ast.forest[expr] == ASTTag::Fn) {
-          return std::optional(std::tuple(pattern, expr, prog.placeholder()));
-        }
-      }
-      return std::nullopt;
-    });
+  std::vector<std::tuple<ASTID, ASTID, Inst>> fns = transform_to_vec(new_fns, [&](ASTID root) {
+    assert(ast.forest[root] == ASTTag::Assignment);
+    const auto [pattern, expr] = ast.forest.child_ids(root).take<2>();
+    assert(ast.forest[expr] == ASTTag::Fn);
+    return std::tuple(pattern, expr, prog.placeholder());
+  });
 
   prog = fold(fns, std::move(prog), flattened([&](Program p0, ASTID, ASTID expr, Inst inst) {
                 auto [p, captured_values, captured_borrows, graph] =
@@ -175,31 +189,48 @@ EnvData copy_generic_fns(Span<std::string_view> srcs, EnvData env, const AST& as
     const Slice new_slice = append_src(env.src, sv(srcs, ast.srcs[root.get()]));
     const i32 new_offset = new_slice.begin;
 
-    const ASTID copy =
-      copy_tree_under(ast.forest, root, env.ast.forest, ast.forest.ABOVE_ROOTS, [&](ASTID old_id, ASTID new_id) {
-        // TODO literals
-        env.ast.types[new_id.get()] = copy_type(env, ast.tg, ast.types[old_id.get()]);
-        const Slice old_slice = ast.srcs[old_id.get()].slice;
-        const i32 offset = new_offset + old_slice.begin - original_offset;
-        env.ast.srcs[new_id.get()] = SrcRef{SrcID(0), {offset, offset + size(old_slice)}};
-      });
+    const auto module = owning_module(ast.forest, root);
+    assert(module);
+
+    const ASTID copy = copy_tree_under(ast.forest, root, env.ast.forest, *module, [&](ASTID old_id, ASTID new_id) {
+      // TODO literals
+      env.ast.types[new_id.get()] = copy_type(env, ast.tg, ast.types[old_id.get()]);
+      const Slice old_slice = ast.srcs[old_id.get()].slice;
+      const i32 offset = new_offset + old_slice.begin - original_offset;
+      env.ast.srcs[new_id.get()] = SrcRef{SrcID(0), {offset, offset + size(old_slice)}};
+    });
+
+    env.parsed_roots.push_back(copy);
   }
 
   return env;
 }
 
-std::tuple<std::string, AST, std::vector<ASTID>, Map<ASTID, std::vector<AsyncValue>>>
-append_global_bindings(std::string env_src, AST ast, Bindings str_bindings) {
+auto prepare_ast(const EnvData& env, Bindings str_bindings) {
+  std::string src = env.src;
+  AST ast = env.ast;
   Map<ASTID, std::vector<AsyncValue>> bindings;
   std::vector<ASTID> roots;
   roots.reserve(str_bindings.size());
+
+  const Type unit = env.type_cache.unit;
+  const ASTID env_module = append_root(ast, ASTTag::Module, env.scripts_ref, unit, env.parsed_roots);
+
   for(auto& [name, binding] : str_bindings) {
-    const ASTID pattern = add_global(ast, SrcRef{SrcID{0}, append_src(env_src, name)}, binding.type);
-    bindings.emplace(pattern, std::move(binding.values));
-    roots.push_back(*ast.forest.parent(pattern));
+    std::tie(ast, bindings, roots) = add_global(
+      std::move(ast),
+      std::move(bindings),
+      std::move(roots),
+      std::move(binding.values),
+      SrcRef{SrcID{0}, append_src(src, name)},
+      binding.type,
+      unit);
   }
 
-  return {std::move(env_src), std::move(ast), std::move(roots), std::move(bindings)};
+  const ASTID binding_module = append_root(ast, ASTTag::Module, env.bindings_ref, unit, roots);
+
+  return std::tuple(
+    std::move(src), std::move(ast), std::move(bindings), std::array{env.native_module, env_module, binding_module});
 }
 
 std::tuple<EnvData, Bindings> to_str_bindings(
@@ -219,7 +250,7 @@ auto run_or_assign(Span<std::string_view> srcs,
                    EnvData env,
                    Map<ASTID, std::vector<AsyncValue>> bindings,
                    ASTID id) {
-  assert(is_global(ast.forest, id));
+  assert(owning_module(ast.forest, id));
   assert(s.generic_roots.empty());
 
   std::vector<std::tuple<ASTID, ASTID, Inst>> generated_fns;
@@ -229,15 +260,14 @@ auto run_or_assign(Span<std::string_view> srcs,
     env.fns,
     env.native_types.copyable,
     s.overloads,
-    filter_to_vec(s.resolved_roots, [&](ASTID id) { return ast.forest.is_root(id); }));
+    filter_to_vec(s.resolved_roots, [&](ASTID id) { return !ast.forest.is_root(id); }));
 
   auto fns = env.fns;
 
   for(const auto [pattern, expr, inst] : generated_fns) {
-    if(pattern.is_valid()) {
-      fns.emplace(pattern, inst);
-      env.add_fn(sv(srcs, ast.srcs[pattern.get()]), copy_type(env, ast.tg, ast.types[pattern.get()]), inst);
-    }
+    assert(pattern.is_valid());
+    fns.emplace(pattern, inst);
+    add_fn(env, sv(srcs, ast.srcs[pattern.get()]), copy_type(env, ast.tg, ast.types[pattern.get()]), inst);
   }
 
   const bool expr = is_expr(ast.forest[id]);
@@ -278,8 +308,7 @@ StringResult<void, EnvData> parse_scripts(EnvData env, Span<std::string_view> fi
       return type_name_resolution(srcs, env.native_types.names, std::move(pr), std::move(ast));
     })
     .and_then([&](std::vector<ASTID> roots, AST ast) {
-      const TypeCache tc = create_type_cache(ast.tg);
-      return sema(srcs, tc, env.native_types, std::move(ast), roots);
+      return sema(srcs, env.type_cache, env.native_types, std::move(ast), roots, std::array{env.native_module});
     })
     .append_state(std::move(env))
     .map([&](SemaData s, AST ast, EnvData env) {
@@ -288,9 +317,8 @@ StringResult<void, EnvData> parse_scripts(EnvData env, Span<std::string_view> fi
         generate_fns(std::move(env.program), ast, env.fns, env.native_types.copyable, s.overloads, s.resolved_roots);
 
       for(const auto [pattern, expr, inst] : generated_fns) {
-        if(pattern.is_valid()) {
-          env.add_fn(sv(srcs, ast.srcs[pattern.get()]), copy_type(env, ast.tg, ast.types[pattern.get()]), inst);
-        }
+        assert(pattern.is_valid());
+        add_fn(env, sv(srcs, ast.srcs[pattern.get()]), copy_type(env, ast.tg, ast.types[pattern.get()]), inst);
       }
 
       env = copy_generic_fns(srcs, std::move(env), ast, s.generic_roots);
@@ -305,26 +333,14 @@ StringResult<void, EnvData> parse_scripts(EnvData env, Span<std::string_view> fi
 
 StringResult<Binding, EnvData, Bindings>
 run(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_view expr) {
-  auto [env_src, ast, _binding_roots, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
-  auto binding_roots = std::move(_binding_roots);
-
-  const SrcRef runtime_src = {SrcID{0}, append_src(env_src, "#runtime")};
-  const SrcRef current_src = {SrcID{0}, append_src(env_src, "#current")};
-
+  auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(str_bindings));
+  const auto global_imports = global_imports_;
   const auto srcs = make_sv_array(env_src, expr);
 
   return parse_and_name_resolution(parse_repl, srcs, env.native_types.names, std::move(ast), SrcID{1})
     .and_then([&](const ASTID root, AST ast) {
-      const TypeCache tc = create_type_cache(ast.tg);
-
-      const ASTID current_mod = append_root(ast, ASTTag::Module, current_src, tc.unit, as_span(root));
-      binding_roots.push_back(current_mod);
-
-      const ASTID runtime_mod = append_root(ast, ASTTag::Module, runtime_src, tc.unit, binding_roots);
-
-      return sema(srcs, tc, env.native_types, std::move(ast), std::array{runtime_mod}).map([&](SemaData s, AST ast) {
-        return std::tuple(std::tuple(std::move(s), root), std::move(ast));
-      });
+      return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::array{root}, global_imports)
+        .map([&](SemaData s, AST ast) { return std::tuple(std::tuple(std::move(s), root), std::move(ast)); });
     })
     .append_state(std::move(env), std::move(bindings))
     .map(flattened([&](SemaData s, ASTID expr, AST ast, EnvData env, Map<ASTID, std::vector<AsyncValue>> bindings) {
@@ -342,51 +358,33 @@ run(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_view expr) {
 
 StringResult<Future, EnvData, Bindings>
 run_to_string(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_view expr) {
-  auto [env_src, ast, _binding_roots, bindings] = append_global_bindings(env.src, env.ast, std::move(str_bindings));
-  auto binding_roots = std::move(_binding_roots);
-
-  const SrcRef runtime_ref = {SrcID{0}, append_src(env_src, "#runtime")};
-  const SrcRef current_ref = {SrcID{0}, append_src(env_src, "#current")};
-  const SrcRef to_string_ref = {SrcID{0}, append_src(env_src, "to_string")};
-
+  auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(str_bindings));
+  const auto global_imports = global_imports_;
   const auto srcs = make_sv_array(env_src, expr);
 
   return parse_and_name_resolution(parse_repl, srcs, env.native_types.names, std::move(ast), SrcID{1})
     .and_then([&](const ASTID root, AST ast) {
-      const TypeCache tc = create_type_cache(ast.tg);
-
-      binding_roots.push_back(append_root(ast, ASTTag::Module, current_ref, tc.unit, as_span(root)));
-      const ASTID runtime_mod = append_root(ast, ASTTag::Module, runtime_ref, tc.unit, binding_roots);
-      binding_roots.pop_back();
-
       if(ast.forest[root] == ASTTag::Assignment) {
-        return sema(srcs, tc, env.native_types, std::move(ast), std::array{runtime_mod}).map([&](SemaData s, AST ast) {
-          return std::tuple(std::tuple(std::move(s), root), std::move(ast));
-        });
+        return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::array{root}, global_imports)
+          .map([&](SemaData s, AST ast) { return std::tuple(std::tuple(std::move(s), root), std::move(ast)); });
       } else {
-        return sema(srcs, tc, env.native_types, std::move(ast), std::array{runtime_mod}).and_then([&](auto, AST ast) {
-          pop_last_root(ast);
-          pop_last_root(ast);
+        return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::array{root}, global_imports)
+          .and_then([&](auto, AST ast) {
+            const Type expr_type = ast.types[root.get()];
+            const Type borrow_type = ast.tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});
+            const Type tuple_type = ast.tg.add_node(std::array{borrow_type}, TypeTag::Tuple, TypeID{});
+            const Type string_type = ast.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::string>{}));
+            const Type fn_type = ast.tg.add_node(std::array{tuple_type, string_type}, TypeTag::Fn, TypeID{});
 
-          const Type expr_type = ast.types[root.get()];
-          const Type borrow_type = ast.tg.add_node(std::array{expr_type}, TypeTag::Borrow, TypeID{});
-          const Type tuple_type = ast.tg.add_node(std::array{borrow_type}, TypeTag::Tuple, TypeID{});
-          const Type string_type = ast.tg.add_node(TypeTag::Leaf, type_id(knot::Type<std::string>{}));
-          const Type fn_type = ast.tg.add_node(std::array{tuple_type, string_type}, TypeTag::Fn, TypeID{});
+            const ASTID borrow_id = append_root(ast, ASTTag::ExprBorrow, SrcRef{}, borrow_type, std::array{root});
+            const ASTID tuple_id = append_root(ast, ASTTag::ExprTuple, SrcRef{}, tuple_type, std::array{borrow_id});
+            const ASTID callee_id = append_root(ast, ASTTag::ExprIdent, env.to_string_ref, fn_type);
+            const ASTID call_id =
+              append_root(ast, ASTTag::ExprCall, SrcRef{}, string_type, std::array{callee_id, tuple_id});
 
-          const ASTID borrow_id = append_root(ast, ASTTag::ExprBorrow, SrcRef{}, borrow_type, std::array{root});
-          const ASTID tuple_id = append_root(ast, ASTTag::ExprTuple, SrcRef{}, tuple_type, std::array{borrow_id});
-          const ASTID callee_id = append_root(ast, ASTTag::ExprIdent, to_string_ref, fn_type);
-          const ASTID call_id =
-            append_root(ast, ASTTag::ExprCall, SrcRef{}, string_type, std::array{callee_id, tuple_id});
-
-          binding_roots.push_back(append_root(ast, ASTTag::Module, current_ref, tc.unit, std::array{call_id}));
-
-          const ASTID runtime_mod = append_root(ast, ASTTag::Module, runtime_ref, tc.unit, binding_roots);
-
-          return sema(srcs, tc, env.native_types, std::move(ast), std::array{runtime_mod})
-            .map([&](SemaData s, AST ast) { return std::tuple(std::tuple(std::move(s), call_id), std::move(ast)); });
-        });
+            return sema(srcs, env.type_cache, env.native_types, std::move(ast), std::array{call_id}, global_imports)
+              .map([&](SemaData s, AST ast) { return std::tuple(std::tuple(std::move(s), call_id), std::move(ast)); });
+          });
       }
     })
     .append_state(std::move(env), std::move(bindings))
@@ -408,6 +406,37 @@ run_to_string(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_vi
     .map_error([&](auto errors, EnvData env, Bindings bindings) {
       return std::tuple(contextualize(srcs, std::move(errors)), std::move(env), std::move(bindings));
     });
+}
+
+EnvData create_env_data(NativeRegistry r) {
+  // TODO check invariants on type and fn names
+
+  EnvData d = {};
+
+  d.ast.tg = std::move(r.tg);
+  d.native_types = std::move(r.types);
+  d.type_cache = create_type_cache(d.ast.tg);
+
+  d.bindings_ref = SrcRef{SrcID{0}, append_src(d.src, "#bindings")};
+  d.scripts_ref = SrcRef{SrcID{0}, append_src(d.src, "#scripts")};
+  d.to_string_ref = SrcRef{SrcID{0}, append_src(d.src, "to_string")};
+
+  std::vector<ASTID> roots;
+  roots.reserve(r.fns.size());
+
+  for(NativeFn& fn : r.fns) {
+    const Inst fn_inst = d.program.add(std::move(fn.fn),
+                                       borrows_of(d.ast.tg, d.ast.tg.fanout(fn.type)[0]),
+                                       size_of(d.ast.tg, d.ast.tg.fanout(fn.type)[1]));
+    const SrcRef ref = {SrcID{0}, append_src(d.src, fn.name)};
+    std::tie(d.ast, d.fns, roots) =
+      add_global(std::move(d.ast), std::move(d.fns), std::move(roots), fn_inst, ref, fn.type, d.type_cache.unit);
+  }
+
+  const SrcRef ref = {SrcID{0}, append_src(d.src, "#builtins")};
+  d.native_module = append_root(d.ast, ASTTag::Module, ref, d.type_cache.unit, roots);
+
+  return d;
 }
 
 } // namespace
@@ -444,25 +473,8 @@ NativeRegistry create_primitive_registry() {
     .add_fn("println", [](const std::string& s) { fmt::println("{}", s); });
 }
 
-Env::Env() : _data(EnvData{}) {}
-
-Env::Env(NativeRegistry r) : _data(EnvData{}) {
-  // TODO check invariants on type and fn names
-
-  auto& d = *_data;
-  d.ast.tg = std::move(r.tg);
-  d.native_types = std::move(r.types);
-
-  for(NativeFn& fn : r.fns) {
-    const Inst fn_inst = _data->program.add(std::move(fn.fn),
-                                            borrows_of(d.ast.tg, d.ast.tg.fanout(fn.type)[0]),
-                                            size_of(d.ast.tg, d.ast.tg.fanout(fn.type)[1]));
-
-    const auto ref = SrcRef{SrcID{0}, append_src(d.src, fn.name)};
-    const ASTID id = add_global(d.ast, ref, fn.type);
-    d.fns.emplace(id, fn_inst);
-  }
-}
+Env::Env() : _data(create_env_data(NativeRegistry{})) {}
+Env::Env(NativeRegistry r) : _data(create_env_data(std::move(r))) {}
 
 Env& Env::operator=(const Env& env) {
   _data = Opaque(*env._data);
@@ -512,7 +524,7 @@ StringResult<Future, Env, Bindings> Env::run_to_string(ExecutorRef ex, Bindings 
 
 StringResult<void> Env::type_check_expr(std::string_view expr) const {
   const auto srcs = make_sv_array(_data->src, expr);
-  return frontend(parse_expr, srcs, _data->native_types, _data->ast)
+  return frontend(parse_expr, srcs, _data->native_types, _data->ast, std::array{_data->native_module})
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
@@ -520,7 +532,7 @@ StringResult<void> Env::type_check_expr(std::string_view expr) const {
 
 StringResult<void> Env::type_check_fn(std::string_view fn) const {
   const auto srcs = make_sv_array(_data->src, fn);
-  return frontend(parse_fn, srcs, _data->native_types, _data->ast)
+  return frontend(parse_fn, srcs, _data->native_types, _data->ast, std::array{_data->native_module})
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
@@ -536,8 +548,12 @@ StringResult<void> Env::type_check_binding(std::string_view binding) const {
       } else {
         // Type check it as if it were an expr with the given type
         ast.forest[pattern_root] = ASTTag::ExprIdent;
-        const TypeCache tc = create_type_cache(ast.tg);
-        return sema(srcs, tc, _data->native_types, std::move(ast), std::array{pattern_root});
+        return sema(srcs,
+                    _data->type_cache,
+                    _data->native_types,
+                    std::move(ast),
+                    std::array{pattern_root},
+                    std::array{_data->native_module});
       }
     })
     .map_state(nullify())

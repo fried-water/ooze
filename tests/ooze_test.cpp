@@ -469,9 +469,7 @@ BOOST_AUTO_TEST_CASE(generic_script) {
 }
 
 BOOST_AUTO_TEST_CASE(generic) {
-  constexpr std::string_view script =
-    "fn f(x : &_) -> string = to_string(x)\n"
-    "fn g(x: i32) -> string = f(&x)\n";
+  constexpr std::string_view script = "fn f(x : &_) -> string = to_string(x)\n";
 
   auto r = NativeRegistry{}
              .add_type<std::string>("string")
@@ -481,7 +479,19 @@ BOOST_AUTO_TEST_CASE(generic) {
              .add_fn("to_string", [](const f64& x) { return fmt::format("{}", x); });
 
   check_run(
-    std::move(r), script, "(g(3), f(&0.5))", "(string, string)", std::tuple(std::string("3"), std::string("0.5")));
+    std::move(r), script, "(f(&3), f(&0.5))", "(string, string)", std::tuple(std::string("3"), std::string("0.5")));
+}
+
+BOOST_AUTO_TEST_CASE(generic_assign) {
+  constexpr std::string_view script = "fn f(x : &_) -> string = to_string(x)\n";
+
+  auto r = NativeRegistry{}.add_type<std::string>("string").add_type<i32>("i32").add_fn("to_string", [](const i32& x) {
+    return fmt::format("{}", x);
+  });
+
+  const auto [m, e] = check_result(assign(std::move(r), script, "let x = f(&3)"));
+  BOOST_REQUIRE_EQUAL(1, m.size());
+  check_binding(e, check_element("x", m), "string", std::string("3"));
 }
 
 BOOST_AUTO_TEST_CASE(assign_empty) {

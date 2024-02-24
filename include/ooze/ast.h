@@ -102,10 +102,13 @@ inline bool is_pattern(ASTTag tag) {
   }
 }
 
-inline bool is_global(const Forest<ASTTag, ASTID>& f, ASTID id) {
-  assert(f[id] == ASTTag::Assignment || is_expr(f[id]));
-  const auto parent = f.parent(id);
-  return !parent || f[*parent] == ASTTag::Module;
+inline std::optional<ASTID> owning_module(const Forest<ASTTag, ASTID>& f, ASTID id) {
+  if(const auto parent = f.parent(id); parent) {
+    return f[*parent] == ASTTag::Module ? parent : std::nullopt;
+  } else {
+    // Root module
+    return f.ABOVE_ROOTS;
+  }
 }
 
 inline bool is_global_pattern(const Forest<ASTTag, ASTID>& f, ASTID id) {
@@ -113,7 +116,7 @@ inline bool is_global_pattern(const Forest<ASTTag, ASTID>& f, ASTID id) {
   while(!f.is_root(id) && is_pattern(f[id])) {
     id = *f.parent(id);
   }
-  return f[id] == ASTTag::Assignment && is_global(f, id);
+  return f[id] == ASTTag::Assignment && owning_module(f, id);
 }
 
 inline Type global_type(const AST& ast, ASTID root) {
@@ -124,20 +127,6 @@ inline ASTID append_root(AST& ast, ASTTag tag, SrcRef ref, Type type, Span<ASTID
   ast.srcs.push_back(ref);
   ast.types.push_back(type);
   return ast.forest.append_root_post_order(tag, children);
-}
-
-inline void pop_last_root(AST& ast) {
-  ast.srcs.pop_back();
-  ast.types.pop_back();
-  ast.forest.pop_last_root();
-}
-
-inline ASTID add_global(AST& ast, SrcRef ref, Type type) {
-  const ASTID ident_id = append_root(ast, ASTTag::PatternIdent, ref, type);
-  const ASTID fn_id = append_root(ast, ASTTag::EnvValue, ref, type);
-  const Type unit = ast.tg.add_node(TypeTag::Tuple, TypeID{});
-  append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{ident_id, fn_id});
-  return ident_id;
 }
 
 } // namespace ooze

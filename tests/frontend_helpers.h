@@ -18,6 +18,7 @@ struct TestEnv {
   NativeTypeInfo types;
   std::string src;
   AST ast;
+  ASTID module;
 };
 
 inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view> globals = {}) {
@@ -26,7 +27,7 @@ inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view>
 
   const Type unit = ast.tg.add_node(TypeTag::Tuple, TypeID{});
 
-  for(std::string_view binding : globals) {
+  const std::vector<ASTID> ids = transform_to_vec(globals, [&](std::string_view binding) {
     const auto srcs = make_sv_array(binding);
     ASTID pattern;
     std::tie(pattern, ast) =
@@ -36,10 +37,12 @@ inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view>
 
     ast.srcs[pattern.get()] = SrcRef{SrcID{0}, append_src(src, sv(srcs, ast.srcs[pattern.get()]))};
     const ASTID value_id = append_root(ast, ASTTag::EnvValue, ast.srcs[pattern.get()], ast.types[pattern.get()]);
-    append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{pattern, value_id});
-  }
+    return append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{pattern, value_id});
+  });
 
-  return {std::move(types), std::move(src), std::move(ast)};
+  const ASTID module = append_root(ast, ASTTag::Module, SrcRef{SrcID{0}, append_src(src, "#env")}, unit, ids);
+
+  return {std::move(types), std::move(src), std::move(ast), module};
 }
 
 template <typename... Bindings>

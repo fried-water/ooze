@@ -173,6 +173,12 @@ auto find_if(Range&& range, F f) {
   return std::find_if(range.begin(), range.end(), f);
 }
 
+template <typename Range, typename F>
+auto find_if_opt(Range&& range, F f) {
+  auto it = find_if(std::forward<Range>(range), std::move(f));
+  return it != range.end() ? std::optional(*it) : std::nullopt;
+}
+
 template <typename Range>
 auto distance(const Range& range) {
   return std::distance(range.begin(), range.end());

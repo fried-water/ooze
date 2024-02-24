@@ -123,14 +123,12 @@ overload_resolution(const Graph<ASTID>& ident_graph, const AST& ast, Span<ASTID>
   std::vector<TypeCheckError> errors;
 
   for(const ASTID root : roots) {
-    assert(ast.forest.is_root(root));
+    assert(owning_module(ast.forest, root));
     for(const ASTID id : ast.forest.post_order_ids(root)) {
-      if(ast.forest[id] != ASTTag::ExprIdent) continue;
+      if(!is_expr(ast.forest[id]) || ident_graph.num_fanout(id) == 0) continue;
 
       const ASTID root = ast.forest.root(id);
       if(ast.forest[root] == ASTTag::Assignment && !is_resolved(ast.tg, global_type(ast, root))) continue;
-
-      assert(ident_graph.num_fanout(id) > 0);
 
       std::vector<ASTID> matches = filter_to_vec(ident_graph.fanout(id), [&](ASTID overload) mutable {
         return can_unify(ast.tg, ast.types[id.get()], ast.types[overload.get()]);
@@ -693,7 +691,6 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
         add_pair(id, expr, FnOutputProp{});
         break;
       }
-      case ASTTag::ExprQualified:
       case ASTTag::ExprIdent: {
         for(const ASTID pattern : ident_graph.fanout(id)) {
           if(is_global_pattern(forest, pattern)) {
@@ -704,7 +701,13 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
             add_pair(id, pattern, DirectProp{});
           }
         }
+
+        if(const auto parent = forest.parent(id); parent && forest[*parent] == ASTTag::ExprQualified) {
+          add_pair(id, *parent, DirectProp{});
+        }
+        break;
       }
+      case ASTTag::ExprQualified:
       case ASTTag::EnvValue:
       case ASTTag::ExprLiteral:
       case ASTTag::PatternIdent:
@@ -771,7 +774,8 @@ apply_language_rules(const TypeCache& tc, const TypeNames& type_names, AST ast, 
 
   for(const ASTID root_id : roots) {
     for(const ASTID id : ast.forest.post_order_ids(root_id)) {
-      apply_type(id, language_rule(tc, ast, id));
+      const Type t = language_rule(tc, ast, id);
+      apply_type(id, t);
 
       if(const auto parent = ast.forest.parent(id); parent && ast.forest.first_child(*parent) == id) {
         if(const ASTTag tag = ast.forest[*parent]; tag == ASTTag::ExprCall) {

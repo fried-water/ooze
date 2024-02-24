@@ -61,11 +61,16 @@ BOOST_AUTO_TEST_CASE(native_fn) {
 
   AST ast;
 
+  const Type unit = ast.tg.add_node(TypeTag::Tuple, TypeID{});
   const Type t = ast.tg.add_node(TypeTag::Leaf, TypeID{1});
   const Type tuple_t = ast.tg.add_node({t}, TypeTag::Tuple, TypeID{});
   const Type fn_t = ast.tg.add_node({tuple_t, t}, TypeTag::Fn, TypeID{});
 
-  const ASTID global = *ast.forest.parent(add_global(ast, SrcRef{SrcID{0}, {0, 1}}, fn_t));
+  const SrcRef ref = {SrcID{0}, {0, 1}};
+
+  const ASTID ident_id = append_root(ast, ASTTag::PatternIdent, ref, fn_t);
+  const ASTID fn_id = append_root(ast, ASTTag::EnvValue, ref, fn_t);
+  const ASTID global = append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{ident_id, fn_id});
 
   BOOST_CHECK_EQUAL("let f: fn(T) -> T = <env_value>",
                     pretty_print(make_sv_array(src), ast, {{"T", TypeID{1}}}, global));

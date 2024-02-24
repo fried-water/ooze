@@ -48,10 +48,8 @@ void check_sema(Result sema_result, const std::vector<int>& exp_overload_indices
 
 template <typename Parser>
 auto run_sema(Parser p, TestEnv env, std::string_view src) {
-  return frontend(p, make_sv_array(env.src, src), env.types, std::move(env.ast)).map([](SemaData s, AST ast) {
-    return std::tuple(std::move(s.overloads), std::move(ast));
-  });
-  ;
+  return frontend(p, make_sv_array(env.src, src), env.types, std::move(env.ast), std::array{env.module})
+    .map([&](SemaData s, AST ast) { return std::tuple(std::move(s.overloads), std::move(ast)); });
 }
 
 auto run_sema(TestEnv env, std::string_view src) { return run_sema(parse, std::move(env), src); }
@@ -204,7 +202,11 @@ BOOST_AUTO_TEST_CASE(fn_assign) {
 }
 
 BOOST_AUTO_TEST_CASE(mod_fn) {
-  check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "mod x { fn g() -> _ = f() }")), {0});
+  check_sema(check_result(run_sema(basic_test_env(), "mod m { fn g() -> _ = 1 } fn f() -> _ = m::g()")), {0});
+}
+
+BOOST_AUTO_TEST_CASE(env_function_inside_mod) {
+  check_sema(check_result(run_sema(basic_test_env("f: fn() -> i32"), "mod m { fn g() -> _ = f() }")), {0});
 }
 
 BOOST_AUTO_TEST_CASE(partial) {
@@ -213,8 +215,10 @@ BOOST_AUTO_TEST_CASE(partial) {
   const std::string_view src1 = "fn g() -> _ = f()";
   const std::string_view src2 = "fn h() -> _ = ()";
 
-  auto [s1, ast2] = check_result(frontend(parse, make_sv_array(env.src, src1), env.types, std::move(env.ast)));
-  auto [s2, ast3] = check_result(frontend(parse, make_sv_array(env.src, src2), env.types, std::move(ast2)));
+  auto [s1, ast2] =
+    check_result(frontend(parse, make_sv_array(env.src, src1), env.types, std::move(env.ast), std::array{env.module}));
+  auto [s2, ast3] =
+    check_result(frontend(parse, make_sv_array(env.src, src2), env.types, std::move(ast2), std::array{env.module}));
 
   // Bindings from g() should be ignored in the second call
   BOOST_CHECK_EQUAL(1, s1.overloads.size());
@@ -268,7 +272,7 @@ BOOST_AUTO_TEST_CASE(tuple_partial) {
 
 BOOST_AUTO_TEST_CASE(undeclared_function) {
   const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {15, 22}}, "undeclared binding 'missing'"}};
-  check_eq("errors", exp_errors, check_error(run_sema({}, "fn f() -> () = missing()")));
+  check_eq("errors", exp_errors, check_error(run_sema(create_test_env(), "fn f() -> () = missing()")));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -411,16 +415,17 @@ BOOST_AUTO_TEST_CASE(fn_nested) {
 }
 
 BOOST_AUTO_TEST_CASE(call_global) {
-  auto [types, env_src, ast] = create_test_env({}, {"f: fn() -> ()"});
+  auto [types, env_src, ast, module] = create_test_env({}, {"f: fn() -> ()"});
   const auto srcs = make_sv_array(env_src, "fn g() -> _ = f()");
   ParserResult<std::vector<ASTID>> pr;
   std::tie(pr, ast) = check_result(parse(std::move(ast), SrcID{1}, srcs[1]));
 
-  std::vector<std::vector<ASTID>> fanout(10);
-  fanout[0] = {ASTID{5}};
-  fanout[5] = {ASTID{0}};
+  std::vector<std::vector<ASTID>> fanout(11);
+  fanout[0] = {ASTID{6}};
+  fanout[6] = {ASTID{0}};
 
-  check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, pr.parsed)));
+  check_eq(
+    "ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, pr.parsed, std::array{module})));
 }
 
 BOOST_AUTO_TEST_CASE(overloaded) {
@@ -481,7 +486,7 @@ BOOST_AUTO_TEST_CASE(recursive) {
 }
 
 BOOST_AUTO_TEST_CASE(unused_fn) {
-  auto [types, env_src, ast] = create_test_env({}, {"f: fn() -> ()"});
+  auto [types, env_src, ast, module] = create_test_env({}, {"f: fn() -> ()"});
   const auto srcs = make_sv_array(env_src);
   const auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
   check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, {})));
@@ -495,23 +500,52 @@ BOOST_AUTO_TEST_CASE(unused_script_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(mod_fn) {
-  const auto srcs = make_sv_array("mod x { fn g() -> _ = f() } fn f() -> _ = 1");
+  const auto srcs = make_sv_array("mod m { fn g() -> _ = 1 } fn f() -> _ = m::g()");
   const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
   auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
 
-  fanout[2] = {ASTID{8}};
-  fanout[8] = {ASTID{2}};
+  fanout[0] = {ASTID{9}};
+  fanout[9] = {ASTID{0}};
 
   check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, pr.parsed)));
   check_eq("ident_graph",
            Graph<ASTID>(fanout),
-           check_result(calculate_ident_graph(srcs, ast, std::array{*ast.forest.first_root()})));
+           check_result(calculate_ident_graph(srcs, ast, std::array{ast.forest.root_ids().get<1>()})));
 }
 
-BOOST_AUTO_TEST_CASE(inaccessible_mod_fn) {
-  const auto srcs = make_sv_array("mod x { fn g() -> _ = 1 } fn f() -> () = g()");
+BOOST_AUTO_TEST_CASE(inaccessible_inner_mod_fn) {
+  const auto srcs = make_sv_array("mod m { fn g() -> _ = 1 } fn f() -> () = g()");
   const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
   const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {41, 42}}, "undeclared binding 'g'"}};
+  check_eq("ig_errors", exp_errors, check_error(calculate_ident_graph(srcs, ast, pr.parsed)));
+}
+
+BOOST_AUTO_TEST_CASE(inaccessible_outer_mod_fn) {
+  const auto srcs = make_sv_array("fn f() -> _ = 1 mod m { fn g() -> _ = f() } ");
+  const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {38, 39}}, "undeclared binding 'f'"}};
+  check_eq("ig_errors", exp_errors, check_error(calculate_ident_graph(srcs, ast, pr.parsed)));
+}
+
+// TODO change error to specify can't find a module
+BOOST_AUTO_TEST_CASE(nonexistant_mod) {
+  const auto srcs = make_sv_array("mod m { fn g() -> _ = 1 } fn f() -> () = n::g()");
+  const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {41, 45}}, "undeclared binding 'n::g'"}};
+  check_eq("ig_errors", exp_errors, check_error(calculate_ident_graph(srcs, ast, pr.parsed)));
+}
+
+BOOST_AUTO_TEST_CASE(nonexistant_fn_in_mod) {
+  const auto srcs = make_sv_array("mod m { fn g() -> _ = 1 } fn f() -> () = m::h()");
+  const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {44, 45}}, "undeclared binding 'h'"}};
+  check_eq("ig_errors", exp_errors, check_error(calculate_ident_graph(srcs, ast, pr.parsed)));
+}
+
+BOOST_AUTO_TEST_CASE(nonexistant_fn_as_mod) {
+  const auto srcs = make_sv_array("fn g() -> _ = 1 fn f() -> () = g::f()");
+  const auto [pr, ast] = check_result(parse({}, SrcID{0}, srcs[0]));
+  const std::vector<ContextualError> exp_errors = {{{SrcID{0}, {31, 35}}, "undeclared binding 'g::f'"}};
   check_eq("ig_errors", exp_errors, check_error(calculate_ident_graph(srcs, ast, pr.parsed)));
 }
 

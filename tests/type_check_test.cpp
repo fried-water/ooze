@@ -22,7 +22,7 @@ auto run_tc(Parser p, TestEnv env, std::string_view src, bool debug = false) {
     .and_then([&](auto roots, AST ast) {
       return apply_language_rules(tc, env.types.names, std::move(ast), as_span(roots))
         .and_then([&](AST ast) {
-          return calculate_ident_graph(srcs, ast, as_span(roots)).append_state(std::move(ast));
+          return calculate_ident_graph(srcs, ast, as_span(roots), std::array{env.module}).append_state(std::move(ast));
         })
         .and_then([&](Graph<ASTID> ident_graph, AST ast) {
           return constraint_propagation(srcs, tc, env.types, ident_graph, std::move(ast), as_span(roots), debug);
@@ -114,7 +114,7 @@ auto run_alr(Parser p, Span<std::string_view> srcs, const NativeTypeInfo& types,
 
 template <typename Parser>
 void test_alr(Parser p, std::string_view src, std::vector<std::string> exp) {
-  auto [types, env_src, ast] = basic_test_env();
+  auto [types, env_src, ast, module] = basic_test_env();
   const size_t initial_ast_size = ast.forest.size();
 
   ast = check_result(run_alr(p, make_sv_array(env_src, src), types, std::move(ast)));
@@ -127,7 +127,7 @@ void test_alr(Parser p, std::string_view src, std::vector<std::string> exp) {
 
 template <typename Parser>
 void test_alr_error(Parser p, std::string_view src, std::vector<ContextualError> exp) {
-  auto [types, env_src, ast] = basic_test_env();
+  auto [types, env_src, ast, module] = basic_test_env();
   check_eq("error", exp, check_error(run_alr(p, make_sv_array(env_src, src), types, std::move(ast))));
 }
 
@@ -210,7 +210,7 @@ BOOST_AUTO_TEST_CASE(assign) {
 }
 
 BOOST_AUTO_TEST_CASE(partial) {
-  auto [types, env_src, ast] = basic_test_env();
+  auto [types, env_src, ast, module] = basic_test_env();
   const TypeCache tc = create_type_cache(ast.tg);
   const auto srcs = make_sv_array(env_src, "let x = 5", "7", "9");
 

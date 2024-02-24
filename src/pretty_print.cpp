@@ -167,17 +167,23 @@ void pretty_print(std::ostream& os,
   case ASTTag::EnvValue: os << "<env_value>"; return;
   case ASTTag::ModuleRef: os << sv(srcs, ast.srcs[id.get()]) << "::"; return;
   case ASTTag::Module:
-    os << "mod " << sv(srcs, ast.srcs[id.get()]) << " {\n";
+    os << "mod " << sv(srcs, ast.srcs[id.get()]);
 
-    for(const ASTID child : ast.forest.child_ids(id)) {
-      for(int i = 0; i < indentation; i++) os << "  ";
-      pretty_print(os, srcs, ast, type_names, child, indentation);
+    if(ast.forest.is_leaf(id)) {
+      os << " {}";
+    } else {
+      os << " {\n\n";
+
+      for(const ASTID child : ast.forest.child_ids(id)) {
+        for(int i = 0; i < indentation; i++) os << "  ";
+        pretty_print(os, srcs, ast, type_names, child, indentation);
+        os << "\n";
+      }
+
       os << "\n";
+      for(int i = 0; i < indentation; i++) os << "  ";
+      os << "}";
     }
-
-    os << "\n";
-    for(int i = 0; i < indentation; i++) os << "  ";
-    os << "}";
     return;
   }
 }

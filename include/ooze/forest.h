@@ -264,25 +264,6 @@ public:
     return id;
   }
 
-  void pop_last_root() {
-    const ID root = ID(_values.size() - 1);
-    assert(is_root(root));
-
-    ID* slot = &_first_root;
-    while(*slot != root) slot = &_connectivity[as_integral(*slot)].next_sibling;
-    *slot = _connectivity[as_integral(root)].first_child;
-
-    ID child = _connectivity[as_integral(root)].first_child;
-    while(child != INVALID) {
-      _connectivity[as_integral(child)].parent = INVALID;
-      child = _connectivity[as_integral(child)].next_sibling;
-      ;
-    }
-
-    _values.pop_back();
-    _connectivity.pop_back();
-  }
-
   template <typename Range>
   ID append_path(ID id, const Range& range) {
     return std::accumulate(range.begin(), range.end(), id, [&](ID id, const auto& ele) {

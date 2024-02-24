@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#include "pretty_print.h"
 #include "sema.h"
 #include "type_check.h"
 
@@ -10,39 +9,64 @@ namespace {
 
 struct IdentGraphCtx {
   std::vector<std::vector<ASTID>> fanouts;
-  std::vector<std::pair<std::string_view, ASTID>> globals;
   std::vector<std::pair<std::string_view, ASTID>> stack;
 
   std::vector<ASTID> undeclared_bindings;
 };
 
-template <typename IDRange>
-IdentGraphCtx add_globals(Span<std::string_view> srcs, const AST& ast, IdentGraphCtx ctx, IDRange range) {
-  ctx.globals = transform_filter_to_vec(
-    range,
-    [&](ASTID id) {
-      return ast.forest[id] == ASTTag::Assignment
-               ? std::optional(std::pair(
-                   sv(srcs, ast.srcs[ast.forest.child_ids(id).get<0>().get()]), ast.forest.child_ids(id).get<0>()))
-               : std::nullopt;
-    },
-    std::move(ctx.globals));
-  return ctx;
+std::optional<std::pair<ASTID, ASTID>>
+find_module(Span<std::string_view> srcs, const AST& ast, ASTID module, ASTID qualified) {
+
+  ASTID ref = *ast.forest.first_child(qualified);
+  while(ast.forest[ref] == ASTTag::ModuleRef) {
+    const std::string_view name = sv(srcs, ast.srcs[ref.get()]);
+
+    const auto opt = find_if_opt(ast.forest.child_ids(module), [&](ASTID id) {
+      return ast.forest[id] == ASTTag::Module && name == sv(srcs, ast.srcs[id.get()]);
+    });
+
+    if(opt) {
+      module = *opt;
+    } else {
+      return std::nullopt;
+    }
+
+    ref = *ast.forest.next_sibling(ref);
+  }
+
+  return std::pair(module, ref);
 }
 
-void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> srcs, const AST& ast) {
+void append_globals(Span<std::string_view> srcs,
+                    const AST& ast,
+                    std::vector<std::vector<ASTID>>& fanouts,
+                    std::string_view name,
+                    ASTID module,
+                    ASTID ident) {
+  for(const ASTID id : ast.forest.child_ids(module)) {
+    if(ast.forest[id] == ASTTag::Assignment) {
+      const ASTID pattern_id = ast.forest.child_ids(id).get<0>();
+      if(name == sv(srcs, ast.srcs[pattern_id.get()])) {
+        fanouts[ident.get()].push_back(pattern_id);
+        fanouts[pattern_id.get()].push_back(ident);
+      }
+    }
+  }
+}
+
+void calculate_ident_graph(
+  IdentGraphCtx& ctx, Span<std::string_view> srcs, const AST& ast, ASTID module, ASTID id, Span<ASTID> global_imports) {
   switch(ast.forest[id]) {
   case ASTTag::PatternIdent: ctx.stack.emplace_back(sv(srcs, ast.srcs[id.get()]), id); break;
   case ASTTag::Fn:
   case ASTTag::ExprWith: {
     const size_t original_size = ctx.stack.size();
     for(const ASTID child : ast.forest.child_ids(id)) {
-      calculate_ident_graph(ctx, child, srcs, ast);
+      calculate_ident_graph(ctx, srcs, ast, module, child, global_imports);
     }
     ctx.stack.erase(ctx.stack.begin() + i64(original_size), ctx.stack.end());
     break;
   }
-  case ASTTag::ExprQualified:
   case ASTTag::ExprIdent: {
     const std::string_view ident = sv(srcs, ast.srcs[id.get()]);
     const auto it = std::find_if(
@@ -52,11 +76,10 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
       ctx.fanouts[id.get()].push_back(pattern_id);
       ctx.fanouts[pattern_id.get()].push_back(id);
     } else {
-      for(const auto& [name, pattern_id] : ctx.globals) {
-        if(ident == name) {
-          ctx.fanouts[id.get()].push_back(pattern_id);
-          ctx.fanouts[pattern_id.get()].push_back(id);
-        }
+      append_globals(srcs, ast, ctx.fanouts, sv(srcs, ast.srcs[id.get()]), module, id);
+
+      for(ASTID import_module : global_imports) {
+        append_globals(srcs, ast, ctx.fanouts, sv(srcs, ast.srcs[id.get()]), import_module, id);
       }
 
       if(ctx.fanouts[id.get()].empty()) {
@@ -65,16 +88,27 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
     }
     break;
   }
+  case ASTTag::ExprQualified: {
+    if(const auto opt = find_module(srcs, ast, module, id); opt) {
+      const auto [qual_module, expr_ident] = *opt;
+      append_globals(srcs, ast, ctx.fanouts, sv(srcs, ast.srcs[expr_ident.get()]), qual_module, expr_ident);
+
+      if(ctx.fanouts[expr_ident.get()].empty()) {
+        ctx.undeclared_bindings.push_back(expr_ident);
+      }
+    } else {
+      ctx.undeclared_bindings.push_back(id);
+    }
+
+    break;
+  }
   case ASTTag::Assignment: {
+    assert(!owning_module(ast.forest, id));
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
 
     // Parse expr before pattern
-    calculate_ident_graph(ctx, expr, srcs, ast);
-
-    // Skip identifier of globals, already added up front
-    if(!is_global(ast.forest, id)) {
-      calculate_ident_graph(ctx, pattern, srcs, ast);
-    }
+    calculate_ident_graph(ctx, srcs, ast, module, expr, global_imports);
+    calculate_ident_graph(ctx, srcs, ast, module, pattern, global_imports);
     break;
   }
   case ASTTag::EnvValue:
@@ -87,19 +121,11 @@ void calculate_ident_graph(IdentGraphCtx& ctx, ASTID id, Span<std::string_view> 
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:
     for(const ASTID child : ast.forest.child_ids(id)) {
-      calculate_ident_graph(ctx, child, srcs, ast);
+      calculate_ident_graph(ctx, srcs, ast, module, child, global_imports);
     }
     break;
-  case ASTTag::Module: {
-    const size_t initial_size = ctx.globals.size();
-    ctx = add_globals(srcs, ast, std::move(ctx), ast.forest.child_ids(id));
-    for(const ASTID child : ast.forest.child_ids(id)) {
-      calculate_ident_graph(ctx, child, srcs, ast);
-    }
-    ctx.globals.erase(ctx.globals.begin() + i64(initial_size), ctx.globals.end());
-    break;
-  }
-  case ASTTag::ModuleRef: break;
+  case ASTTag::Module:
+  case ASTTag::ModuleRef: assert(false); break;
   };
 }
 
@@ -133,19 +159,19 @@ std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, Inter
 
   for(const auto& [overload, type, uses] : ord.instantiations) {
     const ASTID root = *ast.forest.parent(overload);
-    assert(ast.forest.is_root(root));
+    const auto module = owning_module(ast.forest, root);
+    assert(module);
 
     const auto tree_size = distance(ast.forest.post_order_ids(root));
 
     ast.types.resize(ast.forest.size() + tree_size, Type::Invalid());
     ast.srcs.resize(ast.forest.size() + tree_size, SrcRef{});
 
-    const ASTID copy =
-      copy_tree_under(ast.forest, root, ast.forest, ast.forest.ABOVE_ROOTS, [&](ASTID old_id, ASTID new_id) {
-        // TODO literals
-        ast.types[new_id.get()] = ast.types[old_id.get()];
-        ast.srcs[new_id.get()] = ast.srcs[old_id.get()];
-      });
+    const ASTID copy = copy_tree_under(ast.forest, root, ast.forest, *module, [&](ASTID old_id, ASTID new_id) {
+      // TODO literals
+      ast.types[new_id.get()] = ast.types[old_id.get()];
+      ast.srcs[new_id.get()] = ast.srcs[old_id.get()];
+    });
     const ASTID instantiation = *ast.forest.first_child(copy);
 
     ast.types[instantiation.get()] = type;
@@ -160,10 +186,17 @@ std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, Inter
   return std::tuple(std::move(s), std::move(ast));
 }
 
-ContextualResult<InternalSemaState, AST> sema_iter(
-  Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, InternalSemaState s) {
+ContextualResult<InternalSemaState, AST>
+sema_iter(Span<std::string_view> srcs,
+          const TypeCache& tc,
+          const NativeTypeInfo& native_types,
+          Span<ASTID> global_imports,
+          AST ast,
+          InternalSemaState s) {
   return apply_language_rules(tc, native_types.names, std::move(ast), s.roots)
-    .and_then([&](AST ast) { return calculate_ident_graph(srcs, ast, s.roots).append_state(std::move(ast)); })
+    .and_then([&](AST ast) {
+      return calculate_ident_graph(srcs, ast, s.roots, global_imports).append_state(std::move(ast));
+    })
     .and_then([&](Graph<ASTID> ig, AST ast) {
       return constraint_propagation(srcs, tc, native_types, ig, std::move(ast), s.roots);
     })
@@ -195,12 +228,22 @@ type_name_resolution(Span<std::string_view> srcs,
   return void_or_errors(std::move(errors), std::move(tg));
 }
 
-ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs, const AST& ast, Span<ASTID> roots) {
-  IdentGraphCtx ctx =
-    add_globals(srcs, ast, IdentGraphCtx{std::vector<std::vector<ASTID>>(ast.forest.size())}, ast.forest.root_ids());
+ContextualResult<Graph<ASTID>>
+calculate_ident_graph(Span<std::string_view> srcs, const AST& ast, Span<ASTID> roots, Span<ASTID> global_imports) {
+  IdentGraphCtx ctx = {std::vector<std::vector<ASTID>>(ast.forest.size())};
 
   for(const ASTID root : roots) {
-    calculate_ident_graph(ctx, root, srcs, ast);
+    for(const ASTID id : ast.forest.post_order_ids(root)) {
+      if(const auto module = owning_module(ast.forest, id); module) {
+        if(ast.forest[id] == ASTTag::Assignment) {
+          calculate_ident_graph(ctx, srcs, ast, *module, ast.forest.child_ids(id).get<1>(), global_imports);
+        } else if(is_expr(ast.forest[id])) {
+          calculate_ident_graph(ctx, srcs, ast, *module, id, global_imports);
+        }
+
+        assert(ctx.stack.empty());
+      }
+    }
   }
 
   return ctx.undeclared_bindings.empty()
@@ -212,11 +255,16 @@ ContextualResult<Graph<ASTID>> calculate_ident_graph(Span<std::string_view> srcs
 }
 
 ContextualResult<SemaData, AST>
-sema(Span<std::string_view> srcs, const TypeCache& tc, const NativeTypeInfo& native_types, AST ast, Span<ASTID> roots) {
+sema(Span<std::string_view> srcs,
+     const TypeCache& tc,
+     const NativeTypeInfo& native_types,
+     AST ast,
+     Span<ASTID> roots,
+     Span<ASTID> global_imports) {
   ContextualResult<InternalSemaState, AST> res{InternalSemaState{to_vec(roots)}, std::move(ast)};
   while(res && !res.value().roots.empty()) {
     res = std::move(res).and_then([&](InternalSemaState s, AST ast) {
-      return sema_iter(srcs, tc, native_types, std::move(ast), std::move(s));
+      return sema_iter(srcs, tc, native_types, global_imports, std::move(ast), std::move(s));
     });
   }
 
