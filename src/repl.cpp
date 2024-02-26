@@ -4,11 +4,11 @@
 #include "io.h"
 #include "parser_combinators.h"
 #include "repl.h"
+#include "src_map.h"
 
 #include "ooze/core.h"
 #include "ooze/executor/sequential_executor.h"
 #include "ooze/executor/tbb_executor.h"
-#include "ooze/src_map.h"
 
 #include <CLI/CLI.hpp>
 

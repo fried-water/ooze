@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/src_map.h"
+#include "src_map.h"
 
 namespace ooze {
 

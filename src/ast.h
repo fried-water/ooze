@@ -1,9 +1,9 @@
 #pragma once
 
 #include "forest.h"
+#include "src_map.h"
 
 #include "ooze/primitives.h"
-#include "ooze/src_map.h"
 #include "ooze/type.h"
 
 #include <knot/core.h>

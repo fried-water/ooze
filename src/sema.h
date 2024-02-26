@@ -1,10 +1,10 @@
 #pragma once
 
 #include "ast.h"
+#include "src_map.h"
 #include "type_cache.h"
 #include "user_msg.h"
 
-#include "ooze/src_map.h"
 #include "ooze/type.h"
 
 namespace ooze {
