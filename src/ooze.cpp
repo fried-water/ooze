@@ -4,11 +4,9 @@
 #include "frontend.h"
 #include "function_graph_construction.h"
 #include "parser.h"
-#include "parser_combinators.h"
 #include "pretty_print.h"
 #include "runtime.h"
 #include "sema.h"
-#include "type_check.h"
 #include "user_msg.h"
 
 #include "ooze/core.h"
@@ -20,7 +18,9 @@ struct EnvData {
   AST ast;
   NativeTypeInfo native_types;
   Program program;
+
   Map<ASTID, Inst> fns;
+  Map<std::string, Binding> bindings;
 
   TypeCache type_cache;
   ASTID native_module;
@@ -175,7 +175,7 @@ generate_fns(Program prog,
                 return std::move(p);
               }));
 
-  return std::pair(std::move(prog), std::move(fns));
+  return {std::move(prog), std::move(fns)};
 }
 
 EnvData copy_generic_fns(Span<std::string_view> srcs, EnvData env, const AST& ast, Span<ASTID> generic_roots) {
@@ -206,7 +206,7 @@ EnvData copy_generic_fns(Span<std::string_view> srcs, EnvData env, const AST& as
   return env;
 }
 
-auto prepare_ast(const EnvData& env, Bindings str_bindings) {
+auto prepare_ast(const EnvData& env, Map<std::string, Binding> str_bindings) {
   std::string src = env.src;
   AST ast = env.ast;
   Map<ASTID, std::vector<AsyncValue>> bindings;
@@ -233,14 +233,13 @@ auto prepare_ast(const EnvData& env, Bindings str_bindings) {
     std::move(src), std::move(ast), std::move(bindings), std::array{env.native_module, env_module, binding_module});
 }
 
-std::tuple<EnvData, Bindings> to_str_bindings(
+EnvData to_str_bindings(
   Span<std::string_view> srcs, const AST& ast, EnvData env, Map<ASTID, std::vector<AsyncValue>> bindings) {
-  Bindings str_bindings;
   for(auto& [id, values] : bindings) {
-    str_bindings.emplace(std::string(sv(srcs, ast.srcs[id.get()])),
+    env.bindings.emplace(std::string(sv(srcs, ast.srcs[id.get()])),
                          Binding{copy_type(env, ast.tg, ast.types[id.get()]), std::move(values)});
   }
-  return {std::move(env), std::move(str_bindings)};
+  return env;
 }
 
 auto run_or_assign(Span<std::string_view> srcs,
@@ -331,9 +330,8 @@ StringResult<void, EnvData> parse_scripts(EnvData env, Span<std::string_view> fi
     });
 }
 
-StringResult<Binding, EnvData, Bindings>
-run(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_view expr) {
-  auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(str_bindings));
+StringResult<Binding, EnvData> run(ExecutorRef ex, EnvData env, std::string_view expr) {
+  auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(env.bindings));
   const auto global_imports = global_imports_;
   const auto srcs = make_sv_array(env_src, expr);
 
@@ -351,14 +349,13 @@ run(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_view expr) {
     .map_state([&](AST ast, EnvData env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       return to_str_bindings(srcs, ast, std::move(env), std::move(bindings));
     })
-    .map_error([&](auto errors, EnvData env, Bindings bindings) {
-      return std::tuple(contextualize(srcs, std::move(errors)), std::move(env), std::move(bindings));
+    .map_error([&](auto errors, EnvData env) {
+      return std::tuple(contextualize(srcs, std::move(errors)), std::move(env));
     });
 }
 
-StringResult<Future, EnvData, Bindings>
-run_to_string(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_view expr) {
-  auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(str_bindings));
+StringResult<Future, EnvData> run_to_string(ExecutorRef ex, EnvData env, std::string_view expr) {
+  auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(env.bindings));
   const auto global_imports = global_imports_;
   const auto srcs = make_sv_array(env_src, expr);
 
@@ -396,15 +393,14 @@ run_to_string(ExecutorRef ex, EnvData env, Bindings str_bindings, std::string_vi
     .map_state([&](AST ast, EnvData env, Map<ASTID, std::vector<AsyncValue>> bindings) {
       return to_str_bindings(srcs, ast, std::move(env), std::move(bindings));
     })
-    .map([](Binding b, EnvData env, Bindings bindings) {
+    .map([](Binding b, EnvData env) {
       assert(b.values.size() <= 1);
       assert(b.values.empty() || env.ast.tg.get<TypeID>(b.type) == type_id(knot::Type<std::string>{}));
       return std::tuple(b.values.size() == 1 ? take(std::move(b.values[0])) : Future(Any(std::string())),
-                        std::move(env),
-                        std::move(bindings));
+                        std::move(env));
     })
-    .map_error([&](auto errors, EnvData env, Bindings bindings) {
-      return std::tuple(contextualize(srcs, std::move(errors)), std::move(env), std::move(bindings));
+    .map_error([&](auto errors, EnvData env) {
+      return std::tuple(contextualize(srcs, std::move(errors)), std::move(env));
     });
 }
 
@@ -476,11 +472,6 @@ NativeRegistry create_primitive_registry() {
 Env::Env() : _data(create_env_data(NativeRegistry{})) {}
 Env::Env(NativeRegistry r) : _data(create_env_data(std::move(r))) {}
 
-Env& Env::operator=(const Env& env) {
-  _data = Opaque(*env._data);
-  return *this;
-}
-
 StringResult<void> Env::parse_scripts(Span<std::string_view> files) & {
   return ooze::parse_scripts(std::move(*_data), files).map_state([&](auto d) { *_data = std::move(d); });
 }
@@ -492,34 +483,35 @@ StringResult<void, Env> Env::parse_scripts(Span<std::string_view> files) && {
   });
 }
 
-StringResult<Binding, Bindings> Env::run(ExecutorRef ex, Bindings bindings, std::string_view expr) & {
-  return ooze::run(ex, std::move(*_data), std::move(bindings), expr).map_state([&](EnvData env, Bindings bindings) {
+StringResult<Binding> Env::run(ExecutorRef ex, std::string_view expr) & {
+  return ooze::run(ex, std::move(*_data), expr).map_state([&](EnvData env) { *_data = std::move(env); });
+}
+
+StringResult<Binding, Env> Env::run(ExecutorRef ex, std::string_view expr) && {
+  return ooze::run(ex, std::move(*_data), expr).map_state([&](EnvData env) {
     *_data = std::move(env);
-    return bindings;
+    return std::move(*this);
   });
 }
 
-StringResult<Binding, Env, Bindings> Env::run(ExecutorRef ex, Bindings bindings, std::string_view expr) && {
-  return ooze::run(ex, std::move(*_data), std::move(bindings), expr).map_state([&](EnvData env, Bindings bindings) {
+StringResult<Future> Env::run_to_string(ExecutorRef ex, std::string_view expr) & {
+  return ooze::run_to_string(ex, std::move(*_data), expr).map_state([&](EnvData env) { *_data = std::move(env); });
+}
+
+StringResult<Future, Env> Env::run_to_string(ExecutorRef ex, std::string_view expr) && {
+  return ooze::run_to_string(ex, std::move(*_data), expr).map_state([&](EnvData env) {
     *_data = std::move(env);
-    return std::tuple(std::move(*this), std::move(bindings));
+    return std::move(*this);
   });
 }
 
-StringResult<Future, Bindings> Env::run_to_string(ExecutorRef ex, Bindings bindings, std::string_view expr) & {
-  return ooze::run_to_string(ex, std::move(*_data), std::move(bindings), expr)
-    .map_state([&](EnvData env, Bindings bindings) {
-      *_data = std::move(env);
-      return bindings;
-    });
-}
+bool Env::drop(std::string_view binding) { return _data->bindings.erase(std::string(binding)) > 0; }
 
-StringResult<Future, Env, Bindings> Env::run_to_string(ExecutorRef ex, Bindings bindings, std::string_view expr) && {
-  return ooze::run_to_string(ex, std::move(*_data), std::move(bindings), expr)
-    .map_state([&](EnvData env, Bindings bindings) {
-      *_data = std::move(env);
-      return std::tuple(std::move(*this), std::move(bindings));
-    });
+void Env::insert(std::string_view name, Binding binding) { _data->bindings.emplace(name, std::move(binding)); }
+
+void Env::insert(std::string_view name, Future f, TypeID type_id) {
+  const Type type = _data->ast.tg.add_node(TypeTag::Leaf, type_id);
+  _data->bindings.emplace(name, Binding{type, make_vector(AsyncValue{std::move(f)})});
 }
 
 StringResult<void> Env::type_check_expr(std::string_view expr) const {
@@ -598,6 +590,18 @@ std::vector<std::pair<std::string, Type>> Env::globals() const {
   }
 
   return globals;
+}
+
+std::vector<std::tuple<std::string, Type, BindingState>> Env::bindings() const {
+  return transform_to_vec(sorted(transform_to_vec(_data->bindings, Get<0>{})), [&](std::string name) {
+    const Binding& b = _data->bindings.find(name)->second;
+    const BindingState max_state = std::accumulate(
+      b.values.begin(), b.values.end(), BindingState::Ready, [](BindingState acc, const AsyncValue& ele) {
+        const BindingState ele_state = find_binding_state(ele);
+        return i32(acc) > i32(ele_state) ? acc : ele_state;
+      });
+    return std::tuple(std::move(name), b.type, max_state);
+  });
 }
 
 } // namespace ooze

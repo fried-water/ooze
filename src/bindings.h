@@ -4,8 +4,6 @@
 
 namespace ooze {
 
-enum class BindingState { Ready, Borrowed, NotReady };
-
 inline BindingState find_binding_state(const AsyncValue& v) {
   const auto& [f, b] = v;
   return f.ready() || (b.valid() && b.unique())

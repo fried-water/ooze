@@ -10,7 +10,6 @@
 
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace ooze {
@@ -28,7 +27,7 @@ struct Binding {
   std::vector<AsyncValue> values;
 };
 
-using Bindings = std::unordered_map<std::string, Binding>;
+enum class BindingState { Ready, Borrowed, NotReady };
 
 NativeRegistry create_primitive_registry();
 
@@ -42,8 +41,8 @@ public:
 
   explicit Env(NativeRegistry);
 
-  Env(const Env& e) { *this = e; }
-  Env& operator=(const Env&);
+  Env(const Env&) = delete;
+  Env& operator=(const Env&) = delete;
 
   Env(Env&&) = default;
   Env& operator=(Env&&) = default;
@@ -51,11 +50,21 @@ public:
   StringResult<void> parse_scripts(Span<std::string_view>) &;
   StringResult<void, Env> parse_scripts(Span<std::string_view>) &&;
 
-  StringResult<Binding, Bindings> run(ExecutorRef, Bindings, std::string_view) &;
-  StringResult<Binding, Env, Bindings> run(ExecutorRef, Bindings, std::string_view) &&;
+  StringResult<Binding> run(ExecutorRef, std::string_view) &;
+  StringResult<Binding, Env> run(ExecutorRef, std::string_view) &&;
 
-  StringResult<Future, Bindings> run_to_string(ExecutorRef, Bindings, std::string_view) &;
-  StringResult<Future, Env, Bindings> run_to_string(ExecutorRef, Bindings, std::string_view) &&;
+  StringResult<Future> run_to_string(ExecutorRef, std::string_view) &;
+  StringResult<Future, Env> run_to_string(ExecutorRef, std::string_view) &&;
+
+  bool drop(std::string_view);
+
+  void insert(std::string_view, Binding);
+  void insert(std::string_view, Future, TypeID);
+
+  template <typename T>
+  void insert(std::string_view name, T value) {
+    return insert(name, Future(Any(std::move(value))), type_id<T>());
+  }
 
   StringResult<void> type_check_expr(std::string_view) const;
   StringResult<void> type_check_fn(std::string_view) const;
@@ -65,7 +74,9 @@ public:
   std::string pretty_print(Type) const;
 
   const NativeTypeInfo& native_types() const;
+
   std::vector<std::pair<std::string, Type>> globals() const;
+  std::vector<std::tuple<std::string, Type, BindingState>> bindings() const;
 };
 
 } // namespace ooze

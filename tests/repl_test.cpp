@@ -13,30 +13,29 @@ namespace {
 
 const TypeID I = type_id(knot::Type<i32>{});
 
-#define step_and_compare(_EXP, _STR, _ENV, _BND)                                                                       \
-  [&](const std::vector<std::string>& e, std::string_view str, Env env, Bindings b) {                                  \
-    auto [future, e1, b1] = step_repl(make_seq_executor(), std::move(env), std::move(b), str);                         \
+#define step_and_compare(_EXP, _STR, _ENV)                                                                             \
+  [&](const std::vector<std::string>& e, std::string_view str, Env env) {                                              \
+    auto [future, e1] = step_repl(make_seq_executor(), std::move(env), str);                                           \
     check_any(e, await(std::move(future)));                                                                            \
-    return std::tuple(std::move(e1), std::move(b1));                                                                   \
-  }(_EXP, _STR, _ENV, _BND)
+    return std::move(e1);                                                                                              \
+  }(_EXP, _STR, _ENV)
 
 } // namespace
 
 BOOST_AUTO_TEST_SUITE(repl)
 
 BOOST_AUTO_TEST_CASE(empty) {
-  auto [future, env, bindings] = step_repl(make_seq_executor(), {}, {}, "");
+  auto [future, env] = step_repl(make_seq_executor(), {}, "");
   check_any(std::vector<std::string>(), await(std::move(future)));
-  BOOST_CHECK(bindings.empty());
+  BOOST_CHECK(env.bindings().empty());
 }
 
 BOOST_AUTO_TEST_CASE(run_expr) {
   Env e = Env(create_primitive_registry().add_fn("pow", [](int x) { return x * x; }));
 
-  Bindings b;
-  std::tie(e, b) = step_and_compare({"3"}, "3", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"abc"}, "'abc'", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"9"}, "pow(3)", std::move(e), std::move(b));
+  e = step_and_compare({"3"}, "3", std::move(e));
+  e = step_and_compare({"abc"}, "'abc'", std::move(e));
+  e = step_and_compare({"9"}, "pow(3)", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(move_only_binding) {
@@ -45,123 +44,103 @@ BOOST_AUTO_TEST_CASE(move_only_binding) {
                 .add_fn("make_ptr", [](int x) { return std::make_unique<int>(x); })
                 .add_fn("take_ptr", [](std::unique_ptr<int> x) { return *x; }));
 
-  Bindings b;
-  std::tie(e, b) = step_and_compare({}, "let x = make_ptr(5)", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"5"}, "take_ptr(x)", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = make_ptr(5)", std::move(e));
+  e = step_and_compare({"5"}, "take_ptr(x)", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(store_env_function) {
   Env e = Env(create_primitive_registry().add_fn("f", []() { return 37; }));
 
-  Bindings b;
-  std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = f", std::move(e));
+  e = step_and_compare({"37"}, "x()", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(store_script_function) {
   Env e = check_result(Env(create_primitive_registry()).parse_scripts(make_sv_array("fn f() -> i32 = 37")));
-  Bindings b;
 
-  std::tie(e, b) = step_and_compare({}, "let x = f", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"37"}, "x()", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = f", std::move(e));
+  e = step_and_compare({"37"}, "x()", std::move(e));
 }
 
-BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", Env{}, Bindings{}); }
+BOOST_AUTO_TEST_CASE(no_bindings) { step_and_compare({"0 binding(s)"}, ":b", Env{}); }
 
 BOOST_AUTO_TEST_CASE(single_binding) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
-  Bindings b;
-
-  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = 5", std::move(e));
 
   const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
-  step_and_compare(exp, ":b", std::move(e), std::move(b));
+  step_and_compare(exp, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(multi_binding) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32").add_type<std::string>("string"));
 
-  Bindings b;
-
-  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({}, "let y = 'abc'", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = 5", std::move(e));
+  e = step_and_compare({}, "let y = 'abc'", std::move(e));
 
   const std::vector<std::string> exp{"2 binding(s)", "  x: i32", "  y: string"};
-  step_and_compare(exp, ":b", std::move(e), std::move(b));
+  step_and_compare(exp, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(tuple_binding) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32").add_type<std::string>("string"));
 
-  Bindings b;
-
-  std::tie(e, b) = step_and_compare({}, "let x = (5, 'abc')", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = (5, 'abc')", std::move(e));
 
   const std::vector<std::string> exp{"1 binding(s)", "  x: (i32, string)"};
-  step_and_compare(exp, ":b", std::move(e), std::move(b));
+  step_and_compare(exp, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(unnamed_binding) {
   Env e;
-  Bindings b;
-
-  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({}, ":a", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = 5", std::move(e));
 
   const std::vector<std::string> exp{"1 binding(s)", fmt::format("  x: type 0x{:x}", I.id)};
-  step_and_compare(exp, ":b", std::move(e), std::move(b));
+  step_and_compare(exp, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(binding_not_ready) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
 
-  const Type int_type = check_result(e.parse_type("i32"));
-
   auto [promise, future] = make_promise_future();
 
-  Bindings b;
-  b.emplace("x", Binding{int_type, make_vector(AsyncValue{std::move(future)})});
+  e.insert("x", std::move(future), type_id<i32>());
 
   const std::vector<std::string> exp_not_ready{"1 binding(s)", "  x: *i32"};
-  std::tie(e, b) = step_and_compare(exp_not_ready, ":b", std::move(e), std::move(b));
+  e = step_and_compare(exp_not_ready, ":b", std::move(e));
 
   std::move(promise).send(Any(0));
 
   const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
-  step_and_compare(exp, ":b", std::move(e), std::move(b));
+  step_and_compare(exp, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(binding_borrowed) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
 
-  const Type int_type = check_result(e.parse_type("i32"));
+  Binding b = {check_result(e.parse_type("i32")), make_vector(AsyncValue{Future{Any{0}}})};
 
-  Bindings b;
-  b.emplace("x", Binding{int_type, make_vector(AsyncValue{Future(Any(0))})});
+  auto borrowed = borrow(b.values[0]);
 
-  auto borrowed = borrow(b["x"].values[0]);
+  e.insert("x", std::move(b));
 
   const std::vector<std::string> exp_borrowed{"1 binding(s)", "  x: &i32"};
-  std::tie(e, b) = step_and_compare(exp_borrowed, ":b", std::move(e), std::move(b));
+  e = step_and_compare(exp_borrowed, ":b", std::move(e));
 
   borrowed = {};
 
   const std::vector<std::string> exp{"1 binding(s)", "  x: i32"};
-  step_and_compare(exp, ":b", std::move(e), std::move(b));
+  step_and_compare(exp, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(bindings_post_dump) {
   Env e = Env(create_primitive_registry());
-  Bindings b;
 
-  std::tie(e, b) = step_and_compare({}, "let x = 5", std::move(e), std::move(b));
-  std::tie(e, b) = step_and_compare({"5"}, "x", std::move(e), std::move(b));
+  e = step_and_compare({}, "let x = 5", std::move(e));
+  e = step_and_compare({"5"}, "x", std::move(e));
 
   const std::vector<std::string> expected{"1 binding(s)", fmt::format("  x: i32")};
-  step_and_compare(expected, ":b", std::move(e), std::move(b));
+  step_and_compare(expected, ":b", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(no_to_string, *boost::unit_test::disabled()) {
@@ -169,7 +148,7 @@ BOOST_AUTO_TEST_CASE(no_to_string, *boost::unit_test::disabled()) {
 
   // TODO add some unique identifier (ptr? how should tuples be handled?)
   const std::vector<std::string> exp{"<value of i32>"};
-  step_and_compare(exp, "1", std::move(e), Bindings{});
+  step_and_compare(exp, "1", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(types) {
@@ -190,7 +169,7 @@ BOOST_AUTO_TEST_CASE(types) {
     "  i32                  [to_string: Y]",
     "  string               [to_string: N]"};
 
-  step_and_compare(expected, ":t", std::move(e), Bindings{});
+  step_and_compare(expected, ":t", std::move(e));
 }
 
 BOOST_AUTO_TEST_CASE(functions) {
@@ -222,7 +201,7 @@ BOOST_AUTO_TEST_CASE(functions) {
     fmt::format("  read_a: fn(&{}) -> ()", pretty_print(e.native_types().names, a_type)),
     fmt::format("  take_a: fn({}) -> ()", pretty_print(e.native_types().names, a_type))};
 
-  step_and_compare(expected, ":f", std::move(e), Bindings{});
+  step_and_compare(expected, ":f", std::move(e));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
