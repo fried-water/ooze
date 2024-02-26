@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/forest.h"
+#include "forest.h"
 
 #include <functional>
 #include <ostream>

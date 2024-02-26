@@ -1,8 +1,7 @@
 #include "test.h"
 
+#include "forest.h"
 #include "forest_dot.h"
-
-#include "ooze/forest.h"
 
 #include <fstream>
 #include <string>

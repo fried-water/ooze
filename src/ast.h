@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ooze/forest.h"
-#include "ooze/graph.h"
+#include "forest.h"
+
 #include "ooze/primitives.h"
 #include "ooze/src_map.h"
 #include "ooze/type.h"
