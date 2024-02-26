@@ -514,9 +514,24 @@ void Env::insert(std::string_view name, Future f, TypeID type_id) {
   _data->bindings.emplace(name, Binding{type, make_vector(AsyncValue{std::move(f)})});
 }
 
-StringResult<void> Env::type_check_expr(std::string_view expr) const {
-  const auto srcs = make_sv_array(_data->src, expr);
-  return frontend(parse_expr, srcs, _data->native_types, _data->ast, std::array{_data->native_module})
+StringResult<void> Env::type_check(std::string_view expr, std::string_view hint) const {
+  const auto srcs = make_sv_array(_data->src, hint, expr);
+  return parse_and_name_resolution(ooze::parse_type, srcs, _data->native_types.names, std::move(_data->ast), SrcID{1})
+    .and_then([&](Type t, AST ast) {
+      return parse_and_name_resolution(parse_expr, srcs, _data->native_types.names, std::move(ast), SrcID{2})
+        .map([&](ASTID expr, AST ast) {
+          ast.types[expr.get()] = t;
+          return std::tuple(expr, std::move(ast));
+        });
+    })
+    .and_then([&](ASTID expr, AST ast) {
+      return sema(srcs,
+                  _data->type_cache,
+                  _data->native_types,
+                  std::move(ast),
+                  std::array{expr},
+                  std::array{_data->native_module});
+    })
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
@@ -525,29 +540,6 @@ StringResult<void> Env::type_check_expr(std::string_view expr) const {
 StringResult<void> Env::type_check_fn(std::string_view fn) const {
   const auto srcs = make_sv_array(_data->src, fn);
   return frontend(parse_fn, srcs, _data->native_types, _data->ast, std::array{_data->native_module})
-    .map_state(nullify())
-    .map(nullify())
-    .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });
-}
-
-StringResult<void> Env::type_check_binding(std::string_view binding) const {
-  const auto srcs = make_sv_array(_data->src, binding);
-  return parse_and_name_resolution(parse_binding, srcs, _data->native_types.names, _data->ast, SrcID{1})
-    .and_then([&](ASTID pattern_root, AST ast) {
-      if(ast.forest[pattern_root] != ASTTag::PatternIdent) {
-        return ContextualResult<SemaData, AST>{
-          Failure{make_vector(ContextualError{ast.srcs[pattern_root.get()], "not a binding"})}, std::move(ast)};
-      } else {
-        // Type check it as if it were an expr with the given type
-        ast.forest[pattern_root] = ASTTag::ExprIdent;
-        return sema(srcs,
-                    _data->type_cache,
-                    _data->native_types,
-                    std::move(ast),
-                    std::array{pattern_root},
-                    std::array{_data->native_module});
-      }
-    })
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });

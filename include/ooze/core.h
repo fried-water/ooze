@@ -66,9 +66,8 @@ public:
     return insert(name, Future(Any(std::move(value))), type_id<T>());
   }
 
-  StringResult<void> type_check_expr(std::string_view) const;
+  StringResult<void> type_check(std::string_view expr, std::string_view hint = "_") const;
   StringResult<void> type_check_fn(std::string_view) const;
-  StringResult<void> type_check_binding(std::string_view) const;
 
   StringResult<Type> parse_type(std::string_view);
   std::string pretty_print(Type) const;

@@ -276,13 +276,13 @@ int repl_main(int argc, const char** argv, Env env) {
 
       env.insert("args", std::move(cli.run_args));
 
-      if(auto tc_result = env.type_check_binding("main: fn(string_vector) -> i32"); tc_result) {
+      if(auto tc_result = env.type_check("main", "fn(string_vector) -> i32"); tc_result) {
         std::move(env).run(executor, "main(args)").map(extract_return).map_error(dump_error);
-      } else if(env.type_check_binding("main: fn(string_vector) -> ()")) {
+      } else if(env.type_check("main", "fn(string_vector) -> ()")) {
         std::move(env).run(executor, "main(args)").map(return_success).map_error(dump_error);
-      } else if(env.type_check_binding("main: fn() -> i32")) {
+      } else if(env.type_check("main", "fn() -> i32")) {
         std::move(env).run(executor, "main()").map(extract_return).map_error(dump_error);
-      } else if(env.type_check_binding("main: fn() -> ()")) {
+      } else if(env.type_check("main", "fn() -> ()")) {
         std::move(env).run(executor, "main()").map(return_success).map_error(dump_error);
       } else {
         std::move(tc_result).append_state(std::move(env)).map_error(dump_error);
