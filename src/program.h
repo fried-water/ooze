@@ -1,15 +1,18 @@
 #pragma once
 
+#include "function_graph.h"
+#include "inst.h"
+
 #include "ooze/any.h"
 #include "ooze/any_fn.h"
-#include "ooze/function_graph.h"
-#include "ooze/inst.h"
 #include "ooze/traits.h"
 
 #include <utility>
 #include <vector>
 
 namespace ooze {
+
+using Inst = StrongID<struct InstSpace, i32>;
 
 enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry, Placeholder };
 

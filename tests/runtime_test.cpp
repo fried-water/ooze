@@ -1,13 +1,13 @@
 #include "test.h"
 
 #include "constructing_graph.h"
+#include "function_graph.h"
+#include "program.h"
 #include "runtime.h"
 #include "runtime_test.h"
 
 #include "ooze/executor/sequential_executor.h"
 #include "ooze/executor/tbb_executor.h"
-#include "ooze/function_graph.h"
-#include "ooze/program.h"
 #include "ooze/type.h"
 
 #include <algorithm>

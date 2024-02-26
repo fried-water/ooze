@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ooze/inst.h"
+#include "inst.h"
 
 namespace ooze {
 

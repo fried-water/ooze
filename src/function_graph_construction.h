@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ast.h"
+#include "program.h"
 
-#include "ooze/program.h"
 #include "ooze/type.h"
 
 namespace ooze {

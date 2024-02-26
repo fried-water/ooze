@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "ooze/program.h"
+#include "program.h"
 
 namespace ooze {
 

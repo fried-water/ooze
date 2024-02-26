@@ -1,9 +1,10 @@
 #pragma once
 
+#include "program.h"
+
 #include "ooze/borrowed_future.h"
 #include "ooze/executor.h"
 #include "ooze/future.h"
-#include "ooze/program.h"
 
 #include <memory>
 
