@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ooze/ast.h"
+#include "ast.h"
+
 #include "ooze/type.h"
 
 namespace ooze {

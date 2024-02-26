@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ooze/ast.h"
+#include "ast.h"
+
 #include "ooze/program.h"
 #include "ooze/type.h"
 

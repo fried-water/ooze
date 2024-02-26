@@ -1,8 +1,7 @@
 #pragma once
 
+#include "ast.h"
 #include "user_msg.h"
-
-#include "ooze/ast.h"
 
 #include <knot/core.h>
 
