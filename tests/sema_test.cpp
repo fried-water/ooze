@@ -275,6 +275,64 @@ BOOST_AUTO_TEST_CASE(undeclared_function) {
   check_eq("errors", exp_errors, check_error(run_sema(create_test_env(), "fn f() -> () = missing()")));
 }
 
+BOOST_AUTO_TEST_CASE(while_loop) {
+  const TestEnv env = basic_test_env("pred: fn(&i32) -> bool", "body: fn(i32) -> i32");
+  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(&x) { body(x) }"));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_move) {
+  const TestEnv env = basic_test_env("pred: fn(&string) -> bool", "body: fn(string) -> string");
+  check_result(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }"));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_reuse_ident) {
+  const TestEnv env = basic_test_env("pred: fn(&i32) -> bool", "body: fn(i32, i32) -> i32");
+  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(&x) { body(x, x) }"));
+}
+
+BOOST_AUTO_TEST_CASE(while_cond_copy) {
+  const TestEnv env = basic_test_env("pred: fn(i32) -> bool", "body: fn(i32) -> i32");
+  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(x) { body(x) }"));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_tuple) {
+  const TestEnv env = basic_test_env("pred: fn(&i32) -> bool", "body: fn(i32) -> (i32)");
+  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(&x) { body(x) }"));
+}
+
+BOOST_AUTO_TEST_CASE(while_cond_capture_error) {
+  const TestEnv env = basic_test_env("pred: fn(string) -> bool", "body: fn() -> ()");
+  const std::vector<ContextualError> exp_errors = {
+    {{SrcID{1}, {34, 35}}, "while condition can only capture copyable values"}};
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn f(x: string) -> _ = while pred(x) { body() }")));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_capture_missing) {
+  const TestEnv env = basic_test_env("pred: fn(&string) -> bool", "body: fn(string) -> ()");
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {45, 46}}, "captured value not returned"}};
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }")));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_capture_mismatch) {
+  const TestEnv env = basic_test_env("pred: fn(&string) -> bool", "body: fn(string) -> i32");
+  const std::vector<ContextualError> exp_errors = {
+    {{SrcID{1}, {45, 46}}, "capture return mismatch, expected: i32 given: string"}};
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }")));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_capture_missize) {
+  const TestEnv env = basic_test_env("pred: fn(&string) -> bool", "body: fn(string) -> ()");
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {45, 46}}, "captured value not returned"}};
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }")));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_too_many_returns) {
+  const TestEnv env = basic_test_env("pred: fn(&string) -> bool", "body: fn(string) -> (string, i32)");
+  // TODO highlight type within tuple (x, y, *z*)
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {40, 47}}, "no corresponding input captured: i32"}};
+  check_eq("errors", exp_errors, check_error(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }")));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(ig)

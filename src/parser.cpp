@@ -247,8 +247,8 @@ ParseResult<ASTID> scope_cond_expr(State& s, Span<Token> tokens, ParseLocation l
   return choose(
     scope(),
     transform(seq(keyword("select"), expr, scope(), keyword("else"), scope_cond_expr), ASTAppender{ASTTag::ExprSelect}),
-    transform(seq(keyword("if"), expr, scope(), keyword("else"), scope_cond_expr), ASTAppender{ASTTag::ExprIf}))(
-    s, tokens, loc);
+    transform(seq(keyword("if"), expr, scope(), keyword("else"), scope_cond_expr), ASTAppender{ASTTag::ExprIf}),
+    transform(seq(keyword("while"), expr, scope()), ASTAppender{ASTTag::ExprWhile}))(s, tokens, loc);
 }
 
 ParseResult<ASTID> non_call_expr(State& s, Span<Token> tokens, ParseLocation loc) {

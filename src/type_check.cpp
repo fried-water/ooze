@@ -627,6 +627,7 @@ Type language_rule(const TypeCache& tc, AST& ast, ASTID id) {
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
   case ASTTag::ExprIf:
+  case ASTTag::ExprWhile:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternIdent:
   case ASTTag::ExprWith:
@@ -663,10 +664,15 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
       case ASTTag::ExprBorrow: add_pair(id, *forest.first_child(id), BorrowProp{}); break;
       case ASTTag::ExprSelect:
       case ASTTag::ExprIf: {
-        const auto [cond, if_expr, else_expr] = forest.child_ids(id).take<3>();
+        const auto [_, if_expr, else_expr] = forest.child_ids(id).take<3>();
         add_pair(if_expr, else_expr, DirectProp{});
         add_pair(if_expr, id, DirectProp{});
         add_pair(else_expr, id, DirectProp{});
+        break;
+      }
+      case ASTTag::ExprWhile: {
+        const auto [_, body] = forest.child_ids(id).take<2>();
+        add_pair(body, id, DirectProp{});
         break;
       }
       case ASTTag::ExprCall: {
@@ -780,7 +786,7 @@ apply_language_rules(const TypeCache& tc, const TypeNames& type_names, AST ast, 
       if(const auto parent = ast.forest.parent(id); parent && ast.forest.first_child(*parent) == id) {
         if(const ASTTag tag = ast.forest[*parent]; tag == ASTTag::ExprCall) {
           apply_type(id, tc.fn_floating);
-        } else if(tag == ASTTag::ExprSelect || tag == ASTTag::ExprIf) {
+        } else if(tag == ASTTag::ExprSelect || tag == ASTTag::ExprIf || tag == ASTTag::ExprWhile) {
           apply_type(id, tc.boolean);
         }
       }

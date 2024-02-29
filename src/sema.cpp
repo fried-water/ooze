@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include "pretty_print.h"
 #include "sema.h"
 #include "type_check.h"
 
@@ -118,6 +119,7 @@ void calculate_ident_graph(
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
   case ASTTag::ExprIf:
+  case ASTTag::ExprWhile:
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:
     for(const ASTID child : ast.forest.child_ids(id)) {
@@ -205,6 +207,103 @@ sema_iter(Span<std::string_view> srcs,
     });
 }
 
+bool is_copyable(const TypeGraph& tg, const std::unordered_set<TypeID>& copy_types, Type t) {
+  return tg.get<TypeTag>(t) == TypeTag::Fn || copy_types.find(tg.get<TypeID>(t)) != copy_types.end();
+}
+
+auto find_ident_value_captures(const AST& ast, const Map<ASTID, ASTID>& overloads, ASTID expr_id) {
+  std::vector<std::pair<ASTID, ASTID>> values;
+
+  for(const ASTID id : ast.forest.pre_order_ids(expr_id)) {
+    if(ast.forest[id] != ASTTag::ExprIdent) continue;
+
+    const auto it = overloads.find(id);
+    assert(it != overloads.end() && !ast.forest.is_root(it->second));
+
+    const ASTID binding = it->second;
+
+    const auto ancestors = ast.forest.ancestor_ids(binding);
+    if(find(ancestors, expr_id) == ancestors.end()) {
+      const auto parent = ast.forest.parent(id);
+      const bool borrowed = parent && ast.forest[*parent] == ASTTag::ExprBorrow;
+
+      if(!borrowed && none_of(values, [&](auto p) { return p.second == binding; })) {
+        values.emplace_back(id, binding);
+      }
+    }
+  }
+
+  return transform_to_vec(values, Get<0>{});
+}
+
+ContextualResult<void> check_while_loops(Span<std::string_view> srcs,
+                                         const AST& ast,
+                                         const Map<ASTID, ASTID>& overloads,
+                                         const NativeTypeInfo& native_types,
+                                         Span<ASTID> roots) {
+  std::vector<ContextualError> errors;
+
+  for(const ASTID root : roots) {
+    for(const ASTID id : ast.forest.post_order_ids(root)) {
+      if(ast.forest[id] != ASTTag::ExprWhile) continue;
+
+      const auto [cond, body] = ast.forest.child_ids(id).take<2>();
+
+      const auto cond_values = find_ident_value_captures(ast, overloads, cond);
+      const auto body_values = find_ident_value_captures(ast, overloads, body);
+
+      errors = transform_filter_to_vec(
+        cond_values,
+        [&](ASTID ident) {
+          return !is_copyable(ast.tg, native_types.copyable, ast.types[ident.get()])
+                   ? std::optional(
+                       ContextualError{ast.srcs[ident.get()], "while condition can only capture copyable values"})
+                   : std::nullopt;
+        },
+        std::move(errors));
+
+      ASTID result = body;
+      while(ast.forest[result] == ASTTag::ExprWith) {
+        result = ast.forest.child_ids(result).get<1>();
+      }
+
+      const Type result_type = ast.types[result.get()];
+
+      const Span<Type> types =
+        ast.tg.get<TypeTag>(result_type) == TypeTag::Tuple
+          ? Span<Type>(ast.tg.fanout(result_type))
+          : Span<Type>(&result_type, 1);
+
+      auto type_it = types.begin();
+
+      for(const ASTID capture : body_values) {
+        if(type_it != types.end() && compare_dags(ast.tg, ast.types[capture.get()], *type_it)) {
+          ++type_it;
+        } else if(!is_copyable(ast.tg, native_types.copyable, ast.types[capture.get()])) {
+          errors.push_back(
+            {ast.srcs[capture.get()],
+             type_it == types.end() ? "captured value not returned"
+                                    : fmt::format("capture return mismatch, expected: {} given: {}",
+                                                  pretty_print(ast.tg, native_types.names, *type_it),
+                                                  pretty_print(ast.tg, native_types.names, ast.types[capture.get()]))});
+          if(type_it != types.end()) ++type_it;
+        }
+      }
+
+      errors = transform_to_vec(
+        IterRange(type_it, types.end()),
+        [&](Type t) {
+          return ContextualError{
+            ast.srcs[result.get()],
+            fmt::format("no corresponding input captured: {}", pretty_print(ast.tg, native_types.names, t))};
+        },
+        std::move(errors));
+    }
+  }
+
+  return void_or_errors(std::move(errors));
+}
+
 } // namespace
 
 ContextualResult<void, TypeGraph>
@@ -268,10 +367,16 @@ sema(Span<std::string_view> srcs,
     });
   }
 
-  return std::move(res).map([](InternalSemaState s, AST ast) {
-    return std::tuple(SemaData{std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots)},
-                      std::move(ast));
-  });
+  return std::move(res)
+    .and_then([&](InternalSemaState s, AST ast) {
+      return check_while_loops(srcs, ast, s.overloads, native_types, s.resolved_roots)
+        .map([&]() { return std::move(s); })
+        .append_state(std::move(ast));
+    })
+    .map([](InternalSemaState s, AST ast) {
+      return std::tuple(SemaData{std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots)},
+                        std::move(ast));
+    });
 }
 
 } // namespace ooze

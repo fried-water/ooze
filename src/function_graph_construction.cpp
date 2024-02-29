@@ -295,6 +295,16 @@ add_if_expr(const AST& ast,
 }
 
 std::pair<GraphContext, std::vector<Oterm>>
+add_while_expr(const AST& ast,
+               const std::unordered_set<TypeID>& copy_types,
+               const Map<ASTID, ASTID>& binding_of,
+               ASTID id,
+               GraphContext ctx) {
+  assert(false);
+  return {};
+}
+
+std::pair<GraphContext, std::vector<Oterm>>
 add_call_expr(const AST& ast,
               const std::unordered_set<TypeID>& copy_types,
               const Map<ASTID, ASTID>& binding_of,
@@ -344,6 +354,7 @@ add_expr(const AST& ast,
   case ASTTag::ExprCall: return add_call_expr(ast, copy_types, binding_of, id, std::move(ctx));
   case ASTTag::ExprSelect: return add_select_expr(ast, copy_types, binding_of, id, std::move(ctx));
   case ASTTag::ExprIf: return add_if_expr(ast, copy_types, binding_of, id, std::move(ctx));
+  case ASTTag::ExprWhile: return add_while_expr(ast, copy_types, binding_of, id, std::move(ctx));
   case ASTTag::ExprBorrow: return add_expr(ast, copy_types, binding_of, *ast.forest.first_child(id), std::move(ctx));
   case ASTTag::ExprWith: {
     const auto [assignment, expr] = ast.forest.child_ids(id).take<2>();

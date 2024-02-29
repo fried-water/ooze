@@ -159,6 +159,11 @@ bool all_of(const Range& range, F f) {
 }
 
 template <typename Range, typename F>
+bool none_of(const Range& range, F f) {
+  return std::none_of(range.begin(), range.end(), f);
+}
+
+template <typename Range, typename F>
 auto count_if(const Range& range, F f) {
   return std::count_if(range.begin(), range.end(), f);
 }

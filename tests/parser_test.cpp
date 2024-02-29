@@ -397,6 +397,14 @@ BOOST_AUTO_TEST_CASE(expr_if_nested) {
   check_pass(parse_expr, ast, {}, src);
 }
 
+BOOST_AUTO_TEST_CASE(expr_while) {
+  const std::string_view src = "while x { y }";
+  auto f = ast_forest({{ASTTag::ExprWhile, ASTTag::ExprIdent}});
+  f.append_child(ASTID{0}, ASTTag::ExprIdent);
+  const AST ast = {std::move(f), slices(src, {"x", "y", src}), types(3)};
+  check_pass(parse_expr, ast, {}, src);
+}
+
 BOOST_AUTO_TEST_CASE(binding_no_type) {
   const std::string_view src = "x";
   const AST ast = {ast_forest({{ASTTag::PatternIdent}}), slices(src, {"x"}), types(1)};
