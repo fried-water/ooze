@@ -272,6 +272,12 @@ BOOST_AUTO_TEST_CASE(if_capture_value) {
   check_run(create_primitive_registry(), script, "f(false)", exp_type, exp_else);
 }
 
+BOOST_AUTO_TEST_CASE(if_value_borrow) {
+  constexpr std::string_view script = "fn f(b: bool, x: string) -> string = if b { x } else { clone(&x) }";
+  check_run(create_primitive_registry(), script, "f(true, 'abc')", "string", std::tuple(std::string("abc")));
+  check_run(create_primitive_registry(), script, "f(false, 'abc')", "string", std::tuple(std::string("abc")));
+}
+
 BOOST_AUTO_TEST_CASE(if_nested) {
   constexpr std::string_view script =
     "fn f(b1: bool, b2: bool) -> string = {\n"
