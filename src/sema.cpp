@@ -136,6 +136,7 @@ struct InternalSemaState {
   Map<ASTID, ASTID> overloads;
   std::vector<ASTID> resolved_roots;
   std::vector<ASTID> generic_roots;
+  Map<ASTID, std::vector<ASTID>> loop_results;
 };
 
 std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, InternalSemaState s, AST ast) {
@@ -236,12 +237,14 @@ auto find_ident_value_captures(const AST& ast, const Map<ASTID, ASTID>& overload
   return transform_to_vec(values, Get<0>{});
 }
 
-ContextualResult<void> check_while_loops(Span<std::string_view> srcs,
-                                         const AST& ast,
-                                         const Map<ASTID, ASTID>& overloads,
-                                         const NativeTypeInfo& native_types,
-                                         Span<ASTID> roots) {
+ContextualResult<Map<ASTID, std::vector<ASTID>>> check_while_loops(
+  Span<std::string_view> srcs,
+  const AST& ast,
+  const Map<ASTID, ASTID>& overloads,
+  const NativeTypeInfo& native_types,
+  Span<ASTID> roots) {
   std::vector<ContextualError> errors;
+  Map<ASTID, std::vector<ASTID>> loop_results;
 
   for(const ASTID root : roots) {
     for(const ASTID id : ast.forest.post_order_ids(root)) {
@@ -276,8 +279,11 @@ ContextualResult<void> check_while_loops(Span<std::string_view> srcs,
 
       auto type_it = types.begin();
 
+      std::vector<ASTID> converged;
+
       for(const ASTID capture : body_values) {
         if(type_it != types.end() && compare_dags(ast.tg, ast.types[capture.get()], *type_it)) {
+          converged.push_back(capture);
           ++type_it;
         } else if(!is_copyable(ast.tg, native_types.copyable, ast.types[capture.get()])) {
           errors.push_back(
@@ -290,6 +296,8 @@ ContextualResult<void> check_while_loops(Span<std::string_view> srcs,
         }
       }
 
+      loop_results.emplace(id, std::move(converged));
+
       errors = transform_to_vec(
         IterRange(type_it, types.end()),
         [&](Type t) {
@@ -301,7 +309,7 @@ ContextualResult<void> check_while_loops(Span<std::string_view> srcs,
     }
   }
 
-  return void_or_errors(std::move(errors));
+  return value_or_errors(std::move(loop_results), std::move(errors));
 }
 
 } // namespace
@@ -370,12 +378,17 @@ sema(Span<std::string_view> srcs,
   return std::move(res)
     .and_then([&](InternalSemaState s, AST ast) {
       return check_while_loops(srcs, ast, s.overloads, native_types, s.resolved_roots)
-        .map([&]() { return std::move(s); })
+        .map([&](auto loop_results) {
+          s.loop_results = std::move(loop_results);
+          return std::move(s);
+        })
         .append_state(std::move(ast));
     })
     .map([](InternalSemaState s, AST ast) {
-      return std::tuple(SemaData{std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots)},
-                        std::move(ast));
+      return std::tuple(
+        SemaData{
+          std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots), std::move(s.loop_results)},
+        std::move(ast));
     });
 }
 

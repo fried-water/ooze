@@ -511,6 +511,12 @@ std::vector<TypeCheckError> find_returned_borrows(const AST& ast, Roots roots) {
     } else {
       find_returned_borrows(ast, errors, root_id);
     }
+
+    for(const ASTID id : ast.forest.post_order_ids(root_id)) {
+      if(ast.forest[id] == ASTTag::ExprWhile) {
+        find_returned_borrows(ast, errors, ast.forest.child_ids(id).get<1>());
+      }
+    }
   }
 
   return errors;

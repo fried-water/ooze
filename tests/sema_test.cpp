@@ -54,6 +54,11 @@ auto run_sema(Parser p, TestEnv env, std::string_view src) {
 
 auto run_sema(TestEnv env, std::string_view src) { return run_sema(parse, std::move(env), src); }
 
+auto run_sema_while(TestEnv env, std::string_view src) {
+  return frontend(parse, make_sv_array(env.src, src), env.types, std::move(env.ast), std::array{env.module})
+    .map([&](SemaData s, AST ast) { return std::tuple(std::move(s.loop_results), std::move(ast)); });
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_SUITE(nr)
@@ -277,27 +282,37 @@ BOOST_AUTO_TEST_CASE(undeclared_function) {
 
 BOOST_AUTO_TEST_CASE(while_loop) {
   const TestEnv env = basic_test_env("pred: fn(&i32) -> bool", "body: fn(i32) -> i32");
-  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(&x) { body(x) }"));
+  const Map<ASTID, std::vector<ASTID>> exp = {{ASTID{19}, {ASTID{16}}}};
+  const auto [act, ast] = check_result(run_sema_while(env, "fn f(x: i32) -> _ = while pred(&x) { body(x) }"));
+  check_eq("while", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(while_body_move) {
   const TestEnv env = basic_test_env("pred: fn(&string) -> bool", "body: fn(string) -> string");
-  check_result(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }"));
+  const Map<ASTID, std::vector<ASTID>> exp = {{ASTID{19}, {ASTID{16}}}};
+  const auto [act, ast] = check_result(run_sema_while(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }"));
+  check_eq("while", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(while_body_reuse_ident) {
   const TestEnv env = basic_test_env("pred: fn(&i32) -> bool", "body: fn(i32, i32) -> i32");
-  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(&x) { body(x, x) }"));
+  const Map<ASTID, std::vector<ASTID>> exp = {{ASTID{20}, {ASTID{16}}}};
+  const auto [act, ast] = check_result(run_sema_while(env, "fn f(x: i32) -> _ = while pred(&x) { body(x, x) }"));
+  check_eq("while", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(while_cond_copy) {
   const TestEnv env = basic_test_env("pred: fn(i32) -> bool", "body: fn(i32) -> i32");
-  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(x) { body(x) }"));
+  const Map<ASTID, std::vector<ASTID>> exp = {{ASTID{18}, {ASTID{15}}}};
+  const auto [act, ast] = check_result(run_sema_while(env, "fn f(x: i32) -> _ = while pred(x) { body(x) }"));
+  check_eq("while", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(while_body_tuple) {
   const TestEnv env = basic_test_env("pred: fn(&i32) -> bool", "body: fn(i32) -> (i32)");
-  check_result(run_sema(env, "fn f(x: i32) -> _ = while pred(&x) { body(x) }"));
+  const Map<ASTID, std::vector<ASTID>> exp = {{ASTID{19}, {ASTID{16}}}};
+  const auto [act, ast] = check_result(run_sema_while(env, "fn f(x: i32) -> _ = while pred(&x) { body(x) }"));
+  check_eq("while", exp, act);
 }
 
 BOOST_AUTO_TEST_CASE(while_cond_capture_error) {
@@ -331,6 +346,13 @@ BOOST_AUTO_TEST_CASE(while_body_too_many_returns) {
   // TODO highlight type within tuple (x, y, *z*)
   const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {40, 47}}, "no corresponding input captured: i32"}};
   check_eq("errors", exp_errors, check_error(run_sema(env, "fn f(x: string) -> _ = while pred(&x) { body(x) }")));
+}
+
+BOOST_AUTO_TEST_CASE(while_body_return_borrow) {
+  const TestEnv env = basic_test_env();
+  const std::vector<ContextualError> exp_errors = {{{SrcID{1}, {49, 50}}, "cannot return a borrowed value"}};
+  check_eq(
+    "errors", exp_errors, check_error(run_sema(env, "fn f(x: &i32, b: bool) -> _ { let _x = while b { x }; 1 }")));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
