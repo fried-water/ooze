@@ -21,8 +21,8 @@ void print_literal(std::ostream& os, const Literal& l) {
       [](u16 u) { return fmt::format("{}u16", u); },
       [](u32 u) { return fmt::format("{}u32", u); },
       [](u64 u) { return fmt::format("{}u64", u); },
-      [](f32 f) { return fmt::format(f == std::floor(f) ? "{:.1f}f" : "{}f", f); },
-      [](f64 f) { return fmt::format(f == std::floor(f) ? "{:.1f}" : "{}", f); }},
+      [](f32 f) { return f == std::floor(f) ? fmt::format("{:.1f}f", f) : fmt::format("{}f", f); },
+      [](f64 f) { return f == std::floor(f) ? fmt::format("{:.1f}", f) : fmt::format("{}", f); }},
     l);
 }
 
