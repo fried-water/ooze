@@ -40,23 +40,25 @@ auto make_multi_promise_future(int count) {
 }
 
 struct InvocationBlock {
-  std::function<std::vector<Any>(Span<Any*>)> f;
+  AnyFn f;
 
   std::atomic<int> ref_count;
 
-  std::vector<Any> input_vals;
+  // [inputs, outputs]
+  std::vector<Any> any_buffer;
   std::vector<Any*> input_ptrs;
   std::vector<BorrowedFuture> borrowed_inputs;
 
   std::vector<Promise> promises;
 
-  InvocationBlock(std::function<std::vector<Any>(Span<Any*>)> f_,
+  InvocationBlock(AnyFn f_,
                   std::vector<BorrowedFuture> borrowed_inputs,
                   std::vector<Promise> promises,
-                  size_t input_count)
+                  size_t input_count,
+                  int output_count)
       : f(std::move(f_))
       , ref_count(int(input_count))
-      , input_vals(input_count)
+      , any_buffer(input_count + output_count)
       , input_ptrs(input_count)
       , borrowed_inputs(std::move(borrowed_inputs))
       , promises(std::move(promises)) {}
@@ -188,22 +190,43 @@ execute(const AnyFn& fn,
         ExecutorRef ex,
         std::vector<Future> inputs,
         std::vector<BorrowedFuture> borrowed_inputs) {
-  if(input_borrows.empty()) {
-    return transform_to_vec(fn(std::array<Any*, 0>{}), Construct<Future>());
+  if(input_borrows.empty() && output_count < 10) {
+    std::array<Any, 10> result_buffer;
+    fn(std::array<Any*, 0>{}, result_buffer.data());
+
+    std::vector<Future> results;
+    results.reserve(output_count);
+    std::transform(result_buffer.data(), result_buffer.data() + output_count, std::back_inserter(results), [](Any& a) {
+      return Future(std::move(a));
+    });
+    return results;
+
+  } else if(input_borrows.empty()) {
+    std::unique_ptr<Any[]> result_buffer = std::make_unique<Any[]>(output_count);
+    fn(std::array<Any*, 0>{}, result_buffer.get());
+
+    std::vector<Future> results;
+    results.reserve(output_count);
+    std::transform(result_buffer.get(), result_buffer.get() + output_count, std::back_inserter(results), [](Any& a) {
+      return Future(std::move(a));
+    });
+    return results;
   } else {
     auto [promises, futures] = make_multi_promise_future(output_count);
-    auto* b = new InvocationBlock(fn, std::move(borrowed_inputs), std::move(promises), input_borrows.size());
+    auto* b =
+      new InvocationBlock(fn, std::move(borrowed_inputs), std::move(promises), input_borrows.size(), output_count);
 
     auto invoke = [ex](InvocationBlock* b) mutable {
       ex.run([b]() {
-        std::vector<Any> results = (b->f)(b->input_ptrs);
+        const size_t input_count = b->input_ptrs.size();
+        (b->f)(b->input_ptrs, b->any_buffer.data() + input_count);
 
         // Drop reference to all borrowed inputs so they can be forwarded asap
         b->borrowed_inputs.clear();
 
         // Forward outputs
-        for(size_t i = 0; i < results.size(); i++) {
-          std::move(b->promises[i]).send(std::move(results[i]));
+        for(size_t i = 0; i < b->promises.size(); i++) {
+          std::move(b->promises[i]).send(std::move(b->any_buffer[input_count + i]));
         }
 
         delete b;
@@ -215,8 +238,8 @@ execute(const AnyFn& fn,
     for(size_t i = 0; i < input_borrows.size(); i++) {
       if(!input_borrows[i]) {
         std::move(inputs[owned_offset++]).then([i, b, invoke](Any value) mutable {
-          b->input_vals[i] = std::move(value);
-          b->input_ptrs[i] = &b->input_vals[i];
+          b->any_buffer[i] = std::move(value);
+          b->input_ptrs[i] = &b->any_buffer[i];
           if(decrement(b->ref_count)) {
             invoke(b);
           }

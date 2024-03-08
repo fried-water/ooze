@@ -1,46 +1,35 @@
 #pragma once
 
 #include "ooze/any.h"
+#include "ooze/span.h"
 #include "ooze/traits.h"
 
 #include <cassert>
 #include <functional>
-#include <vector>
 
 namespace ooze {
-
 namespace details {
 
-template <typename T, typename... Elements>
-std::vector<T> make_vector(Elements&&... elements) {
-  std::vector<T> vec;
-  vec.reserve(sizeof...(Elements));
-  (vec.emplace_back(std::forward<Elements>(elements)), ...);
-  return vec;
-}
-
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<Any> call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
+void call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, Any* outputs, std::index_sequence<Is...>) {
   assert(inputs.size() == sizeof...(Ts));
   assert(((type_id(decay(knot::Type<Ts>{})) == inputs[Is]->type()) && ...));
 
   if constexpr(knot::Type<void>{} == return_type(decay(knot::Type<F>({})))) {
     std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
-    return {};
   } else {
     auto&& result = std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
-
     if constexpr(is_tuple(decay(knot::Type<decltype(result)>{}))) {
-      return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
+      return std::apply([=](auto&&... e) mutable { ((*outputs++ = Any(std::move(e))), ...); }, std::move(result));
     } else {
-      return make_vector<Any>(std::move(result));
+      *outputs = Any(std::move(result));
     }
   }
 }
 
 } // namespace details
 
-using AnyFn = std::function<std::vector<Any>(Span<Any*>)>;
+using AnyFn = std::function<void(Span<Any*>, Any*)>;
 
 template <typename F>
 AnyFn create_any_fn(F&& f) {
@@ -55,8 +44,8 @@ AnyFn create_any_fn(F&& f) {
                                 all(fn_ret, [](auto t) { return t == decay(t) || is_rref(t); });
 
   if constexpr(legal_args && legal_return && is_const_function(fn_type)) {
-    return [f = std::forward<F>(f), fn_args](Span<Any*> inputs) {
-      return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
+    return [f = std::forward<F>(f), fn_args](Span<Any*> inputs, Any* results) {
+      details::call_with_anys(fn_args, f, inputs, results, knot::idx_seq(fn_args));
     };
   } else {
     static_assert(is_const_function(fn_type), "No mutable lambdas and non-const operator().");
@@ -66,7 +55,7 @@ AnyFn create_any_fn(F&& f) {
     static_assert(legal_return,
                   "Function return type must be void, a value or tuple of "
                   "values (no refs or pointers).");
-    return [](Span<Any*>) { return std::vector<Any>{}; };
+    return [](Span<Any*>, Any*) {};
   }
 }
 
