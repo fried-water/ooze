@@ -15,19 +15,11 @@ namespace ooze {
 
 namespace {
 
-template <typename Block>
-void forward_results_then_delete(std::vector<Future> results, Block* b) {
-  if(results.empty()) {
-    delete b;
-  } else {
-    for(int i = 0; i < int(results.size()); i++) {
-      std::move(results[i]).then([i, b](Any a) mutable {
-        std::move(b->promises[i]).send(std::move(a));
-        if(decrement(b->ref_count) == 1) {
-          delete b;
-        }
-      });
-    }
+template <typename Futures, typename Promises>
+void connect_multi(Futures&& futures, Promises&& promises) {
+  assert(futures.size() == promises.size());
+  for(int i = 0; i < futures.size(); i++) {
+    connect(std::move(futures[i]), std::move(promises[i]));
   }
 }
 
@@ -73,7 +65,6 @@ struct InvocationBlock {
 struct Block {
   std::shared_ptr<const Program> p;
   ExecutorRef e;
-  std::atomic<int> ref_count;
   std::vector<Future> owned_inputs;
   std::vector<BorrowedFuture> borrowed_inputs;
   std::vector<Promise> promises;
@@ -102,7 +93,6 @@ struct WhileBlock {
 };
 
 struct SelectBlock {
-  std::atomic<int> ref_count;
   std::vector<Future> futures;
   std::vector<Promise> promises;
 };
@@ -283,11 +273,12 @@ std::vector<Future> execute_functional(std::shared_ptr<const Program> p,
   Future fn = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
-  auto* b =
-    new Block{std::move(p), ex, output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
+  auto* b = new Block{std::move(p), ex, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
   std::move(fn).then([b](Any fn) mutable {
-    forward_results_then_delete(
-      execute(std::move(b->p), any_cast<Inst>(fn), b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs)), b);
+    connect_multi(
+      execute(std::move(b->p), any_cast<Inst>(fn), b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs)),
+      std::move(b->promises));
+    delete b;
   });
 
   return std::move(futures);
@@ -303,8 +294,7 @@ std::vector<Future> execute_if(std::shared_ptr<const Program> p,
   Future cond = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
-  auto* b = new IfBlock{
-    {std::move(p), ex, inst.output_count, std::move(inputs), std::move(borrowed_inputs), std::move(promises)}, inst};
+  auto* b = new IfBlock{{std::move(p), ex, std::move(inputs), std::move(borrowed_inputs), std::move(promises)}, inst};
 
   std::move(cond).then([b](Any any_cond) {
     assert(holds_alternative<bool>(any_cond));
@@ -323,22 +313,22 @@ std::vector<Future> execute_if(std::shared_ptr<const Program> p,
       borrows.erase(borrows.begin() + inst.borrow_offsets[0], borrows.begin() + inst.borrow_offsets[1]);
     }
 
-    forward_results_then_delete(
-      execute(std::move(b->p), cond ? inst.if_inst : inst.else_inst, b->e, std::move(inputs), std::move(borrows)), b);
+    connect_multi(
+      execute(std::move(b->p), cond ? inst.if_inst : inst.else_inst, b->e, std::move(inputs), std::move(borrows)),
+      std::move(b->promises));
+    delete b;
   });
 
   return std::move(futures);
 }
 
 std::vector<Future> execute_select(std::vector<Future> inputs) {
-  const int output_count = int(inputs.size()) / 2;
-
-  auto [promises, futures] = make_multi_promise_future(output_count);
+  auto [promises, futures] = make_multi_promise_future(int(inputs.size()) / 2);
 
   Future cond = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
-  auto* b = new SelectBlock{output_count, std::move(inputs), std::move(promises)};
+  auto* b = new SelectBlock{std::move(inputs), std::move(promises)};
 
   std::move(cond).then([b](Any cond) mutable {
     assert(holds_alternative<bool>(cond));
@@ -348,7 +338,8 @@ std::vector<Future> execute_select(std::vector<Future> inputs) {
     } else {
       b->futures.erase(b->futures.begin(), b->futures.begin() + i64(b->futures.size() / 2));
     }
-    forward_results_then_delete(std::move(b->futures), b);
+    connect_multi(std::move(b->futures), std::move(b->promises));
+    delete b;
   });
 
   return std::move(futures);
@@ -421,9 +412,7 @@ void execute_while(WhileBlock* b) {
       b->accumulator = execute(b->p, b->body, b->e, std::move(b->accumulator), b->body_borrowed);
       execute_while(b);
     } else {
-      for(int i = 0; i < b->accumulator.size(); i++) {
-        connect(std::move(b->accumulator[i]), std::move(b->promises[i]));
-      }
+      connect_multi(std::move(b->accumulator), std::move(b->promises));
       delete b;
     }
   });
