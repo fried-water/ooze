@@ -121,4 +121,23 @@ inline std::pair<Promise, Future> make_promise_future() {
   return {Promise(block), Future(std::move(block))};
 }
 
+inline std::pair<Future, Future> clone(Future f) {
+  auto [p1, f1] = make_promise_future();
+  auto [p2, f2] = make_promise_future();
+
+  auto ptr = new std::pair(std::move(p1), std::move(p2));
+
+  std::move(f).then([ptr](Any a) mutable {
+    std::move(ptr->first).send(a);
+    std::move(ptr->second).send(std::move(a));
+    delete ptr;
+  });
+
+  return {std::move(f1), std::move(f2)};
+}
+
+inline void connect(Future f, Promise p) {
+  std::move(f).then([p = new Promise(std::move(p))](Any a) mutable { std::move(*p).send(std::move(a)); });
+}
+
 } // namespace ooze

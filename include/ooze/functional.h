@@ -2,6 +2,7 @@
 
 #include <knot/core.h>
 
+#include <algorithm>
 #include <tuple>
 #include <variant>
 
@@ -107,6 +108,11 @@ inline auto pop_fn() {
 
 inline auto nullify() {
   return [](auto&&...) {};
+}
+
+template <typename Range>
+auto contained_fn(const Range& rng) {
+  return [&rng](const auto& ele) { return std::find(rng.begin(), rng.end(), ele) != rng.end(); };
 }
 
 } // namespace ooze

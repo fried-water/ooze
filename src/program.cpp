@@ -33,8 +33,13 @@ Inst Program::add(IfInst inst) {
   return i;
 }
 
+Inst Program::add(WhileInst inst) {
+  const Inst i = add_internal(*this, InstOp::While, i32(whiles.size()));
+  whiles.push_back(inst);
+  return i;
+}
+
 Inst Program::add(SelectInst) { return add_internal(*this, InstOp::Select); }
-Inst Program::add(ConvergeInst) { return add_internal(*this, InstOp::Converge); }
 
 Inst Program::curry(Inst curried, Span<Any> s) {
   const Inst i = add_internal(*this, InstOp::Curry, i32(currys.size()));

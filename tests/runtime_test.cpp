@@ -464,17 +464,28 @@ BOOST_AUTO_TEST_CASE(if_) {
   compare(2, execute_tbb(share(p), if_diff_cat, std::tuple(false, 1), std::tuple(2)));
 }
 
-BOOST_AUTO_TEST_CASE(converge) {
+BOOST_AUTO_TEST_CASE(loop_borrow) {
   Program p;
 
-  const Inst empty_body = p.add(Any{true});
-  const Inst body = p.add_fn([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
-  const Inst converge = p.add(ConvergeInst{});
+  const Inst le = p.add_fn([](int x, const int& y) { return x < y; });
+  const Inst add = p.add_fn([](int x, const int& y) { return x + y; });
+  const Inst loop = p.add(WhileInst{le, add, 1, {1, 1, 1, 1}, {0, 1}});
 
-  compare(std::tuple(), execute_tbb(share(p), converge, std::tuple(empty_body, false), {}));
-  compare(std::tuple(), execute_tbb(share(p), converge, std::tuple(empty_body, true), {}));
-  compare(10, execute_tbb(share(p), converge, std::tuple(body, false, 5), std::tuple(10)));
-  compare(5, execute_tbb(share(p), converge, std::tuple(body, true, 5), std::tuple(10)));
+  compare(5, execute_tbb(share(p), loop, std::tuple(0), std::tuple(1, 5)));
+  compare(6, execute_tbb(share(p), loop, std::tuple(6), std::tuple(1, 5)));
+  compare(6, execute_tbb(share(p), loop, std::tuple(0), std::tuple(3, 5)));
+}
+
+BOOST_AUTO_TEST_CASE(loop_copy) {
+  Program p;
+
+  const Inst le = p.add_fn([](int x, int y) { return x < y; });
+  const Inst add = p.add_fn([](int x, int y) { return x + y; });
+  const Inst loop = p.add(WhileInst{le, add, 1, {1, 1, 1, 2}, {0, 0}});
+
+  compare(5, execute_tbb(share(p), loop, std::tuple(0, 1, 5), {}));
+  compare(6, execute_tbb(share(p), loop, std::tuple(6, 1, 5), {}));
+  compare(6, execute_tbb(share(p), loop, std::tuple(0, 3, 5), {}));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -509,14 +520,16 @@ BOOST_AUTO_TEST_CASE(select) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(converge) {
+BOOST_AUTO_TEST_CASE(loop) {
   Program p;
-  const Inst body = p.add_fn([](int x, const int& limit) { return std::tuple(x + 1 >= limit, x + 1); });
-  const Inst converge = p.add(ConvergeInst{});
+
+  const Inst le = p.add_fn([](int x, const int& y) { return x < y; });
+  const Inst add = p.add_fn([](int x, const int& y) { return x + y; });
+  const Inst loop = p.add(WhileInst{le, add, 1, {1, 1, 1, 1}, {0, 1}});
 
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     const int limit = i % 10;
-    compare(limit, execute_tbb(share(p), converge, std::tuple(body, 0 >= limit, 0), std::tuple(limit)));
+    compare(limit, execute_tbb(share(p), loop, std::tuple(0), std::tuple(1, limit)));
   }
 }
 

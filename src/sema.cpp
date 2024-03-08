@@ -226,7 +226,8 @@ auto find_ident_value_captures(const AST& ast, const Map<ASTID, ASTID>& overload
     const auto ancestors = ast.forest.ancestor_ids(binding);
     if(find(ancestors, expr_id) == ancestors.end()) {
       const auto parent = ast.forest.parent(id);
-      const bool borrowed = parent && ast.forest[*parent] == ASTTag::ExprBorrow;
+      const bool borrowed = ast.tg.get<TypeTag>(ast.types[id.get()]) == TypeTag::Borrow ||
+                            (parent && ast.forest[*parent] == ASTTag::ExprBorrow);
 
       if(!borrowed && none_of(values, [&](auto p) { return p.second == binding; })) {
         values.emplace_back(id, binding);
@@ -283,7 +284,9 @@ ContextualResult<Map<ASTID, std::vector<ASTID>>> check_while_loops(
 
       for(const ASTID capture : body_values) {
         if(type_it != types.end() && compare_dags(ast.tg, ast.types[capture.get()], *type_it)) {
-          converged.push_back(capture);
+          const auto it = overloads.find(capture);
+          assert(it != overloads.end());
+          converged.push_back(it->second);
           ++type_it;
         } else if(!is_copyable(ast.tg, native_types.copyable, ast.types[capture.get()])) {
           errors.push_back(

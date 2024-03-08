@@ -14,11 +14,10 @@ namespace ooze {
 
 using Inst = StrongID<struct InstSpace, i32>;
 
-enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Converge, Curry, Placeholder };
+enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, While, Curry, Placeholder };
 
 constexpr auto names(knot::Type<InstOp>) {
-  return knot::Names("InstOp",
-                     {"Value", "Fn", "Graph", "Functional", "If", "Select", "Converge", "Curry", "Placeholder"});
+  return knot::Names("InstOp", {"Value", "Fn", "Graph", "Functional", "If", "Select", "While", "Curry", "Placeholder"});
 }
 
 struct AnyFnInst {
@@ -36,16 +35,24 @@ struct IfInst {
   Inst else_inst;
   i32 output_count = 0;
 
-  i32 value_common_end = 0;
-  i32 value_if_end = 0;
+  // [common, if, else]
+  std::array<i32, 2> value_offsets = {};
+  std::array<i32, 2> borrow_offsets = {};
+};
 
-  i32 borrow_common_end = 0;
-  i32 borrow_if_end = 0;
+struct WhileInst {
+  Inst cond_inst;
+  Inst body_inst;
+  i32 output_count = 0;
+
+  // [ret_common, ret_body, inv_common, inv_body, inv_cond]
+  std::array<i32, 4> value_offsets = {};
+
+  // [common, body, cond]
+  std::array<i32, 2> borrow_offsets = {};
 };
 
 struct SelectInst {};
-
-struct ConvergeInst {};
 
 struct Program {
   std::vector<InstOp> inst;
@@ -55,6 +62,7 @@ struct Program {
   std::vector<AnyFnInst> fns;
   std::vector<FunctionGraph> graphs;
   std::vector<IfInst> ifs;
+  std::vector<WhileInst> whiles;
 
   // TODO handle curry with Inst instead of Any?
   std::vector<std::pair<Inst, Slice>> currys;
@@ -64,7 +72,7 @@ struct Program {
   Inst add(FunctionalInst);
   Inst add(IfInst);
   Inst add(SelectInst);
-  Inst add(ConvergeInst);
+  Inst add(WhileInst);
 
   Inst add(AnyFn fn, std::vector<bool> input_borrows, int ret_size) {
     inst.push_back(InstOp::Fn);
