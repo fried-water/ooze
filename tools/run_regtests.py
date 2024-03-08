@@ -1,12 +1,11 @@
 #! /usr/bin/env python3
 
 import subprocess
-import sys
 import os
 import argparse
 import re
 
-def run_command_on_file(command, file_path):
+def run_command_on_file(command):
     try:
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
         return (True, result.stdout, result.stderr)
@@ -22,7 +21,7 @@ def run_directory(directory, test_regex):
 
     for file in files:
         if not test_regex.search(file): continue
-        success, stdout, stderr = run_command_on_file(cmd + [file], file)
+        success, stdout, stderr = run_command_on_file(cmd + [file])
         if(len(stdout) > 0): print(stdout)
         if(len(stderr) > 0): print(stderr)
         if success:
@@ -48,7 +47,6 @@ def main():
         run_directory(args.dir, re.compile(args.regex))
     except re.error:
         parser.error(f"Invalid regex pattern: {args.regex}")
-
 
 if __name__ == "__main__":
     main()
