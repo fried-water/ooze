@@ -23,13 +23,12 @@ def run_directory(directory, test_regex):
     for file in files:
         if not test_regex.search(file): continue
         success, stdout, stderr = run_command_on_file(cmd + [file], file)
+        if(len(stdout) > 0): print(stdout)
+        if(len(stderr) > 0): print(stderr)
         if success:
             pass_count += 1
         else:
             print(f"test failed: {file}\n")
-            if(len(stdout) > 0): print(stdout, end="")
-            if(len(stderr) > 0): print(stderr, end="")
-            print("")
             fail_count += 1
 
     print(f"Passed: {pass_count}, Failed: {fail_count}")
