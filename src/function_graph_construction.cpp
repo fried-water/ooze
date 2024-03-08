@@ -57,13 +57,13 @@ auto find_captures(const AST& ast, const Map<ASTID, ASTID>& overloads, ASTID exp
     const ASTID binding = it->second;
 
     const auto ancestors = ast.forest.ancestor_ids(binding);
-    if(find(ancestors, expr_id) == ancestors.end()) {
+    if(stdr::find(ancestors, expr_id) == ancestors.end()) {
       const auto parent = ast.forest.parent(id);
       const bool borrowed = parent && ast.forest[*parent] == ASTTag::ExprBorrow;
 
-      if(borrowed && none_of(borrows, [&](auto p) { return p.second == binding; })) {
+      if(borrowed && stdr::none_of(borrows, [&](auto p) { return p.second == binding; })) {
         borrows.emplace_back(id, binding);
-      } else if(!borrowed && none_of(values, [&](auto p) { return p.second == binding; })) {
+      } else if(!borrowed && stdr::none_of(values, [&](auto p) { return p.second == binding; })) {
         values.emplace_back(id, binding);
       }
     }
@@ -71,7 +71,7 @@ auto find_captures(const AST& ast, const Map<ASTID, ASTID>& overloads, ASTID exp
 
   auto value_bindings = transform_to_vec(values, Get<1>{});
   auto borrow_bindings = remove_if(transform_to_vec(borrows, Get<1>{}), [&](ASTID binding) {
-    return find(value_bindings, binding) != value_bindings.end();
+    return stdr::find(value_bindings, binding) != value_bindings.end();
   });
 
   return std::tuple(std::move(value_bindings), std::move(borrow_bindings));
@@ -223,12 +223,12 @@ FunctionGraph reparameterize_graph(
   terms.reserve(inputs.size());
 
   for(const ASTID id : data.captured_values) {
-    const auto it = find_if(offsets, [&](auto p) { return p.first == id; });
+    const auto it = stdr::find_if(offsets, [&](auto p) { return p.first == id; });
     for(int i = it->second; i < (it + 1)->second; i++) terms.push_back(inputs[i]);
   }
 
   for(const ASTID id : data.captured_borrows) {
-    const auto it = find_if(offsets, [&](auto p) { return p.first == id; });
+    const auto it = stdr::find_if(offsets, [&](auto p) { return p.first == id; });
     for(int i = it->second; i < (it + 1)->second; i++) terms.push_back(inputs[i]);
   }
 

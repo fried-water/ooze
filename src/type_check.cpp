@@ -140,9 +140,9 @@ overload_resolution(const Graph<ASTID>& ident_graph, const AST& ast, Span<ASTID>
         if(is_resolved(ast.tg, ast.types[overload.get()])) {
           overloads.emplace(id, overload);
         } else if(is_global_pattern(ast.forest, ident_graph.fanout(id)[0])) {
-          const auto it = find_if(instantiations, applied([&](ASTID fn, Type fn_type, const auto&) {
-                                    return fn == overload && compare_dags(ast.tg, fn_type, ast.types[id.get()]);
-                                  }));
+          const auto it = stdr::find_if(instantiations, applied([&](ASTID fn, Type fn_type, const auto&) {
+                                          return fn == overload && compare_dags(ast.tg, fn_type, ast.types[id.get()]);
+                                        }));
 
           if(it == instantiations.end()) {
             instantiations.emplace_back(overload, ast.types[id.get()], std::vector{id});
@@ -431,7 +431,7 @@ void find_returned_borrows(const AST& ast, std::vector<TypeCheckError>& errors, 
   const auto has_borrow = [&](auto self, Type t) -> bool {
     const TypeTag tag = ast.tg.get<TypeTag>(t);
     return tag == TypeTag::Borrow ||
-           (tag == TypeTag::Tuple && any_of(ast.tg.fanout(t), [&](Type c) { return self(self, c); }));
+           (tag == TypeTag::Tuple && stdr::any_of(ast.tg.fanout(t), [&](Type c) { return self(self, c); }));
   };
 
   const Type type = ast.types[id.get()];
@@ -555,8 +555,7 @@ bool has_conditional_overuse(const Forest<ASTTag, ASTID>& forest, Span<ASTID> us
     }
   }
 
-  return std::any_of(
-    usage.begin(), usage.end(), applied([](ASTID, int left, int right) { return std::max(left, right) > 1; }));
+  return stdr::any_of(usage, applied([](ASTID, int left, int right) { return std::max(left, right) > 1; }));
 }
 
 std::vector<TypeCheckError> find_binding_usage_errors(
@@ -568,7 +567,7 @@ std::vector<TypeCheckError> find_binding_usage_errors(
   const auto has_non_copy_type = [&](auto self, Type t) -> bool {
     switch(ast.tg.get<TypeTag>(t)) {
     case TypeTag::Leaf: return copy_types.find(ast.tg.get<TypeID>(t)) == copy_types.end();
-    case TypeTag::Tuple: return any_of(ast.tg.fanout(t), [=](Type t) { return self(self, t); });
+    case TypeTag::Tuple: return stdr::any_of(ast.tg.fanout(t), [=](Type t) { return self(self, t); });
     case TypeTag::Floating:
     case TypeTag::Borrow:
     case TypeTag::Fn: return false;
@@ -592,7 +591,7 @@ std::vector<TypeCheckError> find_binding_usage_errors(
           if(sv(srcs, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
             return is_global_pattern(ast.forest, id) ? std::nullopt
                                                      : std::optional(TypeCheckError{UnusedBinding{}, id});
-          } else if(count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
+          } else if(stdr::count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
                     has_non_copy_type(has_non_copy_type, ast.types[id.get()]) &&
                     has_conditional_overuse(ast.forest, ident_graph.fanout(id))) {
             return TypeCheckError{OverusedBinding{ident_graph.num_fanout(id)}, id};

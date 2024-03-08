@@ -149,44 +149,9 @@ std::vector<T> remove_if(std::vector<T> v, P pred) {
 }
 
 template <typename Range, typename F>
-bool any_of(const Range& range, F f) {
-  return std::any_of(range.begin(), range.end(), f);
-}
-
-template <typename Range, typename F>
-bool all_of(const Range& range, F f) {
-  return std::all_of(range.begin(), range.end(), f);
-}
-
-template <typename Range, typename F>
-bool none_of(const Range& range, F f) {
-  return std::none_of(range.begin(), range.end(), f);
-}
-
-template <typename Range, typename F>
-auto count_if(const Range& range, F f) {
-  return std::count_if(range.begin(), range.end(), f);
-}
-
-template <typename Range, typename T>
-auto find(Range&& range, const T& t) {
-  return std::find(range.begin(), range.end(), t);
-}
-
-template <typename Range, typename F>
-auto find_if(Range&& range, F f) {
-  return std::find_if(range.begin(), range.end(), f);
-}
-
-template <typename Range, typename F>
 auto find_if_opt(Range&& range, F f) {
-  auto it = find_if(std::forward<Range>(range), std::move(f));
+  auto it = std::find_if(range.begin(), range.end(), std::move(f));
   return it != range.end() ? std::optional(*it) : std::nullopt;
-}
-
-template <typename Range>
-auto distance(const Range& range) {
-  return std::distance(range.begin(), range.end());
 }
 
 } // namespace ooze

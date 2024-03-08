@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -23,6 +24,8 @@
 #include <vector>
 
 namespace ooze {
+
+namespace stdr = std::ranges;
 
 template <typename Key, typename Value>
 using Map = std::unordered_map<Key, Value, knot::Hash>;

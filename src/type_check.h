@@ -29,7 +29,7 @@ ContextualResult<OverloadResolutionData, AST> constraint_propagation(
 inline bool is_resolved(const TypeGraph& tg, Type t) {
   const auto children = tg.fanout(t);
   return tg.get<TypeTag>(t) != TypeTag::Floating &&
-         std::all_of(children.begin(), children.end(), [&](Type child) { return is_resolved(tg, child); });
+         stdr::all_of(children, [&](Type child) { return is_resolved(tg, child); });
 }
 
 } // namespace ooze

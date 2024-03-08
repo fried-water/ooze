@@ -164,7 +164,7 @@ std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>> generate_fns(
                     if(const auto it = existing_fns.find(id); it != existing_fns.end()) {
                       return Any(it->second);
                     } else {
-                      const auto it2 = find_if(fns, flattened([&](ASTID pat, ASTID, Inst) { return pat == id; }));
+                      const auto it2 = stdr::find_if(fns, flattened([&](ASTID pat, ASTID, Inst) { return pat == id; }));
                       assert(it2 != fns.end());
                       return Any(std::get<2>(*it2));
                     }
@@ -181,7 +181,7 @@ std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>> generate_fns(
 
 EnvData copy_generic_fns(Span<std::string_view> srcs, EnvData env, const AST& ast, Span<ASTID> generic_roots) {
   for(const ASTID root : generic_roots) {
-    const auto tree_size = distance(ast.forest.post_order_ids(root));
+    const auto tree_size = stdr::distance(ast.forest.post_order_ids(root));
 
     env.ast.types.resize(env.ast.forest.size() + tree_size, Type{});
     env.ast.srcs.resize(env.ast.forest.size() + tree_size, SrcRef{});

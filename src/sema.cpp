@@ -165,7 +165,7 @@ std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, Inter
     const auto module = owning_module(ast.forest, root);
     assert(module);
 
-    const auto tree_size = distance(ast.forest.post_order_ids(root));
+    const auto tree_size = stdr::distance(ast.forest.post_order_ids(root));
 
     ast.types.resize(ast.forest.size() + tree_size, Type::Invalid());
     ast.srcs.resize(ast.forest.size() + tree_size, SrcRef{});
@@ -224,12 +224,12 @@ auto find_ident_value_captures(const AST& ast, const Map<ASTID, ASTID>& overload
     const ASTID binding = it->second;
 
     const auto ancestors = ast.forest.ancestor_ids(binding);
-    if(find(ancestors, expr_id) == ancestors.end()) {
+    if(stdr::find(ancestors, expr_id) == ancestors.end()) {
       const auto parent = ast.forest.parent(id);
       const bool borrowed = ast.tg.get<TypeTag>(ast.types[id.get()]) == TypeTag::Borrow ||
                             (parent && ast.forest[*parent] == ASTTag::ExprBorrow);
 
-      if(!borrowed && none_of(values, [&](auto p) { return p.second == binding; })) {
+      if(!borrowed && stdr::none_of(values, [&](auto p) { return p.second == binding; })) {
         values.emplace_back(id, binding);
       }
     }

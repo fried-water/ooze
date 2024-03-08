@@ -29,7 +29,7 @@ std::pair<int, int> counts(const std::vector<bool>& borrows) {
 }
 
 std::pair<int, int> counts(Span<PassBy> pbs) {
-  const auto borrows = std::count_if(pbs.begin(), pbs.end(), [](PassBy pb) { return pb == PassBy::Borrow; });
+  const auto borrows = stdr::count_if(pbs, [](PassBy pb) { return pb == PassBy::Borrow; });
   return {int(pbs.size() - borrows), int(borrows)};
 }
 
