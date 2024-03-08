@@ -6,7 +6,6 @@
 #include "ooze/primitives.h"
 #include "ooze/result.h"
 #include "ooze/slice.h"
-#include "ooze/span.h"
 
 #include <fmt/core.h>
 #include <knot/core.h>
@@ -16,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -26,6 +26,24 @@
 namespace ooze {
 
 namespace stdr = std::ranges;
+
+template <typename T>
+using Span = std::span<const T>;
+
+template <typename T>
+Span<T> as_span(const T& t) {
+  return Span<T>(std::addressof(t), 1);
+}
+
+template <typename T>
+Span<T> as_span(const std::optional<T>& opt) {
+  return opt ? Span<T>(std::addressof(*opt), 1) : Span<T>{};
+}
+
+template <typename Range, typename T = typename std::decay_t<Range>::value_type>
+Span<T> as_span(Range&& rng) {
+  return Span<T>(std::data(rng), std::size(rng));
+}
 
 template <typename Key, typename Value>
 using Map = std::unordered_map<Key, Value, knot::Hash>;

@@ -299,7 +299,9 @@ BOOST_AUTO_TEST_CASE(apply_fn_deduce_arg_ref) {
   test_tc(basic_test_env(), "(f: fn(_) -> i32, x:i32) -> _ = f(&x)", "(f: fn(&i32) -> i32, x: i32) -> i32 = f(&x)");
 }
 
-BOOST_AUTO_TEST_CASE(global_fn) { test_tc(create_test_env({}, {"f: fn() -> ()"}), "() -> () = f()", "() -> () = f()"); }
+BOOST_AUTO_TEST_CASE(global_fn) {
+  test_tc(create_test_env({}, make_sv_array("f: fn() -> ()")), "() -> () = f()", "() -> () = f()");
+}
 
 BOOST_AUTO_TEST_CASE(global_fn_deduce) {
   test_tc_fns(basic_test_env(),
@@ -508,7 +510,7 @@ BOOST_AUTO_TEST_CASE(scope) {
 BOOST_AUTO_TEST_CASE(function_identity) { test_tc_fns(basic_test_env(), "fn f(x) -> _ = x", "fn f(x) -> _ = x"); }
 
 BOOST_AUTO_TEST_CASE(function_call) {
-  test_tc(create_test_env({}, {"f: fn() -> ()"}), "() -> _ = f()", "() -> () = f()");
+  test_tc(create_test_env({}, make_sv_array("f: fn() -> ()")), "() -> _ = f()", "() -> () = f()");
 }
 
 BOOST_AUTO_TEST_CASE(function_nested) {

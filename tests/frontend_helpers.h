@@ -21,7 +21,7 @@ struct TestEnv {
   ASTID module;
 };
 
-inline TestEnv create_test_env(NativeTypeInfo types = {}, Span<std::string_view> globals = {}) {
+inline TestEnv create_test_env(NativeTypeInfo types = {}, std::span<const std::string_view> globals = {}) {
   std::string src;
   AST ast;
 

@@ -63,8 +63,8 @@ BOOST_AUTO_TEST_CASE(native_fn) {
 
   const Type unit = ast.tg.add_node(TypeTag::Tuple, TypeID{});
   const Type t = ast.tg.add_node(TypeTag::Leaf, TypeID{1});
-  const Type tuple_t = ast.tg.add_node({t}, TypeTag::Tuple, TypeID{});
-  const Type fn_t = ast.tg.add_node({tuple_t, t}, TypeTag::Fn, TypeID{});
+  const Type tuple_t = ast.tg.add_node(std::array{t}, TypeTag::Tuple, TypeID{});
+  const Type fn_t = ast.tg.add_node(std::array{tuple_t, t}, TypeTag::Fn, TypeID{});
 
   const SrcRef ref = {SrcID{0}, {0, 1}};
 

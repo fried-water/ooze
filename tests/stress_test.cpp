@@ -24,7 +24,7 @@ std::pair<Inst, Program> create_graph(int depth) {
   auto [cg, input] = make_graph({false});
   const int num_inputs = 1 << depth;
   for(int i = 0; i < num_inputs; i++) {
-    edges.emplace(std::pair(depth, i), cg.add(identity, {input}, {PassBy::Copy}, 1)[0]);
+    edges.emplace(std::pair(depth, i), cg.add(identity, input, std::array{PassBy::Copy}, 1)[0]);
   }
 
   for(int layer = depth - 1; layer >= 0; layer--) {
@@ -32,13 +32,13 @@ std::pair<Inst, Program> create_graph(int depth) {
     for(int i = 0; i < nodes_on_layer; i++) {
       edges.emplace(std::pair(layer, i),
                     cg.add(sum,
-                           {edges.at(std::pair(layer + 1, i * 2)), edges.at(std::pair(layer + 1, i * 2 + 1))},
-                           {PassBy::Borrow, PassBy::Move},
+                           std::array{edges.at(std::pair(layer + 1, i * 2)), edges.at(std::pair(layer + 1, i * 2 + 1))},
+                           std::array{PassBy::Borrow, PassBy::Move},
                            1)[0]);
     }
   }
 
-  const Inst g = program.add(std::move(cg).finalize({edges.at(std::pair(0, 0))}, {PassBy::Copy}));
+  const Inst g = program.add(std::move(cg).finalize(std::array{edges.at(std::pair(0, 0))}, std::array{PassBy::Copy}));
   return {g, std::move(program)};
 }
 

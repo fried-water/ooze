@@ -55,7 +55,7 @@ void ConstructingGraph::add_edges(Span<Oterm> inputs, Span<PassBy> pbs) {
   int value_idx = 0;
   int borrow_idx = 0;
 
-  for(int i = 0; i < inputs.ssize(); i++) {
+  for(int i = 0; i < std::ssize(inputs); i++) {
     fwd_of(inputs[i]).push_back({int(insts.size()), pbs[i] == PassBy::Borrow ? borrow_idx++ : value_idx++, pbs[i]});
   }
 }

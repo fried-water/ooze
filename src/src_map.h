@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ooze/slice.h"
-#include "ooze/span.h"
 #include "ooze/strong_id.h"
 
 #include <array>

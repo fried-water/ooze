@@ -192,7 +192,7 @@ execute(const AnyFn& fn,
         std::vector<BorrowedFuture> borrowed_inputs) {
   if(input_borrows.empty() && output_count < 10) {
     std::array<Any, 10> result_buffer;
-    fn(std::array<Any*, 0>{}, result_buffer.data());
+    fn({}, result_buffer.data());
 
     std::vector<Future> results;
     results.reserve(output_count);
@@ -203,7 +203,7 @@ execute(const AnyFn& fn,
 
   } else if(input_borrows.empty()) {
     std::unique_ptr<Any[]> result_buffer = std::make_unique<Any[]>(output_count);
-    fn(std::array<Any*, 0>{}, result_buffer.get());
+    fn({}, result_buffer.get());
 
     std::vector<Future> results;
     results.reserve(output_count);

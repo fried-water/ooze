@@ -318,7 +318,7 @@ Grouping<ASTID, 5> find_while_grouping(Span<ASTID> results, Span<ASTID> cond, Sp
   const int inv_both = int(std::distance(values.begin(), inv_both_it));
 
   for(const ASTID id : cond) {
-    if(!contained_fn(Span(values.data(), ret_both))(id)) {
+    if(!contained_fn(std::span(values.data(), ret_both))(id)) {
       values.push_back(id);
     }
   }
@@ -354,7 +354,7 @@ std::pair<GraphContext, std::vector<Oterm>> add_while_expr(
     ast.tg,
     ast.types,
     cond_graph,
-    {PassBy::Copy},
+    std::array{PassBy::Copy},
     std::array{owned_grouping[0], owned_grouping[2], owned_grouping[4]},
     std::array{borrowed_grouping[0], borrowed_grouping[2]}));
 

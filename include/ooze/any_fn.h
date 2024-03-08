@@ -1,17 +1,17 @@
 #pragma once
 
 #include "ooze/any.h"
-#include "ooze/span.h"
 #include "ooze/traits.h"
 
 #include <cassert>
 #include <functional>
+#include <span>
 
 namespace ooze {
 namespace details {
 
 template <typename... Ts, typename F, std::size_t... Is>
-void call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, Any* outputs, std::index_sequence<Is...>) {
+void call_with_anys(knot::TypeList<Ts...>, F& f, std::span<Any*> inputs, Any* outputs, std::index_sequence<Is...>) {
   assert(inputs.size() == sizeof...(Ts));
   assert(((type_id(decay(knot::Type<Ts>{})) == inputs[Is]->type()) && ...));
 
@@ -29,7 +29,7 @@ void call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, Any* outputs
 
 } // namespace details
 
-using AnyFn = std::function<void(Span<Any*>, Any*)>;
+using AnyFn = std::function<void(std::span<Any*>, Any*)>;
 
 template <typename F>
 AnyFn create_any_fn(F&& f) {
@@ -44,7 +44,7 @@ AnyFn create_any_fn(F&& f) {
                                 all(fn_ret, [](auto t) { return t == decay(t) || is_rref(t); });
 
   if constexpr(legal_args && legal_return && is_const_function(fn_type)) {
-    return [f = std::forward<F>(f), fn_args](Span<Any*> inputs, Any* results) {
+    return [f = std::forward<F>(f), fn_args](std::span<Any*> inputs, Any* results) {
       details::call_with_anys(fn_args, f, inputs, results, knot::idx_seq(fn_args));
     };
   } else {
@@ -55,7 +55,7 @@ AnyFn create_any_fn(F&& f) {
     static_assert(legal_return,
                   "Function return type must be void, a value or tuple of "
                   "values (no refs or pointers).");
-    return [](Span<Any*>, Any*) {};
+    return [](std::span<Any*>, Any*) {};
   }
 }
 

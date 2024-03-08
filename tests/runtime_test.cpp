@@ -43,12 +43,12 @@ i64 accumulate(const std::vector<int>& v) { return std::accumulate(v.begin(), v.
 
 auto create_pipeline(Program& p, int seed) {
   auto [cg, size] = make_graph({false});
-  const auto create_output = cg.add(p.add_fn(create_vector), size, {PassBy::Copy}, 1);
-  const auto shuffle_output = cg.add(p.add_fn(create_shuffle(seed)), create_output, {PassBy::Move}, 1);
-  const auto sort_output =
-    cg.add(p.add_fn([](std::vector<int> v) { return sorted(std::move(v)); }), shuffle_output, {PassBy::Move}, 1);
-  const auto acc_output = cg.add(p.add_fn(accumulate), sort_output, {PassBy::Borrow}, 1);
-  return std::move(cg).finalize(acc_output, {PassBy::Copy});
+  const auto create_output = cg.add(p.add_fn(create_vector), size, std::array{PassBy::Copy}, 1);
+  const auto shuffle_output = cg.add(p.add_fn(create_shuffle(seed)), create_output, std::array{PassBy::Move}, 1);
+  const auto sort_output = cg.add(
+    p.add_fn([](std::vector<int> v) { return sorted(std::move(v)); }), shuffle_output, std::array{PassBy::Move}, 1);
+  const auto acc_output = cg.add(p.add_fn(accumulate), sort_output, std::array{PassBy::Borrow}, 1);
+  return std::move(cg).finalize(acc_output, std::array{PassBy::Copy});
 }
 
 auto create_graph(Program& p) {
@@ -68,15 +68,15 @@ auto create_graph(Program& p) {
 
   const auto pbs = std::array{PassBy::Copy, PassBy::Copy};
 
-  const auto o1 = cg.add(sumf, {ps[0], ps[1]}, pbs, 1)[0];
-  const auto o2 = cg.add(sumf, {ps[2], ps[3]}, pbs, 1)[0];
-  const auto o3 = cg.add(sumf, {ps[4], ps[5]}, pbs, 1)[0];
-  const auto o4 = cg.add(sumf, {ps[6], ps[7]}, pbs, 1)[0];
+  const auto o1 = cg.add(sumf, std::array{ps[0], ps[1]}, pbs, 1)[0];
+  const auto o2 = cg.add(sumf, std::array{ps[2], ps[3]}, pbs, 1)[0];
+  const auto o3 = cg.add(sumf, std::array{ps[4], ps[5]}, pbs, 1)[0];
+  const auto o4 = cg.add(sumf, std::array{ps[6], ps[7]}, pbs, 1)[0];
 
-  const auto o5 = cg.add(sumf, {o1, o2}, pbs, 1)[0];
-  const auto o6 = cg.add(sumf, {o3, o4}, pbs, 1)[0];
+  const auto o5 = cg.add(sumf, std::array{o1, o2}, pbs, 1)[0];
+  const auto o6 = cg.add(sumf, std::array{o3, o4}, pbs, 1)[0];
 
-  return p.add(std::move(cg).finalize(cg.add(sumf, {o5, o6}, pbs, 1), {PassBy::Copy}));
+  return p.add(std::move(cg).finalize(cg.add(sumf, std::array{o5, o6}, pbs, 1), std::array{PassBy::Copy}));
 }
 
 template <typename MakeExecutor>
@@ -129,14 +129,14 @@ BOOST_AUTO_TEST_CASE(example_seq, *boost::unit_test::disabled()) {
 
 BOOST_AUTO_TEST_CASE(empty) {
   auto [cg, s] = make_graph({false});
-  compare(7, execute({}, std::move(cg).finalize(s, {PassBy::Copy}), std::tuple(7), {}));
+  compare(7, execute({}, std::move(cg).finalize(s, std::array{PassBy::Copy}), std::tuple(7), {}));
 }
 
 BOOST_AUTO_TEST_CASE(copy) {
   Program p;
   const Inst take = p.add_fn([](int i) { return i; });
   auto [cg, s] = make_graph({false});
-  FunctionGraph g = std::move(cg).finalize(cg.add(take, s, {PassBy::Copy}, 1), {PassBy::Copy});
+  FunctionGraph g = std::move(cg).finalize(cg.add(take, s, std::array{PassBy::Copy}, 1), std::array{PassBy::Copy});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
 }
 
@@ -144,7 +144,7 @@ BOOST_AUTO_TEST_CASE(move) {
   Program p;
   const Inst take = p.add_fn([](int i) { return i; });
   auto [cg, s] = make_graph({false});
-  auto g = std::move(cg).finalize(cg.add(take, s, {PassBy::Move}, 1), {PassBy::Move});
+  auto g = std::move(cg).finalize(cg.add(take, s, std::array{PassBy::Move}, 1), std::array{PassBy::Move});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
 }
 
@@ -152,7 +152,7 @@ BOOST_AUTO_TEST_CASE(borrow) {
   Program p;
   const Inst take_ref = p.add_fn([](const int& i) { return i; });
   auto [cg, s] = make_graph({false});
-  auto g = std::move(cg).finalize(cg.add(take_ref, s, {PassBy::Borrow}, 1), {PassBy::Copy});
+  auto g = std::move(cg).finalize(cg.add(take_ref, s, std::array{PassBy::Borrow}, 1), std::array{PassBy::Copy});
   compare(7, execute(std::move(p), std::move(g), std::tuple(7), {}));
 }
 
@@ -167,14 +167,15 @@ BOOST_AUTO_TEST_CASE(sentinal) {
 
   auto [cg, inputs] = make_graph({false, false, false});
 
-  const Oterm o1 = cg.add(take, cg.add(take, {inputs[0]}, {PassBy::Move}, 1), {PassBy::Move}, 1)[0];
-  const Oterm o2 = cg.add(take, {inputs[1]}, {PassBy::Copy}, 1)[0];
+  const Oterm o1 =
+    cg.add(take, cg.add(take, std::array{inputs[0]}, std::array{PassBy::Move}, 1), std::array{PassBy::Move}, 1)[0];
+  const Oterm o2 = cg.add(take, std::array{inputs[1]}, std::array{PassBy::Copy}, 1)[0];
   const Oterm o3 = inputs[1];
-  const Oterm o4 = cg.add(borrow, {inputs[2]}, {PassBy::Borrow}, 1)[0];
+  const Oterm o4 = cg.add(borrow, std::array{inputs[2]}, std::array{PassBy::Borrow}, 1)[0];
   const Oterm o5 = inputs[2];
 
   auto g = std::move(cg).finalize(
-    {o1, o2, o3, o4, o5}, {PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move});
+    std::array{o1, o2, o3, o4, o5}, std::array{PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move, PassBy::Move});
 
   const std::vector<Any> results =
     execute(std::move(p), std::move(g), std::tuple(Sentinal{}, Sentinal{}, Sentinal{}), {});
@@ -191,7 +192,8 @@ BOOST_AUTO_TEST_CASE(move_only) {
   Program p;
   const Inst take = p.add_fn([](std::unique_ptr<int> ptr) { return *ptr; });
   auto [cg, ptr] = make_graph({false});
-  const Inst g = p.add(std::move(cg).finalize(cg.add(take, ptr, {PassBy::Move}, 1), {PassBy::Move}));
+  const Inst g =
+    p.add(std::move(cg).finalize(cg.add(take, ptr, std::array{PassBy::Move}, 1), std::array{PassBy::Move}));
   compare(5, execute(std::make_shared<Program>(std::move(p)), g, std::tuple(std::make_unique<int>(5)), {}));
 }
 
@@ -200,7 +202,8 @@ BOOST_AUTO_TEST_CASE(fwd) {
   const Inst fwd = p.add_fn([](Sentinal&& s) -> Sentinal&& { return std::move(s); });
 
   auto [cg, inputs] = make_graph({false});
-  const Inst g = p.add(std::move(cg).finalize(cg.add(fwd, inputs, {PassBy::Move}, 1), {PassBy::Move}));
+  const Inst g =
+    p.add(std::move(cg).finalize(cg.add(fwd, inputs, std::array{PassBy::Move}, 1), std::array{PassBy::Move}));
 
   Executor ex = make_seq_executor();
   std::vector<Future> results =
@@ -217,8 +220,11 @@ BOOST_AUTO_TEST_CASE(borrow_fwd) {
   Executor ex = make_seq_executor();
 
   auto [cg, inputs] = make_graph({true, true});
-  const auto outputs = cg.add(
-    p.add_fn([](const Sentinal&, Sentinal) {}), std::array{inputs[0], inputs[0]}, {PassBy::Borrow, PassBy::Copy}, 0);
+  const auto outputs =
+    cg.add(p.add_fn([](const Sentinal&, Sentinal) {}),
+           std::array{inputs[0], inputs[0]},
+           std::array{PassBy::Borrow, PassBy::Copy},
+           0);
 
   const Inst g = p.add(std::move(cg).finalize({}, {}));
 
@@ -249,8 +255,8 @@ BOOST_AUTO_TEST_CASE(timing, *boost::unit_test::disabled()) {
       std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(i));
       return s + " out";
     }),
-                             {input_terms[i]},
-                             {PassBy::Borrow},
+                             std::array{input_terms[i]},
+                             std::array{PassBy::Borrow},
                              1)[0]);
   }
 

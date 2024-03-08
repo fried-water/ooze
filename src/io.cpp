@@ -26,7 +26,7 @@ StringResult<void> write_binary_file(const std::string& filename, Span<std::byte
   try {
     return check_is_not_directory(filename).map([&]() {
       std::basic_ofstream<char> file(filename, std::ios::binary);
-      file.write((const char*)bytes.begin(), int(bytes.size()));
+      file.write((const char*)bytes.data(), int(bytes.size()));
     });
   } catch(const std::exception& ex) {
     return err(ex.what());

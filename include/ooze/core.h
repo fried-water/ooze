@@ -8,6 +8,7 @@
 #include "ooze/result.h"
 #include "ooze/type.h"
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -47,8 +48,8 @@ public:
   Env(Env&&) = default;
   Env& operator=(Env&&) = default;
 
-  StringResult<void> parse_scripts(Span<std::string_view>) &;
-  StringResult<void, Env> parse_scripts(Span<std::string_view>) &&;
+  StringResult<void> parse_scripts(std::span<const std::string_view>) &;
+  StringResult<void, Env> parse_scripts(std::span<const std::string_view>) &&;
 
   StringResult<Binding> run(ExecutorRef, std::string_view) &;
   StringResult<Binding, Env> run(ExecutorRef, std::string_view) &&;

@@ -218,7 +218,7 @@ BOOST_AUTO_TEST_CASE(env_function_inside_mod) {
 }
 
 BOOST_AUTO_TEST_CASE(partial) {
-  TestEnv env = create_test_env({}, {"f: fn() -> ()"});
+  TestEnv env = create_test_env({}, make_sv_array("f: fn() -> ()"));
 
   const std::string_view src1 = "fn g() -> _ = f()";
   const std::string_view src2 = "fn h() -> _ = ()";
@@ -234,7 +234,7 @@ BOOST_AUTO_TEST_CASE(partial) {
 }
 
 BOOST_AUTO_TEST_CASE(ignore_unresolved_env_fn) {
-  check_sema(check_result(run_sema(create_test_env({}, {"f: fn() -> _"}), "")), {});
+  check_sema(check_result(run_sema(create_test_env({}, make_sv_array("f: fn() -> _")), "")), {});
 }
 
 BOOST_AUTO_TEST_CASE(unresolved_fn) {
@@ -506,7 +506,7 @@ BOOST_AUTO_TEST_CASE(fn_nested) {
 }
 
 BOOST_AUTO_TEST_CASE(call_global) {
-  auto [types, env_src, ast, module] = create_test_env({}, {"f: fn() -> ()"});
+  auto [types, env_src, ast, module] = create_test_env({}, make_sv_array("f: fn() -> ()"));
   const auto srcs = make_sv_array(env_src, "fn g() -> _ = f()");
   ParserResult<std::vector<ASTID>> pr;
   std::tie(pr, ast) = check_result(parse(std::move(ast), SrcID{1}, srcs[1]));
@@ -577,7 +577,7 @@ BOOST_AUTO_TEST_CASE(recursive) {
 }
 
 BOOST_AUTO_TEST_CASE(unused_fn) {
-  auto [types, env_src, ast, module] = create_test_env({}, {"f: fn() -> ()"});
+  auto [types, env_src, ast, module] = create_test_env({}, make_sv_array("f: fn() -> ()"));
   const auto srcs = make_sv_array(env_src);
   const auto fanout = std::vector<std::vector<ASTID>>(ast.forest.size());
   check_eq("ident_graph", Graph<ASTID>(fanout), check_result(calculate_ident_graph(srcs, ast, {})));

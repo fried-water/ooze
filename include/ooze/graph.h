@@ -3,9 +3,9 @@
 #include "ooze/iter.h"
 #include "ooze/primitives.h"
 #include "ooze/result.h"
-#include "ooze/span.h"
 #include "ooze/strong_id.h"
 
+#include <span>
 #include <vector>
 
 namespace ooze {
@@ -46,8 +46,9 @@ public:
   bool has_fanout(ID n) const { return num_fanout(n) > 0; }
 
   auto nodes() const { return id_range(ID(underlying_type(num_nodes()))); }
-  auto fanout(ID n) const {
-    return Span(_fanout.data() + _indices[as_integral(n)], _fanout.data() + _indices[as_integral(n) + 1]);
+
+  std::span<const ID> fanout(ID n) const {
+    return std::span(_fanout.data() + _indices[as_integral(n)], _fanout.data() + _indices[as_integral(n) + 1]);
   }
 
   template <typename T>
@@ -78,7 +79,7 @@ public:
      ...);
   }
 
-  ID add_node(Span<ID> fanout, Ts... ts) {
+  ID add_node(std::span<const ID> fanout, Ts... ts) {
     _indices.push_back(int(_fanout.size() + fanout.size()));
     _fanout.insert(_fanout.end(), fanout.begin(), fanout.end());
     (static_cast<std::vector<Ts>&>(*this).push_back(std::move(ts)), ...);
