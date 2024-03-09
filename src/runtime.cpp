@@ -23,20 +23,12 @@ void connect_multi(Futures&& futures, Promises&& promises) {
   }
 }
 
-auto make_multi_promise_future(int count) {
-  std::vector<Promise> promises;
-  std::vector<Future> futures;
-
-  promises.reserve(count);
-  futures.reserve(count);
-
-  for(int i = 0; i < count; i++) {
-    auto [p, f] = make_promise_future();
-    promises.push_back(std::move(p));
-    futures.push_back(std::move(f));
+std::vector<Promise> make_multi_promise_future(std::span<Future> futures) {
+  std::vector<Promise> promises(futures.size());
+  for(int i = 0; i < std::ssize(futures); i++) {
+    std::tie(promises[i], futures[i]) = make_promise_future();
   }
-
-  return std::pair(std::move(promises), std::move(futures));
+  return promises;
 }
 
 struct InvocationBlock {
@@ -51,17 +43,14 @@ struct InvocationBlock {
 
   std::vector<Promise> promises;
 
-  InvocationBlock(AnyFn f_,
-                  std::vector<BorrowedFuture> borrowed_inputs,
-                  std::vector<Promise> promises,
-                  size_t input_count,
-                  int output_count)
+  InvocationBlock(
+    AnyFn f_, std::vector<BorrowedFuture> borrowed_inputs, std::vector<Promise> promises_, size_t input_count)
       : f(std::move(f_))
       , ref_count(int(input_count))
-      , any_buffer(input_count + output_count)
+      , any_buffer(input_count + promises_.size())
       , input_ptrs(input_count)
       , borrowed_inputs(std::move(borrowed_inputs))
-      , promises(std::move(promises)) {}
+      , promises(std::move(promises_)) {}
 };
 
 struct Block {
@@ -104,7 +93,7 @@ struct InputState {
   std::vector<std::vector<BorrowedFuture>> borrowed_inputs;
 };
 
-InputState propagate(InputState s, const std::vector<ValueForward>& fwds, std::vector<Future> outputs) {
+InputState propagate(InputState s, std::span<const ValueForward> fwds, std::span<Future> outputs) {
   assert(fwds.size() == outputs.size());
 
   for(int i = 0; i < int(fwds.size()); i++) {
@@ -163,7 +152,7 @@ InputState propagate(InputState s, const std::vector<ValueForward>& fwds, std::v
   return s;
 }
 
-InputState propagate(InputState s, const std::vector<ValueForward>& fwds, std::vector<BorrowedFuture> outputs) {
+InputState propagate(InputState s, std::span<const ValueForward> fwds, std::vector<BorrowedFuture> outputs) {
   assert(fwds.size() == outputs.size());
   for(int i = 0; i < int(fwds.size()); i++) {
     assert(fwds[i].copy_end == fwds[i].move_end);
@@ -183,38 +172,27 @@ InputState propagate(InputState s, const std::vector<ValueForward>& fwds, std::v
   return s;
 }
 
-std::vector<Future>
-execute(const AnyFn& fn,
-        const std::vector<bool>& input_borrows,
-        int output_count,
-        ExecutorRef ex,
-        std::vector<Future> inputs,
-        std::vector<BorrowedFuture> borrowed_inputs) {
-  if(input_borrows.empty() && output_count < 10) {
+void execute(const AnyFnInst& inst,
+             ExecutorRef ex,
+             std::vector<Future> inputs,
+             std::vector<BorrowedFuture> borrowed_inputs,
+             std::vector<Promise> promises) {
+  if(inst.input_borrows.empty() && promises.size() < 10) {
     std::array<Any, 10> result_buffer;
-    fn({}, result_buffer.data());
+    inst.fn({}, result_buffer.data());
 
-    std::vector<Future> results;
-    results.reserve(output_count);
-    std::transform(result_buffer.data(), result_buffer.data() + output_count, std::back_inserter(results), [](Any& a) {
-      return Future(std::move(a));
-    });
-    return results;
+    for(int i = 0; i < promises.size(); i++) {
+      std::move(promises[i]).send(std::move(result_buffer[i]));
+    }
+  } else if(inst.input_borrows.empty()) {
+    std::unique_ptr<Any[]> result_buffer = std::make_unique<Any[]>(promises.size());
+    inst.fn({}, result_buffer.get());
 
-  } else if(input_borrows.empty()) {
-    std::unique_ptr<Any[]> result_buffer = std::make_unique<Any[]>(output_count);
-    fn({}, result_buffer.get());
-
-    std::vector<Future> results;
-    results.reserve(output_count);
-    std::transform(result_buffer.get(), result_buffer.get() + output_count, std::back_inserter(results), [](Any& a) {
-      return Future(std::move(a));
-    });
-    return results;
+    for(int i = 0; i < promises.size(); i++) {
+      std::move(promises[i]).send(std::move(result_buffer[i]));
+    }
   } else {
-    auto [promises, futures] = make_multi_promise_future(output_count);
-    auto* b =
-      new InvocationBlock(fn, std::move(borrowed_inputs), std::move(promises), input_borrows.size(), output_count);
+    auto* b = new InvocationBlock(inst.fn, std::move(borrowed_inputs), std::move(promises), inst.input_borrows.size());
 
     auto invoke = [ex](InvocationBlock* b) mutable {
       ex.run([b]() {
@@ -235,8 +213,8 @@ execute(const AnyFn& fn,
 
     int owned_offset = 0;
     int borrowed_offset = 0;
-    for(size_t i = 0; i < input_borrows.size(); i++) {
-      if(!input_borrows[i]) {
+    for(size_t i = 0; i < inst.input_borrows.size(); i++) {
+      if(!inst.input_borrows[i]) {
         std::move(inputs[owned_offset++]).then([i, b, invoke](Any value) mutable {
           b->any_buffer[i] = std::move(value);
           b->input_ptrs[i] = &b->any_buffer[i];
@@ -253,16 +231,15 @@ execute(const AnyFn& fn,
         });
       }
     }
-
-    return std::move(futures);
   }
 }
 
-std::vector<Future> execute(const std::shared_ptr<const Program>& p,
-                            const FunctionGraph& g,
-                            ExecutorRef ex,
-                            std::vector<Future> inputs,
-                            std::vector<BorrowedFuture> borrowed_inputs) {
+void execute(const std::shared_ptr<const Program>& p,
+             const FunctionGraph& g,
+             ExecutorRef ex,
+             std::vector<Future> inputs,
+             std::vector<BorrowedFuture> borrowed_inputs,
+             std::span<Future> outputs) {
   InputState s;
   s.inputs.reserve(g.input_counts.size() + 1);
   s.borrowed_inputs.reserve(g.input_counts.size());
@@ -275,45 +252,46 @@ std::vector<Future> execute(const std::shared_ptr<const Program>& p,
   s.inputs.emplace_back(g.output_count);
   // can't return borrowed_inputs
 
-  s = propagate(std::move(s), g.owned_fwds.front(), std::move(inputs));
+  s = propagate(std::move(s), g.owned_fwds.front(), inputs);
   s = propagate(std::move(s), g.input_borrowed_fwds, std::move(borrowed_inputs));
 
+  const auto max_it =
+    stdr::max_element(g.insts, [&](Inst x, Inst y) { return p->output_counts[x.get()] < p->output_counts[y.get()]; });
+
+  std::vector<Future> results(max_it == g.insts.end() ? 0 : p->output_counts[max_it->get()]);
   for(int i = 0; i < int(g.insts.size()); i++) {
-    std::vector<Future> results = execute(p, g.insts[i], ex, std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
-    s = propagate(std::move(s), g.owned_fwds[i + 1], std::move(results));
+    std::span<Future> result_span(results.data(), p->output_counts[g.insts[i].get()]);
+    execute(p, g.insts[i], ex, std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]), result_span);
+    s = propagate(std::move(s), g.owned_fwds[i + 1], result_span);
   }
 
-  return std::move(s.inputs.back());
+  std::move(s.inputs.back().begin(), s.inputs.back().end(), outputs.begin());
 }
 
-std::vector<Future> execute_functional(std::shared_ptr<const Program> p,
-                                       int output_count,
-                                       ExecutorRef ex,
-                                       std::vector<Future> inputs,
-                                       std::vector<BorrowedFuture> borrowed_inputs) {
-  auto [promises, futures] = make_multi_promise_future(output_count);
-
+void execute_functional(std::shared_ptr<const Program> p,
+                        ExecutorRef ex,
+                        std::vector<Future> inputs,
+                        std::vector<BorrowedFuture> borrowed_inputs,
+                        std::vector<Promise> promises) {
   Future fn = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
   auto* b = new Block{std::move(p), ex, std::move(inputs), std::move(borrowed_inputs), std::move(promises)};
   std::move(fn).then([b](Any fn) mutable {
-    connect_multi(
-      execute(std::move(b->p), any_cast<Inst>(fn), b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs)),
-      std::move(b->promises));
+    std::vector<Future> results(b->promises.size());
+    execute(
+      std::move(b->p), any_cast<Inst>(fn), b->e, std::move(b->owned_inputs), std::move(b->borrowed_inputs), results);
+    connect_multi(std::move(results), std::move(b->promises));
     delete b;
   });
-
-  return std::move(futures);
 }
 
-std::vector<Future> execute_if(std::shared_ptr<const Program> p,
-                               const IfInst& inst,
-                               ExecutorRef ex,
-                               std::vector<Future> inputs,
-                               std::vector<BorrowedFuture> borrowed_inputs) {
-  auto [promises, futures] = make_multi_promise_future(inst.output_count);
-
+void execute_if(std::shared_ptr<const Program> p,
+                const IfInst& inst,
+                ExecutorRef ex,
+                std::vector<Future> inputs,
+                std::vector<BorrowedFuture> borrowed_inputs,
+                std::vector<Promise> promises) {
   Future cond = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
@@ -336,18 +314,15 @@ std::vector<Future> execute_if(std::shared_ptr<const Program> p,
       borrows.erase(borrows.begin() + inst.borrow_offsets[0], borrows.begin() + inst.borrow_offsets[1]);
     }
 
-    connect_multi(
-      execute(std::move(b->p), cond ? inst.if_inst : inst.else_inst, b->e, std::move(inputs), std::move(borrows)),
-      std::move(b->promises));
+    std::vector<Future> results(b->promises.size());
+    execute(
+      std::move(b->p), cond ? inst.if_inst : inst.else_inst, b->e, std::move(inputs), std::move(borrows), results);
+    connect_multi(std::move(results), std::move(b->promises));
     delete b;
   });
-
-  return std::move(futures);
 }
 
-std::vector<Future> execute_select(std::vector<Future> inputs) {
-  auto [promises, futures] = make_multi_promise_future(int(inputs.size()) / 2);
-
+void execute_select(std::vector<Future> inputs, std::vector<Promise> promises) {
   Future cond = std::move(inputs[0]);
   inputs.erase(inputs.begin());
 
@@ -356,16 +331,14 @@ std::vector<Future> execute_select(std::vector<Future> inputs) {
   std::move(cond).then([b](Any cond) mutable {
     assert(holds_alternative<bool>(cond));
 
-    if(any_cast<bool>(cond)) {
-      b->futures.erase(b->futures.begin() + i64(b->futures.size() / 2), b->futures.end());
-    } else {
-      b->futures.erase(b->futures.begin(), b->futures.begin() + i64(b->futures.size() / 2));
-    }
-    connect_multi(std::move(b->futures), std::move(b->promises));
+    const bool c = any_cast<bool>(cond);
+
+    const auto begin = c ? b->futures.begin() : b->futures.begin() + i64(b->futures.size() / 2);
+    const auto end = c ? b->futures.begin() + i64(b->futures.size() / 2) : b->futures.end();
+
+    connect_multi(stdr::subrange(begin, end), std::move(b->promises));
     delete b;
   });
-
-  return std::move(futures);
 }
 
 WhileBlock* create_while_block(std::shared_ptr<const Program> p,
@@ -418,11 +391,10 @@ void execute_while(WhileBlock* b) {
     cond_inputs.push_back(std::move(f2));
   }
 
-  auto cond_result = execute(b->p, b->cond, b->e, std::move(cond_inputs), b->cond_borrowed);
+  Future cond_result;
+  execute(b->p, b->cond, b->e, std::move(cond_inputs), b->cond_borrowed, {&cond_result, 1});
 
-  assert(cond_result.size() == 1);
-
-  std::move(cond_result[0]).then([b](Any cond) {
+  std::move(cond_result).then([b](Any cond) {
     assert(holds_alternative<bool>(cond));
 
     if(any_cast<bool>(cond)) {
@@ -432,7 +404,9 @@ void execute_while(WhileBlock* b) {
         b->accumulator.push_back(std::move(f2));
       }
 
-      b->accumulator = execute(b->p, b->body, b->e, std::move(b->accumulator), b->body_borrowed);
+      std::vector<Future> results(b->p->output_counts[b->body.get()]);
+      execute(b->p, b->body, b->e, std::move(b->accumulator), b->body_borrowed, results);
+      b->accumulator = std::move(results);
       execute_while(b);
     } else {
       connect_multi(std::move(b->accumulator), std::move(b->promises));
@@ -443,43 +417,57 @@ void execute_while(WhileBlock* b) {
 
 } // namespace
 
-std::vector<Future> execute(std::shared_ptr<const Program> p,
-                            Inst inst,
-                            ExecutorRef ex,
-                            std::vector<Future> inputs,
-                            std::vector<BorrowedFuture> borrowed_inputs) {
+void execute(std::shared_ptr<const Program> p,
+             Inst inst,
+             ExecutorRef ex,
+             std::vector<Future> inputs,
+             std::vector<BorrowedFuture> borrowed_inputs,
+             std::span<Future> outputs) {
+  assert(outputs.size() == p->output_counts[inst.get()]);
 
   switch(p->inst[inst.get()]) {
-  case InstOp::Value: return make_vector(Future(p->values[p->inst_data[inst.get()]]));
+  case InstOp::Value: outputs[0] = Future(p->values[p->inst_data[inst.get()]]); return;
   case InstOp::Fn: {
-    const auto& [fn, input_borrows, output_count] = p->fns[p->inst_data[inst.get()]];
-    return execute(fn, input_borrows, output_count, ex, std::move(inputs), std::move(borrowed_inputs));
+    return execute(p->fns[p->inst_data[inst.get()]],
+                   ex,
+                   std::move(inputs),
+                   std::move(borrowed_inputs),
+                   make_multi_promise_future(outputs));
   }
   case InstOp::Graph:
-    return execute(p, p->graphs[p->inst_data[inst.get()]], ex, std::move(inputs), std::move(borrowed_inputs));
+    return execute(p, p->graphs[p->inst_data[inst.get()]], ex, std::move(inputs), std::move(borrowed_inputs), outputs);
   case InstOp::Functional:
-    return execute_functional(p, p->inst_data[inst.get()], ex, std::move(inputs), std::move(borrowed_inputs));
+    return execute_functional(p, ex, std::move(inputs), std::move(borrowed_inputs), make_multi_promise_future(outputs));
   case InstOp::If:
-    return execute_if(p, p->ifs[p->inst_data[inst.get()]], ex, std::move(inputs), std::move(borrowed_inputs));
-  case InstOp::Select: return execute_select(std::move(inputs));
+    return execute_if(
+      p,
+      p->ifs[p->inst_data[inst.get()]],
+      ex,
+      std::move(inputs),
+      std::move(borrowed_inputs),
+      make_multi_promise_future(outputs));
+  case InstOp::Select: return execute_select(std::move(inputs), make_multi_promise_future(outputs));
   case InstOp::While: {
-    const WhileInst& w = p->whiles[p->inst_data[inst.get()]];
-    auto [promises, futures] = make_multi_promise_future(w.output_count);
-    execute_while(create_while_block(p, ex, w, std::move(inputs), std::move(borrowed_inputs), std::move(promises)));
-    return std::move(futures);
+    execute_while(create_while_block(
+      p,
+      ex,
+      p->whiles[p->inst_data[inst.get()]],
+      std::move(inputs),
+      std::move(borrowed_inputs),
+      make_multi_promise_future(outputs)));
+    return;
   }
   case InstOp::Curry: {
     const auto [curry_inst, slice] = p->currys[p->inst_data[inst.get()]];
     for(i32 i = slice.begin; i < slice.end; i++) {
       inputs.emplace_back(p->values[i]);
     }
-    return execute(std::move(p), curry_inst, ex, std::move(inputs), std::move(borrowed_inputs));
+    return execute(std::move(p), curry_inst, ex, std::move(inputs), std::move(borrowed_inputs), outputs);
   }
-  case InstOp::Placeholder: assert(false); return {};
+  case InstOp::Placeholder: assert(false); return;
   }
 
   assert(false);
-  return {};
 }
 
 } // namespace ooze

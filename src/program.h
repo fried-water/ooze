@@ -23,17 +23,13 @@ constexpr auto names(knot::Type<InstOp>) {
 struct AnyFnInst {
   AnyFn fn;
   std::vector<bool> input_borrows;
-  int output_count;
 };
 
-struct FunctionalInst {
-  i32 output_count;
-};
+struct FunctionalInst {};
 
 struct IfInst {
   Inst if_inst;
   Inst else_inst;
-  i32 output_count = 0;
 
   // [common, if, else]
   std::array<i32, 2> value_offsets = {};
@@ -43,7 +39,6 @@ struct IfInst {
 struct WhileInst {
   Inst cond_inst;
   Inst body_inst;
-  i32 output_count = 0;
 
   // [ret_common, ret_body, inv_common, inv_body, inv_cond]
   std::array<i32, 4> value_offsets = {};
@@ -56,6 +51,7 @@ struct SelectInst {};
 
 struct Program {
   std::vector<InstOp> inst;
+  std::vector<i32> output_counts;
   std::vector<i32> inst_data;
 
   std::vector<Any> values;
@@ -68,26 +64,16 @@ struct Program {
   std::vector<std::pair<Inst, Slice>> currys;
 
   Inst add(Any);
+  Inst add(AnyFn, std::vector<bool> input_borrows, int output_count);
   Inst add(FunctionGraph);
-  Inst add(FunctionalInst);
-  Inst add(IfInst);
-  Inst add(SelectInst);
-  Inst add(WhileInst);
-
-  Inst add(AnyFn fn, std::vector<bool> input_borrows, int ret_size) {
-    inst.push_back(InstOp::Fn);
-    inst_data.push_back(int(fns.size()));
-    fns.push_back({std::move(fn), std::move(input_borrows), ret_size});
-    return Inst{i32(inst.size() - 1)};
-  }
+  Inst add(FunctionalInst, int output_count);
+  Inst add(IfInst, int output_count);
+  Inst add(SelectInst, int output_count);
+  Inst add(WhileInst, int output_count);
 
   Inst curry(Inst, Span<Any>);
 
-  Inst placeholder() {
-    inst.push_back(InstOp::Placeholder);
-    inst_data.push_back(-1);
-    return Inst{i32(inst.size() - 1)};
-  }
+  Inst placeholder();
 
   void set(Inst, FunctionGraph);
   void set(Inst, Inst, Span<Any>);

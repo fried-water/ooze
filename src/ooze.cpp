@@ -87,6 +87,7 @@ run_function(const AST& ast,
              ExecutorRef ex,
              FunctionGraphData fg_data,
              Map<ASTID, std::vector<AsyncValue>> bindings) {
+  const int output_count = fg_data.graph.output_count;
   const Inst graph_inst = fg_data.program.add(std::move(fg_data.graph));
 
   auto borrowed = fold(fg_data.captured_borrows, std::vector<BorrowedFuture>{}, [&](auto acc, ASTID id) {
@@ -112,12 +113,15 @@ run_function(const AST& ast,
     return acc;
   });
 
-  return std::tuple(
-    transform_to_vec(
-      execute(
-        std::make_shared<Program>(std::move(fg_data.program)), graph_inst, ex, std::move(futures), std::move(borrowed)),
-      Construct<AsyncValue>{}),
-    std::move(bindings));
+  std::vector<Future> results(output_count);
+  execute(std::make_shared<Program>(std::move(fg_data.program)),
+          graph_inst,
+          ex,
+          std::move(futures),
+          std::move(borrowed),
+          results);
+
+  return std::tuple(transform_to_vec(std::move(results), Construct<AsyncValue>{}), std::move(bindings));
 }
 
 auto assign_values(

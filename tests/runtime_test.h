@@ -44,11 +44,14 @@ inline auto await(Binding b) {
 
 inline std::vector<Future> execute(
   std::shared_ptr<const Program> p, Inst inst, ExecutorRef ex, std::vector<Any> owned, std::vector<Any> borrowed = {}) {
-  return execute(std::move(p),
-                 inst,
-                 ex,
-                 transform_to_vec(std::move(owned), Construct<Future>{}),
-                 transform_to_vec(std::move(borrowed), [](Any a) { return borrow(Future{std::move(a)}).first; }));
+  std::vector<Future> results(p->output_counts[inst.get()]);
+  execute(std::move(p),
+          inst,
+          ex,
+          transform_to_vec(std::move(owned), Construct<Future>{}),
+          transform_to_vec(std::move(borrowed), [](Any a) { return borrow(Future{std::move(a)}).first; }),
+          results);
+  return results;
 }
 
 inline std::vector<Any>
@@ -59,7 +62,9 @@ execute(std::shared_ptr<const Program> p, Inst inst, std::vector<Any> owned, std
 template <typename... Ts, typename... Bs>
 std::vector<Future>
 execute(std::shared_ptr<const Program> p, Inst inst, ExecutorRef ex, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
-  return execute(std::move(p), inst, ex, to_futures(std::move(ts)), to_borrowed_futures(std::move(bs)));
+  std::vector<Future> results(p->output_counts[inst.get()]);
+  execute(std::move(p), inst, ex, to_futures(std::move(ts)), to_borrowed_futures(std::move(bs)), results);
+  return results;
 }
 
 template <typename... Ts, typename... Bs>

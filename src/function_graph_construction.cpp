@@ -136,11 +136,12 @@ std::pair<GraphContext, std::vector<Oterm>> add_select_expr(
   pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[if_id.get()], std::move(pass_bys));
   pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[else_id.get()], std::move(pass_bys));
 
+  const int output_count = size_of(ast.tg, ast.types[id.get()]);
   std::vector<Oterm> terms =
-    ctx.cg.add(ctx.p.add(SelectInst{}),
+    ctx.cg.add(ctx.p.add(SelectInst{}, output_count),
                flatten(std::move(cond_terms), std::move(if_terms), std::move(else_terms)),
                pass_bys,
-               size_of(ast.tg, ast.types[id.get()]));
+               output_count);
   return {std::move(ctx), std::move(terms)};
 }
 
@@ -285,14 +286,14 @@ add_if_expr(const AST& ast,
     expr_pass_bys,
     std::array{owned_grouping[0], owned_grouping[2]},
     std::array{borrowed_grouping[0], borrowed_grouping[2]}));
-  const Inst inst = ctx.p.add(IfInst{
-    if_inst,
-    else_inst,
-    output_count,
-    value_term_sizes[0],
-    value_term_sizes[0] + value_term_sizes[1],
-    borrow_term_sizes[0],
-    borrow_term_sizes[0] + borrow_term_sizes[1]});
+  const Inst inst = ctx.p.add(
+    IfInst{if_inst,
+           else_inst,
+           value_term_sizes[0],
+           value_term_sizes[0] + value_term_sizes[1],
+           borrow_term_sizes[0],
+           borrow_term_sizes[0] + borrow_term_sizes[1]},
+    output_count);
 
   std::vector<PassBy> pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[cond_id.get()]);
 
@@ -385,7 +386,7 @@ std::pair<GraphContext, std::vector<Oterm>> add_while_expr(
       i == 0 ? 0 : borrow_offsets[i - 1]);
   }
 
-  const Inst while_inst = ctx.p.add(WhileInst{cond_inst, body_inst, output_count, value_offsets, borrow_offsets});
+  const Inst while_inst = ctx.p.add(WhileInst{cond_inst, body_inst, value_offsets, borrow_offsets}, output_count);
 
   std::vector<Oterm> outer_terms = append_binding_terms(ctx.bindings, owned_grouping.vec, {});
   outer_terms = append_binding_terms(ctx.bindings, borrowed_grouping.vec, std::move(outer_terms));
@@ -428,7 +429,7 @@ add_call_expr(const AST& ast,
   pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[arg.get()], std::move(pass_bys));
 
   const int output_count = size_of(ast.tg, ast.types[id.get()]);
-  std::vector<Oterm> terms = ctx.cg.add(ctx.p.add(FunctionalInst{output_count}), arg_terms, pass_bys, output_count);
+  std::vector<Oterm> terms = ctx.cg.add(ctx.p.add(FunctionalInst{}, output_count), arg_terms, pass_bys, output_count);
   return {std::move(ctx), std::move(terms)};
 }
 

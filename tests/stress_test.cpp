@@ -65,9 +65,9 @@ BOOST_AUTO_TEST_CASE(stress_graph, *boost::unit_test::disabled()) {
     int result = -1;
     for(int c = 0; c < num_executions; c++) {
       auto ex = make_tbb_executor(i);
-      std::move(execute(shared_prog, inst, ex, make_vector(Future(Any(1))), {})[0]).then([&](Any a) {
-        result = any_cast<i32>(a);
-      });
+      Future f;
+      execute(shared_prog, inst, ex, make_vector(Future(Any(1))), {}, {&f, 1});
+      std::move(f).then([&](Any a) { result = any_cast<i32>(a); });
     }
 
     const auto ms =
