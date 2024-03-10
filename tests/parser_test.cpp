@@ -134,6 +134,12 @@ BOOST_AUTO_TEST_CASE(pattern_tuple2) {
   check_pass(parse_pattern, ast, {}, src);
 }
 
+BOOST_AUTO_TEST_CASE(pattern_tuple_trailing_comma) {
+  const std::string_view src = "(x,)";
+  const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternIdent}}), slices(src, {"x", src}), types(2)};
+  check_pass(parse_pattern, ast, {}, src);
+}
+
 BOOST_AUTO_TEST_CASE(pattern_tuple_nested) {
   const std::string_view src = "(())";
   const AST ast = {ast_forest({{ASTTag::PatternTuple, ASTTag::PatternTuple}}), slices(src, {"()", src}), types(2)};
@@ -179,6 +185,12 @@ BOOST_AUTO_TEST_CASE(type_tuple1) {
 BOOST_AUTO_TEST_CASE(type_tuple2) {
   const std::string_view src = "(A, _)";
   const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Floating, TypeTag::Tuple}, {{}, {}, {0, 1}});
+  check_parse_type(tg, type_refs(src, {{0, "A"}}), src);
+}
+
+BOOST_AUTO_TEST_CASE(type_tuple_trailing_comma) {
+  const std::string_view src = "(A,)";
+  const TypeGraph tg = make_tg({TypeTag::Leaf, TypeTag::Tuple}, {{}, {0}});
   check_parse_type(tg, type_refs(src, {{0, "A"}}), src);
 }
 
@@ -238,6 +250,12 @@ BOOST_AUTO_TEST_CASE(expr_tuple2) {
   auto f = ast_forest({{ASTTag::ExprTuple, ASTTag::ExprIdent}});
   f.append_child(ASTID{0}, ASTTag::ExprIdent);
   const AST ast = {std::move(f), slices(src, {"a", "b", src}), types(3)};
+  check_pass(parse_expr, ast, {}, src);
+}
+
+BOOST_AUTO_TEST_CASE(expr_tuple_trailing_comma) {
+  const std::string_view src = "(a,)";
+  const AST ast = {ast_forest({{ASTTag::ExprTuple, ASTTag::ExprIdent}}), slices(src, {"a", src}), types(2)};
   check_pass(parse_expr, ast, {}, src);
 }
 
@@ -701,7 +719,7 @@ BOOST_AUTO_TEST_CASE(expr_unopened) {
 }
 
 BOOST_AUTO_TEST_CASE(expr_bad_comma) {
-  check_single_error(parse, {{{}, {18, 19}}, "expected literal" /* ? */}, "fn f() -> T { a(1,) }");
+  check_single_error(parse, {{{}, {16, 17}}, "expected ')'"}, "fn f() -> T { a(,) }");
 }
 
 BOOST_AUTO_TEST_CASE(bad_chain) { check_single_error(parse, {{{}, {18, 19}}, "expected '('"}, "fn f() -> T { a.b }"); }

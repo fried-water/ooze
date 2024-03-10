@@ -89,15 +89,16 @@ auto keyword(std::string_view sv) {
 
 template <typename P>
 auto tuple(P p) {
-  return transform(seq(symbol("("), maybe(seq(p, n(seq(symbol(","), p)))), symbol(")")), [](auto opt) {
-    if(opt) {
-      auto&& [first, vec] = std::move(*opt);
-      vec.insert(vec.begin(), std::move(first));
-      return std::move(vec);
-    } else {
-      return std::decay_t<decltype(std::get<1>(*opt))>{};
-    }
-  });
+  return transform(
+    seq(symbol("("), maybe(seq(p, n(seq(symbol(","), p)), maybe(symbol(",")))), symbol(")")), [](auto opt) {
+      if(opt) {
+        auto&& [first, vec, _] = std::move(*opt);
+        vec.insert(vec.begin(), std::move(first));
+        return std::move(vec);
+      } else {
+        return std::decay_t<decltype(std::get<1>(*opt))>{};
+      }
+    });
 }
 
 struct ASTAppender {
