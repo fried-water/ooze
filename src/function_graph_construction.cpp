@@ -105,7 +105,7 @@ append_bindings(const AST& ast, ASTID pattern, const std::vector<Oterm>& terms, 
 std::pair<GraphContext, std::vector<Oterm>>
 add_expr(const AST&,
          const std::unordered_set<TypeID>& copy_types,
-         const Map<ASTID, ASTID>& binding_of,
+         const Map<ASTID, ASTID>& overloads,
          const Map<ASTID, std::vector<ASTID>>& loop_results,
          ASTID,
          GraphContext);
@@ -113,7 +113,7 @@ add_expr(const AST&,
 std::pair<GraphContext, std::vector<Oterm>> add_select_expr(
   const AST& ast,
   const std::unordered_set<TypeID>& copy_types,
-  const Map<ASTID, ASTID>& binding_of,
+  const Map<ASTID, ASTID>& overloads,
   const Map<ASTID, std::vector<ASTID>>& loop_results,
   ASTID id,
   GraphContext ctx) {
@@ -123,9 +123,9 @@ std::pair<GraphContext, std::vector<Oterm>> add_select_expr(
 
   const auto [cond_id, if_id, else_id] = ast.forest.child_ids(id).take<3>();
 
-  std::tie(ctx, cond_terms) = add_expr(ast, copy_types, binding_of, loop_results, cond_id, std::move(ctx));
-  std::tie(ctx, if_terms) = add_expr(ast, copy_types, binding_of, loop_results, if_id, std::move(ctx));
-  std::tie(ctx, else_terms) = add_expr(ast, copy_types, binding_of, loop_results, else_id, std::move(ctx));
+  std::tie(ctx, cond_terms) = add_expr(ast, copy_types, overloads, loop_results, cond_id, std::move(ctx));
+  std::tie(ctx, if_terms) = add_expr(ast, copy_types, overloads, loop_results, if_id, std::move(ctx));
+  std::tie(ctx, else_terms) = add_expr(ast, copy_types, overloads, loop_results, else_id, std::move(ctx));
 
   assert(cond_terms.size() == 1);
   assert(if_terms.size() == else_terms.size());
@@ -240,22 +240,22 @@ FunctionGraph reparameterize_graph(
 std::pair<GraphContext, std::vector<Oterm>>
 add_if_expr(const AST& ast,
             const std::unordered_set<TypeID>& copy_types,
-            const Map<ASTID, ASTID>& binding_of,
+            const Map<ASTID, ASTID>& overloads,
             const Map<ASTID, std::vector<ASTID>>& loop_results,
             ASTID id,
             GraphContext ctx) {
   const auto [cond_id, if_id, else_id] = ast.forest.child_ids(id).take<3>();
 
-  FunctionGraphData if_graph = create_graph(std::move(ctx.p), ast, copy_types, binding_of, loop_results, if_id);
+  FunctionGraphData if_graph = create_graph(std::move(ctx.p), ast, copy_types, overloads, loop_results, if_id);
   FunctionGraphData else_graph =
-    create_graph(std::move(if_graph.program), ast, copy_types, binding_of, loop_results, else_id);
+    create_graph(std::move(if_graph.program), ast, copy_types, overloads, loop_results, else_id);
   ctx.p = std::move(else_graph.program);
 
   const Grouping<ASTID, 3> owned_grouping = find_shared(if_graph.captured_values, else_graph.captured_values);
   const Grouping<ASTID, 3> borrowed_grouping = find_shared(if_graph.captured_borrows, else_graph.captured_borrows);
 
   std::vector<Oterm> outer_terms;
-  std::tie(ctx, outer_terms) = add_expr(ast, copy_types, binding_of, loop_results, cond_id, std::move(ctx));
+  std::tie(ctx, outer_terms) = add_expr(ast, copy_types, overloads, loop_results, cond_id, std::move(ctx));
   assert(outer_terms.size() == 1);
 
   outer_terms = append_binding_terms(ctx.bindings, owned_grouping.vec, std::move(outer_terms));
@@ -330,15 +330,15 @@ Grouping<ASTID, 5> find_while_grouping(Span<ASTID> results, Span<ASTID> cond, Sp
 std::pair<GraphContext, std::vector<Oterm>> add_while_expr(
   const AST& ast,
   const std::unordered_set<TypeID>& copy_types,
-  const Map<ASTID, ASTID>& binding_of,
+  const Map<ASTID, ASTID>& overloads,
   const Map<ASTID, std::vector<ASTID>>& loop_results,
   ASTID id,
   GraphContext ctx) {
   const auto [cond_id, body_id] = ast.forest.child_ids(id).take<2>();
 
-  FunctionGraphData cond_graph = create_graph(std::move(ctx.p), ast, copy_types, binding_of, loop_results, cond_id);
+  FunctionGraphData cond_graph = create_graph(std::move(ctx.p), ast, copy_types, overloads, loop_results, cond_id);
   FunctionGraphData body_graph =
-    create_graph(std::move(cond_graph.program), ast, copy_types, binding_of, loop_results, body_id);
+    create_graph(std::move(cond_graph.program), ast, copy_types, overloads, loop_results, body_id);
   ctx.p = std::move(body_graph.program);
 
   const auto it = loop_results.find(id);
@@ -408,7 +408,7 @@ std::pair<GraphContext, std::vector<Oterm>> add_while_expr(
 std::pair<GraphContext, std::vector<Oterm>>
 add_call_expr(const AST& ast,
               const std::unordered_set<TypeID>& copy_types,
-              const Map<ASTID, ASTID>& binding_of,
+              const Map<ASTID, ASTID>& overloads,
               const Map<ASTID, std::vector<ASTID>>& loop_results,
               ASTID id,
               GraphContext ctx) {
@@ -417,8 +417,8 @@ add_call_expr(const AST& ast,
 
   const auto [callee, arg] = ast.forest.child_ids(id).take<2>();
 
-  std::tie(ctx, callee_terms) = add_expr(ast, copy_types, binding_of, loop_results, callee, std::move(ctx));
-  std::tie(ctx, arg_terms) = add_expr(ast, copy_types, binding_of, loop_results, arg, std::move(ctx));
+  std::tie(ctx, callee_terms) = add_expr(ast, copy_types, overloads, loop_results, callee, std::move(ctx));
+  std::tie(ctx, arg_terms) = add_expr(ast, copy_types, overloads, loop_results, arg, std::move(ctx));
 
   assert(callee_terms.size() == 1);
   arg_terms.insert(arg_terms.begin(), callee_terms.front());
@@ -436,7 +436,7 @@ add_call_expr(const AST& ast,
 std::pair<GraphContext, std::vector<Oterm>>
 add_expr(const AST& ast,
          const std::unordered_set<TypeID>& copy_types,
-         const Map<ASTID, ASTID>& binding_of,
+         const Map<ASTID, ASTID>& overloads,
          const Map<ASTID, std::vector<ASTID>>& loop_results,
          ASTID id,
          GraphContext ctx) {
@@ -454,29 +454,29 @@ add_expr(const AST& ast,
       std::visit([&](const auto& v) { return ctx.cg.add(ctx.p.add(Any(v)), {}, {}, 1); }, lookup_literal(ast, id));
     return {std::move(ctx), std::move(terms)};
   }
-  case ASTTag::ExprCall: return add_call_expr(ast, copy_types, binding_of, loop_results, id, std::move(ctx));
-  case ASTTag::ExprSelect: return add_select_expr(ast, copy_types, binding_of, loop_results, id, std::move(ctx));
-  case ASTTag::ExprIf: return add_if_expr(ast, copy_types, binding_of, loop_results, id, std::move(ctx));
-  case ASTTag::ExprWhile: return add_while_expr(ast, copy_types, binding_of, loop_results, id, std::move(ctx));
+  case ASTTag::ExprCall: return add_call_expr(ast, copy_types, overloads, loop_results, id, std::move(ctx));
+  case ASTTag::ExprSelect: return add_select_expr(ast, copy_types, overloads, loop_results, id, std::move(ctx));
+  case ASTTag::ExprIf: return add_if_expr(ast, copy_types, overloads, loop_results, id, std::move(ctx));
+  case ASTTag::ExprWhile: return add_while_expr(ast, copy_types, overloads, loop_results, id, std::move(ctx));
   case ASTTag::ExprBorrow:
-    return add_expr(ast, copy_types, binding_of, loop_results, *ast.forest.first_child(id), std::move(ctx));
+    return add_expr(ast, copy_types, overloads, loop_results, *ast.forest.first_child(id), std::move(ctx));
   case ASTTag::ExprWith: {
     const auto [assignment, expr] = ast.forest.child_ids(id).take<2>();
     const auto [pattern, assign_expr] = ast.forest.child_ids(assignment).take<2>();
 
-    auto [assign_ctx, assign_terms] = add_expr(ast, copy_types, binding_of, loop_results, assign_expr, std::move(ctx));
+    auto [assign_ctx, assign_terms] = add_expr(ast, copy_types, overloads, loop_results, assign_expr, std::move(ctx));
     ctx = append_bindings(ast, pattern, assign_terms, std::move(assign_ctx)).first;
-    return add_expr(ast, copy_types, binding_of, loop_results, expr, std::move(ctx));
+    return add_expr(ast, copy_types, overloads, loop_results, expr, std::move(ctx));
   }
   case ASTTag::ExprTuple:
     return fold(ast.forest.child_ids(id), std::pair(std::move(ctx), std::vector<Oterm>{}), [&](auto pair, ASTID tuple_ele) {
-        auto [ctx, terms] = add_expr(ast, copy_types, binding_of, loop_results, tuple_ele, std::move(pair.first));
+        auto [ctx, terms] = add_expr(ast, copy_types, overloads, loop_results, tuple_ele, std::move(pair.first));
         return std::pair(std::move(ctx), to_vec(std::move(terms), std::move(pair.second)));
       });
   case ASTTag::ExprQualified:
   case ASTTag::ExprIdent: {
-    const auto it = binding_of.find(id);
-    assert(it != binding_of.end());
+    const auto it = overloads.find(id);
+    assert(it != overloads.end());
     assert(ctx.bindings.find(it->second) != ctx.bindings.end());
     std::vector<Oterm> terms = ctx.bindings.at(it->second);
     return {std::move(ctx), std::move(terms)};
@@ -490,7 +490,7 @@ add_expr(const AST& ast,
 FunctionGraphData create_graph(Program p,
                                const AST& ast,
                                const std::unordered_set<TypeID>& copy_types,
-                               const Map<ASTID, ASTID>& binding_of,
+                               const Map<ASTID, ASTID>& overloads,
                                const Map<ASTID, std::vector<ASTID>>& loop_results,
                                ASTID id) {
   const auto [pattern, expr] =
@@ -498,7 +498,7 @@ FunctionGraphData create_graph(Program p,
 
   std::vector<bool> borrows = pattern.is_valid() ? borrows_of(ast.tg, ast.types[pattern.get()]) : std::vector<bool>();
 
-  auto [captured_values, captured_borrows] = find_captures(ast, binding_of, id);
+  auto [captured_values, captured_borrows] = find_captures(ast, overloads, id);
 
   for(const ASTID id : captured_values) {
     borrows = borrows_of(ast.tg, ast.types[id.get()], std::move(borrows));
@@ -525,7 +525,7 @@ FunctionGraphData create_graph(Program p,
     std::tie(ctx, offset) = append_bindings(ast, id, terms, std::move(ctx), offset);
   }
 
-  auto [final_ctx, output_terms] = add_expr(ast, copy_types, binding_of, loop_results, expr, std::move(ctx));
+  auto [final_ctx, output_terms] = add_expr(ast, copy_types, overloads, loop_results, expr, std::move(ctx));
   return {std::move(final_ctx.p),
           std::move(captured_values),
           std::move(captured_borrows),
