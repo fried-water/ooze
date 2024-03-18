@@ -2,6 +2,8 @@
 
 #include "pretty_print.h"
 
+#include <cmath>
+
 namespace ooze {
 
 namespace {
