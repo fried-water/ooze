@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.15)
 project(ooze_test)
 
 find_package(Boost REQUIRED COMPONENTS unit_test_framework system)
-find_package(tbb REQUIRED)
 
 add_executable(ooze_test
   test_main.cpp
@@ -25,7 +24,7 @@ add_executable(ooze_test
   stress_test.cpp
   type_check_test.cpp)
 
-target_link_libraries(ooze_test PRIVATE ooze ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+target_link_libraries(ooze_test PRIVATE ooze fmt::fmt ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 target_include_directories(ooze_test PRIVATE ../src)
 target_precompile_headers(ooze_test PRIVATE ../src/pch.h)
 

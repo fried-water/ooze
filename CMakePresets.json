@@ -1,0 +1,76 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 19,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "debug",
+      "description": "Use debug build type",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "OOZE_BUILD_TESTS": "On",
+        "OOZE_BUILD_REGTESTS": "On"
+      }
+    },
+    {
+      "name": "release",
+      "description": "Use release build type",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "OOZE_BUILD_REGTESTS": "On"
+      }
+    },
+    {
+      "name": "release_gcc",
+      "description": "Use release build type with GCC",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release_gcc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "OOZE_BUILD_TESTS": "On",
+        "OOZE_BUILD_REGTESTS": "On"
+      }
+    },
+    {
+      "name": "release_clang",
+      "description": "Use release build type with Clang",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release_clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "OOZE_BUILD_TESTS": "On",
+        "OOZE_BUILD_REGTESTS": "On"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "release_gcc",
+      "configurePreset": "release_gcc"
+    },
+    {
+      "name": "release_clang",
+      "configurePreset": "release_clang"
+    }
+  ]
+}
+

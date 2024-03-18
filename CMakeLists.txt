@@ -39,6 +39,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(knot)
 
+find_package(TBB CONFIG REQUIRED)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_options(-fsanitize=address)
   add_link_options(-fsanitize=address)
@@ -69,13 +71,17 @@ target_include_directories(ooze PRIVATE src PUBLIC include)
 target_precompile_headers(ooze PRIVATE src/pch.h)
 target_link_libraries(ooze
   PUBLIC
-    knot tbb
+    knot TBB::tbb
   PRIVATE
     ctre fmt::fmt CLI11::CLI11)
 
-option(OOZE_BUILD_TESTS "Build tests" ON)
+option(OOZE_BUILD_TESTS "Build tests" OFF)
 if(OOZE_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+option(OOZE_BUILD_REGTESTS "Build regtests" OFF)
+if(OOZE_BUILD_TESTS)
   add_subdirectory(regtest)
 endif()

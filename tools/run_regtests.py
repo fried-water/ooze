@@ -13,7 +13,7 @@ def run_command_on_file(command):
         return (False, e.stdout, e.stderr)
 
 def run_directory(directory, test_regex):
-    cmd = ["build/regtest/regtest", "run"]
+    cmd = ["build/release/regtest/regtest", "run"]
     files = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
 
     pass_count = 0

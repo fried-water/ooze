@@ -14,7 +14,7 @@ def run_command(command):
         return (False, time.perf_counter() - start, e.stdout, e.stderr)
 
 def bench_script(file, count, args):
-    cmd = ["build/regtest/regtest", "run", file]
+    cmd = ["build/release/regtest/regtest", "run", file]
     if len(args) > 0:
         cmd = cmd + ["--args"] + args
 
