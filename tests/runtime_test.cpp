@@ -348,7 +348,10 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_value) {
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_rvalue) {
   Program p;
-  const Inst fn = p.add_fn([](Sentinal&& x) { return x; });
+  const Inst fn = p.add_fn([](Sentinal&& x) {
+    // why is move needed in GCC 11.4?
+    return std::move(x);
+  });
 
   std::vector<Any> results = execute(share(p), fn, make_vector(Any(Sentinal{})), {});
 

@@ -573,6 +573,8 @@ std::vector<TypeCheckError> find_binding_usage_errors(
     case TypeTag::Borrow:
     case TypeTag::Fn: return false;
     }
+    assert(false);
+    return false;
   };
 
   const auto not_borrowed = [&](ASTID id) {

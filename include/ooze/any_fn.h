@@ -22,7 +22,7 @@ std::vector<T> make_vector(Elements&&... elements) {
 template <typename... Ts, typename F, std::size_t... Is>
 std::vector<Any> call_with_anys(knot::TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
   assert(inputs.size() == sizeof...(Ts));
-  assert((type_id(decay(knot::Type<Ts>{})) == inputs[Is]->type()) && ...);
+  assert(((type_id(decay(knot::Type<Ts>{})) == inputs[Is]->type()) && ...));
 
   if constexpr(knot::Type<void>{} == return_type(decay(knot::Type<F>({})))) {
     std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);

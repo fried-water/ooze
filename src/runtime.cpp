@@ -196,7 +196,7 @@ execute(const AnyFn& fn,
 
     auto invoke = [ex](InvocationBlock* b) mutable {
       ex.run([b]() {
-        auto results = (b->f)(b->input_ptrs);
+        std::vector<Any> results = (b->f)(b->input_ptrs);
 
         // Drop reference to all borrowed inputs so they can be forwarded asap
         b->borrowed_inputs.clear();

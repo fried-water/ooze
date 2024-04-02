@@ -35,7 +35,7 @@ FetchContent_MakeAvailable(ctre)
 FetchContent_Declare(
     knot
     GIT_REPOSITORY https://github.com/fried-water/knot
-    GIT_TAG 8bdbefe68e4d0baf4f30e41d0aed512382ad128b
+    GIT_TAG d987999480c407e75c52e375a68d2e0929053935
 )
 FetchContent_MakeAvailable(knot)
 
@@ -82,6 +82,6 @@ if(OOZE_BUILD_TESTS)
 endif()
 
 option(OOZE_BUILD_REGTESTS "Build regtests" OFF)
-if(OOZE_BUILD_TESTS)
+if(OOZE_BUILD_REGTESTS)
   add_subdirectory(regtest)
 endif()

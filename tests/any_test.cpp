@@ -15,7 +15,7 @@ struct MoveOnlyType {
 
 } // namespace
 
-BOOST_AUTO_TEST_SUITE(any)
+BOOST_AUTO_TEST_SUITE(any_tests)
 
 BOOST_AUTO_TEST_CASE(basic) {
   Any any;

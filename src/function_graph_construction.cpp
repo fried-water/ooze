@@ -468,9 +468,8 @@ add_expr(const AST& ast,
     return add_expr(ast, copy_types, binding_of, loop_results, expr, std::move(ctx));
   }
   case ASTTag::ExprTuple:
-    return knot::accumulate(
-      ast.forest.child_ids(id), std::pair(std::move(ctx), std::vector<Oterm>{}), [&](auto pair, ASTID tuple_element) {
-        auto [ctx, terms] = add_expr(ast, copy_types, binding_of, loop_results, tuple_element, std::move(pair.first));
+    return fold(ast.forest.child_ids(id), std::pair(std::move(ctx), std::vector<Oterm>{}), [&](auto pair, ASTID tuple_ele) {
+        auto [ctx, terms] = add_expr(ast, copy_types, binding_of, loop_results, tuple_ele, std::move(pair.first));
         return std::pair(std::move(ctx), to_vec(std::move(terms), std::move(pair.second)));
       });
   case ASTTag::ExprQualified:
@@ -494,7 +493,7 @@ FunctionGraphData create_graph(Program p,
                                const Map<ASTID, std::vector<ASTID>>& loop_results,
                                ASTID id) {
   const auto [pattern, expr] =
-    ast.forest[id] == ASTTag::Fn ? ast.forest.child_ids(id).take<2>() : std::tuple(ASTID::Invalid(), id);
+    ast.forest[id] == ASTTag::Fn ? ast.forest.child_ids(id).take<2>() : std::array{ASTID::Invalid(), id};
 
   std::vector<bool> borrows = pattern.is_valid() ? borrows_of(ast.tg, ast.types[pattern.get()]) : std::vector<bool>();
 

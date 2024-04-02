@@ -58,6 +58,9 @@ std::optional<Literal> to_literal(TokenType type, std::string_view sv) {
   case TokenType::LiteralBool: return Literal{sv[0] == 't'};
   case TokenType::LiteralString: return Literal{std::string(sv.begin() + 1, sv.end() - 1)};
   }
+
+  assert(false);
+  return std::nullopt;
 }
 
 Slice char_slice(Span<Token> tokens, Slice token_slice) {

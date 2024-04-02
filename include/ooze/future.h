@@ -137,7 +137,10 @@ inline std::pair<Future, Future> clone(Future f) {
 }
 
 inline void connect(Future f, Promise p) {
-  std::move(f).then([p = new Promise(std::move(p))](Any a) mutable { std::move(*p).send(std::move(a)); });
+  std::move(f).then([p = new Promise(std::move(p))](Any a) mutable {
+    std::move(*p).send(std::move(a));
+    delete p;
+  });
 }
 
 } // namespace ooze

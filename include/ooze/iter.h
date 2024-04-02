@@ -58,7 +58,7 @@ class IterRange {
       return *it++;
     };
 
-    return std::tuple(next(Is)...);
+    return std::array{next(Is)...};
   }
 
 public:

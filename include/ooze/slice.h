@@ -11,6 +11,6 @@ struct Slice {
   KNOT_ORDERED(Slice);
 };
 
-inline int size(Slice s) { return s.end - s.begin; }
+inline constexpr int size(Slice s) { return s.end - s.begin; }
 
 } // namespace ooze
