@@ -1,4 +1,7 @@
 # ooze
+
+![build](https://github.com/fried-water/ooze/actions/workflows/cmake-build.yml/badge.svg)
+
 **ooze** is a parallel scripting language. **ooze** takes a set of user defined types and functions and allows the creation and parallel execution of function DAGs. The original motivation was a DSL to define function DAGs that got a bit out of control.
 
 ## Example Script
