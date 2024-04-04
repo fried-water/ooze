@@ -12,8 +12,8 @@ def run_command_on_file(command):
     except subprocess.CalledProcessError as e:
         return (False, e.stdout, e.stderr)
 
-def run_directory(directory, test_regex):
-    cmd = ["build/release/regtest/regtest", "run"]
+def run_directory(executable, directory, test_regex):
+    cmd = [executable, "run"]
     files = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
 
     pass_count = 0
@@ -41,10 +41,13 @@ def main():
     parser.add_argument('-d', '--dir', type=str, default='regtest/pass',
                         help='Test directory to run (default: regtest/pass)')
 
+    parser.add_argument('-e', '--exec', type=str, default='build/release/regtest/regtest',
+                        help='Regtest executable (default: build/release/regtest/regtest)')
+
     args = parser.parse_args()
 
     try:
-        run_directory(args.dir, re.compile(args.regex))
+        run_directory(args.exec, args.dir, re.compile(args.regex))
     except re.error:
         parser.error(f"Invalid regex pattern: {args.regex}")
 

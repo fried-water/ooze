@@ -1,4 +1,4 @@
-name: CMake Build Matrix
+name: build
 
 on: [push, pull_request]
 
@@ -27,6 +27,8 @@ jobs:
         sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 100
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 100
     - name: Configure CMake
-      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOZE_BUILD_REGTESTS=On
     - name: Build
       run: cmake --build build
+    - name: Regtests
+      run: ./tools/run_regtests.py -e build/regtest/regtest
