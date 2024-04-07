@@ -8,26 +8,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc, clang]
+        cc: [gcc]
+# Re add when clang in latest ubuntu supports c++20
+#        cc: [gcc, clang]
+        include:
+          - cc: gcc
+            cxx: g++
+#          - cc: clang
+#            cxx: clang++
+#            cxx_flags: -stdlib=libc++
+#            install: sudo apt-get install -y clang libc++-dev libc++abi-dev
     steps:
     - uses: actions/checkout@v3
+
     - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake ninja-build libtbb-dev
         sudo apt-get install -y libboost-system-dev libboost-test-dev
-    - name: Setup GCC
-      if: matrix.compiler == 'gcc'
-      run: |
-        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc 100
-        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++ 100
-    - name: Setup Clang
-      if: matrix.compiler == 'clang'
-      run: |
-        sudo apt-get install -y clang
-        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 100
-        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 100
     - name: Configure CMake
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+        CXXFLAGS: ${{ matrix.cxx_flags }}
       run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOZE_BUILD_REGTESTS=On -DOOZE_BUILD_TESTS=On
     - name: Build
       run: cmake --build build
