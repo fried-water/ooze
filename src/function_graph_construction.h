@@ -14,11 +14,7 @@ struct FunctionGraphData {
   FunctionGraph graph;
 };
 
-FunctionGraphData create_graph(Program,
-                               const AST&,
-                               const std::unordered_set<TypeID>& copy_types,
-                               const Map<ASTID, ASTID>& overloads,
-                               const Map<ASTID, std::vector<ASTID>>& loop_results,
-                               ASTID);
+FunctionGraphData create_graph(
+  Program, const AST&, const std::unordered_set<TypeID>& copy_types, const Map<ASTID, ASTID>& overloads, ASTID);
 
 } // namespace ooze

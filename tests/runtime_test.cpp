@@ -472,30 +472,6 @@ BOOST_AUTO_TEST_CASE(if_) {
   compare(2, execute_tbb(share(p), if_diff_cat, std::tuple(false, 1), std::tuple(2)));
 }
 
-BOOST_AUTO_TEST_CASE(loop_borrow) {
-  Program p;
-
-  const Inst le = p.add_fn([](int x, const int& y) { return x < y; });
-  const Inst add = p.add_fn([](int x, const int& y) { return x + y; });
-  const Inst loop = p.add(WhileInst{le, add, {1, 1, 1, 1}, {0, 1}}, 1);
-
-  compare(5, execute_tbb(share(p), loop, std::tuple(0), std::tuple(1, 5)));
-  compare(6, execute_tbb(share(p), loop, std::tuple(6), std::tuple(1, 5)));
-  compare(6, execute_tbb(share(p), loop, std::tuple(0), std::tuple(3, 5)));
-}
-
-BOOST_AUTO_TEST_CASE(loop_copy) {
-  Program p;
-
-  const Inst le = p.add_fn([](int x, int y) { return x < y; });
-  const Inst add = p.add_fn([](int x, int y) { return x + y; });
-  const Inst loop = p.add(WhileInst{le, add, {1, 1, 1, 2}, {0, 0}}, 1);
-
-  compare(5, execute_tbb(share(p), loop, std::tuple(0, 1, 5), {}));
-  compare(6, execute_tbb(share(p), loop, std::tuple(6, 1, 5), {}));
-  compare(6, execute_tbb(share(p), loop, std::tuple(0, 3, 5), {}));
-}
-
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(stress)
@@ -525,19 +501,6 @@ BOOST_AUTO_TEST_CASE(select) {
   const Inst select = p.add(SelectInst{}, 1);
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     compare(i % 2, execute_tbb(share(p), select, std::tuple(i % 2 == 0, 0, 1), {}));
-  }
-}
-
-BOOST_AUTO_TEST_CASE(loop) {
-  Program p;
-
-  const Inst le = p.add_fn([](int x, const int& y) { return x < y; });
-  const Inst add = p.add_fn([](int x, const int& y) { return x + y; });
-  const Inst loop = p.add(WhileInst{le, add, {1, 1, 1, 1}, {0, 1}}, 1);
-
-  for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    const int limit = i % 10;
-    compare(limit, execute_tbb(share(p), loop, std::tuple(0), std::tuple(1, limit)));
   }
 }
 

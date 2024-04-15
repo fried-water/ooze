@@ -102,13 +102,6 @@ void pretty_print(std::ostream& os,
     os << " }";
     return;
   }
-  case ASTTag::ExprWhile: {
-    const auto [cond, body] = ast.forest.child_ids(id).take<2>();
-    pretty_print(os << "while ", srcs, ast, type_names, cond, indentation);
-    pretty_print(os << " { ", srcs, ast, type_names, body, indentation);
-    os << " }";
-    return;
-  }
   case ASTTag::Assignment: {
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
     if(ast.forest.is_root(id) && ast.forest[expr] == ASTTag::Fn) {

@@ -119,7 +119,6 @@ void calculate_ident_graph(
   case ASTTag::ExprCall:
   case ASTTag::ExprSelect:
   case ASTTag::ExprIf:
-  case ASTTag::ExprWhile:
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:
     for(const ASTID child : ast.forest.child_ids(id)) {
@@ -136,7 +135,6 @@ struct InternalSemaState {
   Map<ASTID, ASTID> overloads;
   std::vector<ASTID> resolved_roots;
   std::vector<ASTID> generic_roots;
-  Map<ASTID, std::vector<ASTID>> loop_results;
 };
 
 std::tuple<InternalSemaState, AST> instantiate(OverloadResolutionData ord, InternalSemaState s, AST ast) {
@@ -238,83 +236,6 @@ auto find_ident_value_captures(const AST& ast, const Map<ASTID, ASTID>& overload
   return transform_to_vec(values, Get<0>{});
 }
 
-ContextualResult<Map<ASTID, std::vector<ASTID>>> check_while_loops(
-  Span<std::string_view> srcs,
-  const AST& ast,
-  const Map<ASTID, ASTID>& overloads,
-  const NativeTypeInfo& native_types,
-  Span<ASTID> roots) {
-  std::vector<ContextualError> errors;
-  Map<ASTID, std::vector<ASTID>> loop_results;
-
-  for(const ASTID root : roots) {
-    for(const ASTID id : ast.forest.post_order_ids(root)) {
-      if(ast.forest[id] != ASTTag::ExprWhile) continue;
-
-      const auto [cond, body] = ast.forest.child_ids(id).take<2>();
-
-      const auto cond_values = find_ident_value_captures(ast, overloads, cond);
-      const auto body_values = find_ident_value_captures(ast, overloads, body);
-
-      errors = transform_filter_to_vec(
-        cond_values,
-        [&](ASTID ident) {
-          return !is_copyable(ast.tg, native_types.copyable, ast.types[ident.get()])
-                   ? std::optional(
-                       ContextualError{ast.srcs[ident.get()], "while condition can only capture copyable values"})
-                   : std::nullopt;
-        },
-        std::move(errors));
-
-      ASTID result = body;
-      while(ast.forest[result] == ASTTag::ExprWith) {
-        result = ast.forest.child_ids(result).get<1>();
-      }
-
-      const Type result_type = ast.types[result.get()];
-
-      const Span<Type> types =
-        ast.tg.get<TypeTag>(result_type) == TypeTag::Tuple
-          ? Span<Type>(ast.tg.fanout(result_type))
-          : Span<Type>(&result_type, 1);
-
-      auto type_it = types.begin();
-
-      std::vector<ASTID> converged;
-
-      for(const ASTID capture : body_values) {
-        if(type_it != types.end() && compare_dags(ast.tg, ast.types[capture.get()], *type_it)) {
-          const auto it = overloads.find(capture);
-          assert(it != overloads.end());
-          converged.push_back(it->second);
-          ++type_it;
-        } else if(!is_copyable(ast.tg, native_types.copyable, ast.types[capture.get()])) {
-          errors.push_back(
-            {ast.srcs[capture.get()],
-             type_it == types.end() ? "captured value not returned"
-                                    : fmt::format("capture return mismatch, expected: {} given: {}",
-                                                  pretty_print(ast.tg, native_types.names, *type_it),
-                                                  pretty_print(ast.tg, native_types.names, ast.types[capture.get()]))});
-          if(type_it != types.end()) ++type_it;
-        }
-      }
-
-      loop_results.emplace(id, std::move(converged));
-
-      errors = transform_to_vec(
-        IterRange(type_it, types.end()),
-        [&](Type t) {
-          return ContextualError{
-            ast.srcs[result.get()],
-            fmt::format("no corresponding input captured: {}", pretty_print(ast.tg, native_types.names, t))};
-        },
-        std::move(errors));
-    }
-  }
-
-  return value_or_errors(std::move(loop_results), std::move(errors));
-}
-
 } // namespace
 
 ContextualResult<void, TypeGraph>
@@ -378,21 +299,10 @@ sema(Span<std::string_view> srcs,
     });
   }
 
-  return std::move(res)
-    .and_then([&](InternalSemaState s, AST ast) {
-      return check_while_loops(srcs, ast, s.overloads, native_types, s.resolved_roots)
-        .map([&](auto loop_results) {
-          s.loop_results = std::move(loop_results);
-          return std::move(s);
-        })
-        .append_state(std::move(ast));
-    })
-    .map([](InternalSemaState s, AST ast) {
-      return std::tuple(
-        SemaData{
-          std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots), std::move(s.loop_results)},
-        std::move(ast));
-    });
+  return std::move(res).map([](InternalSemaState s, AST ast) {
+    return std::tuple(SemaData{std::move(s.overloads), std::move(s.resolved_roots), std::move(s.generic_roots)},
+                      std::move(ast));
+  });
 }
 
 } // namespace ooze

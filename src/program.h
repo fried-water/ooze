@@ -14,10 +14,10 @@ namespace ooze {
 
 using Inst = StrongID<struct InstSpace, i32>;
 
-enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, While, Curry, Placeholder };
+enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Curry, Placeholder };
 
 constexpr auto names(knot::Type<InstOp>) {
-  return knot::Names("InstOp", {"Value", "Fn", "Graph", "Functional", "If", "Select", "While", "Curry", "Placeholder"});
+  return knot::Names("InstOp", {"Value", "Fn", "Graph", "Functional", "If", "Select", "Curry", "Placeholder"});
 }
 
 struct AnyFnInst {
@@ -36,17 +36,6 @@ struct IfInst {
   std::array<i32, 2> borrow_offsets = {};
 };
 
-struct WhileInst {
-  Inst cond_inst;
-  Inst body_inst;
-
-  // [ret_common, ret_body, inv_common, inv_body, inv_cond]
-  std::array<i32, 4> value_offsets = {};
-
-  // [common, body, cond]
-  std::array<i32, 2> borrow_offsets = {};
-};
-
 struct SelectInst {};
 
 struct Program {
@@ -58,7 +47,6 @@ struct Program {
   std::vector<AnyFnInst> fns;
   std::vector<FunctionGraph> graphs;
   std::vector<IfInst> ifs;
-  std::vector<WhileInst> whiles;
 
   // TODO handle curry with Inst instead of Any?
   std::vector<std::pair<Inst, Slice>> currys;
@@ -69,7 +57,6 @@ struct Program {
   Inst add(FunctionalInst, int output_count);
   Inst add(IfInst, int output_count);
   Inst add(SelectInst, int output_count);
-  Inst add(WhileInst, int output_count);
 
   Inst curry(Inst, Span<Any>);
 

@@ -140,14 +140,13 @@ auto assign_values(
   return bindings;
 }
 
-std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>> generate_fns(
-  Program prog,
-  const AST& ast,
-  const Map<ASTID, Inst>& existing_fns,
-  const std::unordered_set<TypeID>& copy_types,
-  const Map<ASTID, ASTID>& overloads,
-  const Map<ASTID, std::vector<ASTID>>& loop_results,
-  Span<ASTID> new_fns) {
+std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>>
+generate_fns(Program prog,
+             const AST& ast,
+             const Map<ASTID, Inst>& existing_fns,
+             const std::unordered_set<TypeID>& copy_types,
+             const Map<ASTID, ASTID>& overloads,
+             Span<ASTID> new_fns) {
   std::vector<std::tuple<ASTID, ASTID, Inst>> fns = transform_to_vec(new_fns, [&](ASTID root) {
     assert(ast.forest[root] == ASTTag::Assignment);
     const auto [pattern, expr] = ast.forest.child_ids(root).take<2>();
@@ -157,7 +156,7 @@ std::pair<Program, std::vector<std::tuple<ASTID, ASTID, Inst>>> generate_fns(
 
   prog = fold(fns, std::move(prog), flattened([&](Program p0, ASTID, ASTID expr, Inst inst) {
                 auto [p, captured_values, captured_borrows, graph] =
-                  create_graph(std::move(p0), ast, copy_types, overloads, loop_results, expr);
+                  create_graph(std::move(p0), ast, copy_types, overloads, expr);
 
                 assert(captured_borrows.empty());
 
@@ -264,7 +263,6 @@ auto run_or_assign(Span<std::string_view> srcs,
     env.fns,
     env.native_types.copyable,
     s.overloads,
-    s.loop_results,
     filter_to_vec(s.resolved_roots, [&](ASTID id) { return !ast.forest.is_root(id); }));
 
   auto fns = env.fns;
@@ -284,12 +282,8 @@ auto run_or_assign(Span<std::string_view> srcs,
     env.native_types.copyable,
     fns,
     ex,
-    create_graph(env.program,
-                 ast,
-                 env.native_types.copyable,
-                 s.overloads,
-                 s.loop_results,
-                 expr ? id : ast.forest.child_ids(id).get<1>()),
+    create_graph(
+      env.program, ast, env.native_types.copyable, s.overloads, expr ? id : ast.forest.child_ids(id).get<1>()),
     std::move(bindings));
 
   return expr ? std::tuple(Binding{type, std::move(values)}, std::move(env), std::move(bindings))
@@ -322,8 +316,8 @@ StringResult<void, EnvData> parse_scripts(EnvData env, Span<std::string_view> fi
     .append_state(std::move(env))
     .map([&](SemaData s, AST ast, EnvData env) {
       std::vector<std::tuple<ASTID, ASTID, Inst>> generated_fns;
-      std::tie(env.program, generated_fns) = generate_fns(
-        std::move(env.program), ast, env.fns, env.native_types.copyable, s.overloads, s.loop_results, s.resolved_roots);
+      std::tie(env.program, generated_fns) =
+        generate_fns(std::move(env.program), ast, env.fns, env.native_types.copyable, s.overloads, s.resolved_roots);
 
       for(const auto [pattern, expr, inst] : generated_fns) {
         assert(pattern.is_valid());

@@ -25,7 +25,6 @@ enum class ASTTag {
   ExprCall,
   ExprSelect,
   ExprIf,
-  ExprWhile,
   ExprBorrow,
   ExprWith,
   ExprTuple,
@@ -49,7 +48,6 @@ constexpr auto names(knot::Type<ASTTag>) {
      "ExprCall",
      "ExprSelect",
      "ExprIf",
-     "ExprWhile",
      "ExprBorrow",
      "ExprWith",
      "ExprTuple",
@@ -89,7 +87,6 @@ inline bool is_expr(ASTTag tag) {
   case ASTTag::ExprWith:
   case ASTTag::ExprTuple:
   case ASTTag::ExprIdent:
-  case ASTTag::ExprWhile:
   case ASTTag::Fn:
   case ASTTag::EnvValue: return true;
   default: return false;

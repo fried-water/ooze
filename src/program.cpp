@@ -39,12 +39,6 @@ Inst Program::add(IfInst inst, int output_count) {
   return i;
 }
 
-Inst Program::add(WhileInst inst, int output_count) {
-  const Inst i = add_internal(*this, InstOp::While, output_count, i32(whiles.size()));
-  whiles.push_back(inst);
-  return i;
-}
-
 Inst Program::add(SelectInst, int output_count) { return add_internal(*this, InstOp::Select, output_count); }
 
 Inst Program::curry(Inst curried, Span<Any> s) {

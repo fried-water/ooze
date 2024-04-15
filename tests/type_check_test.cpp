@@ -406,11 +406,6 @@ BOOST_AUTO_TEST_CASE(fn_if_reuse_value) {
           "(a: bool, b: bool, c: string) -> string = if a { c } else { if b { c } else { c } }");
 }
 
-BOOST_AUTO_TEST_CASE(fn_while) {
-  test_tc(basic_test_env(), "(x, y: i32) -> _ = while x { y }", "(x: bool, y: i32) -> i32 =  while x { y }");
-  test_tc(basic_test_env(), "(x, y: _) -> i32 = while x { y }", "(x: bool, y: i32) -> i32 =  while x { y }");
-}
-
 BOOST_AUTO_TEST_CASE(fn_assign) {
   test_tc(
     basic_test_env("f: fn() -> i32"), "() -> i32 = { let x = f; x() }", "() -> i32 = { let x : fn() -> i32 = f; x() }");

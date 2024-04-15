@@ -19,7 +19,6 @@ struct SemaData {
   Map<ASTID, ASTID> overloads;
   std::vector<ASTID> resolved_roots;
   std::vector<ASTID> generic_roots;
-  Map<ASTID, std::vector<ASTID>> loop_results;
 };
 
 ContextualResult<SemaData, AST>
