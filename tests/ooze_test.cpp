@@ -35,8 +35,8 @@ void check_binding(
 template <typename T>
 void check_run(
   NativeRegistry r, std::string_view script, std::string_view expr, std::string_view exp_type, const T& exp_value) {
-  auto [type, renv] = check_result(run(std::move(r), script, expr));
-  check_binding(renv, type, exp_type, exp_value);
+  auto [binding, renv] = check_result(run(std::move(r), script, expr));
+  check_binding(renv, binding, exp_type, exp_value);
 }
 
 StringResult<std::unordered_map<std::string, std::pair<Type, std::vector<Any>>>, Env>
@@ -819,6 +819,69 @@ BOOST_AUTO_TEST_CASE(script_parse_error_env_preserved) {
   BOOST_CHECK_EQUAL("fn(&i32) -> i32", e.pretty_print(globals[0].second));
   BOOST_CHECK_EQUAL("f", globals[1].first);
   BOOST_CHECK_EQUAL("fn() -> i32", e.pretty_print(globals[1].second));
+}
+
+BOOST_AUTO_TEST_CASE(borrow_dependency_hang) {
+  auto r = create_primitive_registry().add_fn("append", [](std::string x, const std::string& y) { return x + y; });
+
+  constexpr std::string_view expr = "{ let x = 'abc'; append(x, &x) }";
+
+  const std::vector<std::string> expected = {
+    "1:6 error: Dependency Error", " | { let x = 'abc'; append(x, &x) }", " |       ^"};
+
+  check_range(expected, check_error(run(std::move(r), "", expr)));
+}
+
+BOOST_AUTO_TEST_CASE(borrow_dependency_hang2) {
+  auto r = create_primitive_registry()
+             .add_fn("append", [](std::string x, const std::string& y) { return x + y; })
+             .add_fn("identity", [](std::string x) { return x; });
+
+  constexpr std::string_view expr = "{ let x = 'abc'; append(identity(x), &x) }";
+
+  const std::vector<std::string> expected = {
+    "1:6 error: Dependency Error", " | { let x = 'abc'; append(identity(x), &x) }", " |       ^"};
+
+  check_range(expected, check_error(run(std::move(r), "", expr)));
+}
+
+BOOST_AUTO_TEST_CASE(borrow_dependency_hang_if_indirect) {
+  auto r = create_primitive_registry().add_fn("append", [](const std::string& x, std::string y) { return x + y; });
+
+  constexpr std::string_view expr =
+    "{\n"
+    "  let x = 'abc';\n"
+    "  let y = if false { 'def' } else { x };\n"
+    "  append(&x, y)\n"
+    "}";
+
+  const std::vector<std::string> expected = {"2:6 error: Dependency Error", " |   let x = 'abc';", " |       ^"};
+
+  check_range(expected, check_error(run(std::move(r), "", expr)));
+}
+
+BOOST_AUTO_TEST_CASE(borrow_dependency_no_hang) {
+  auto r = create_primitive_registry().add_fn("append", [](std::string x, std::string y) { return x + y; });
+
+  constexpr std::string_view expr =
+    "{"
+    "  let x = 'abc';"
+    "  append(x, clone(&x))"
+    "}";
+
+  check_run(std::move(r), "", expr, "string", std::string("abcabc"));
+}
+
+BOOST_AUTO_TEST_CASE(borrow_dependency_no_hang_if) {
+  auto r = create_primitive_registry();
+
+  constexpr std::string_view expr =
+    "{"
+    "  let x = 'abc';"
+    "  if false { x } else { clone(&x) }"
+    "}";
+
+  check_run(std::move(r), "", expr, "string", std::string("abc"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -94,4 +94,20 @@ Result<T, std::vector<E>> result_and_errors(Result<T, std::vector<E>> r, std::ve
   }
 }
 
+template <typename E, typename... Ts, typename... Ss>
+Result<std::tuple<Ts...>, std::vector<E>> join(Result<Ts, std::vector<E>, Ss...>... results) {
+  if((results && ...)) {
+    return std::tuple(std::move(results).value()...);
+  } else {
+    std::vector<E> errors;
+    const auto append_errors = [&](auto& r) {
+      if(!r) {
+        errors = to_vec(std::move(r.error()), std::move(errors));
+      }
+    };
+    (append_errors(results), ...);
+    return Failure{std::move(errors)};
+  }
+}
+
 } // namespace ooze
