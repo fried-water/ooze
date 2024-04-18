@@ -6,8 +6,7 @@
 #include "runtime.h"
 #include "runtime_test.h"
 
-#include "ooze/executor/sequential_executor.h"
-#include "ooze/executor/tbb_executor.h"
+#include "ooze/executor.h"
 #include "ooze/type.h"
 
 #include <algorithm>
@@ -365,12 +364,13 @@ BOOST_AUTO_TEST_CASE(any_function_sentinal_rvalue) {
 }
 
 BOOST_AUTO_TEST_CASE(any_function_sentinal_borrow) {
+  Executor ex = make_seq_executor();
   Program p;
   const Inst fn = p.add_fn([](const Sentinal& x) { return x; });
 
   auto [b, post_future] = ooze::borrow(Future(Any(Sentinal{})));
   Future future;
-  execute(share(p), fn, make_seq_executor(), {}, std::vector{std::move(b)}, {&future, 1});
+  execute(share(p), fn, ex, {}, std::vector{std::move(b)}, {&future, 1});
 
   const Any input = await(std::move(post_future));
   const Any result = await(std::move(future));

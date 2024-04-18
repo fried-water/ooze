@@ -55,7 +55,7 @@ struct InvocationBlock {
 
 struct Block {
   std::shared_ptr<const Program> p;
-  ExecutorRef e;
+  Executor& e;
   std::vector<Future> owned_inputs;
   std::vector<BorrowedFuture> borrowed_inputs;
   std::vector<Promise> promises;
@@ -155,7 +155,7 @@ InputState propagate(InputState s, std::span<const ValueForward> fwds, std::vect
 }
 
 void execute(const AnyFnInst& inst,
-             ExecutorRef ex,
+             Executor& ex,
              std::vector<Future> inputs,
              std::vector<BorrowedFuture> borrowed_inputs,
              std::vector<Promise> promises) {
@@ -176,7 +176,7 @@ void execute(const AnyFnInst& inst,
   } else {
     auto* b = new InvocationBlock(inst.fn, std::move(borrowed_inputs), std::move(promises), inst.input_borrows.size());
 
-    auto invoke = [ex](InvocationBlock* b) mutable {
+    auto invoke = [&ex](InvocationBlock* b) mutable {
       ex.run([b]() {
         const size_t input_count = b->input_ptrs.size();
         (b->f)(b->input_ptrs, b->any_buffer.data() + input_count);
@@ -218,7 +218,7 @@ void execute(const AnyFnInst& inst,
 
 void execute(const std::shared_ptr<const Program>& p,
              const FunctionGraph& g,
-             ExecutorRef ex,
+             Executor& ex,
              std::vector<Future> inputs,
              std::vector<BorrowedFuture> borrowed_inputs,
              std::span<Future> outputs) {
@@ -251,7 +251,7 @@ void execute(const std::shared_ptr<const Program>& p,
 }
 
 void execute_functional(std::shared_ptr<const Program> p,
-                        ExecutorRef ex,
+                        Executor& ex,
                         std::vector<Future> inputs,
                         std::vector<BorrowedFuture> borrowed_inputs,
                         std::vector<Promise> promises) {
@@ -270,7 +270,7 @@ void execute_functional(std::shared_ptr<const Program> p,
 
 void execute_if(std::shared_ptr<const Program> p,
                 const IfInst& inst,
-                ExecutorRef ex,
+                Executor& ex,
                 std::vector<Future> inputs,
                 std::vector<BorrowedFuture> borrowed_inputs,
                 std::vector<Promise> promises) {
@@ -327,7 +327,7 @@ void execute_select(std::vector<Future> inputs, std::vector<Promise> promises) {
 
 void execute(std::shared_ptr<const Program> p,
              Inst inst,
-             ExecutorRef ex,
+             Executor& ex,
              std::vector<Future> inputs,
              std::vector<BorrowedFuture> borrowed_inputs,
              std::span<Future> outputs) {

@@ -12,7 +12,7 @@ namespace ooze {
 
 void execute(std::shared_ptr<const Program>,
              Inst,
-             ExecutorRef,
+             Executor&,
              std::vector<Future>,
              std::vector<BorrowedFuture>,
              std::span<Future> output);

@@ -5,7 +5,7 @@
 #include "repl.h"
 #include "runtime_test.h"
 
-#include "ooze/executor/sequential_executor.h"
+#include "ooze/executor.h"
 
 namespace ooze {
 
@@ -15,7 +15,8 @@ const TypeID I = type_id(knot::Type<i32>{});
 
 #define step_and_compare(_EXP, _STR, _ENV)                                                                             \
   [&](const std::vector<std::string>& e, std::string_view str, Env env) {                                              \
-    auto [future, e1] = step_repl(make_seq_executor(), std::move(env), str);                                           \
+    Executor ex = make_seq_executor();                                                                                 \
+    auto [future, e1] = step_repl(ex, std::move(env), str);                                                            \
     check_any(e, await(std::move(future)));                                                                            \
     return std::move(e1);                                                                                              \
   }(_EXP, _STR, _ENV)
@@ -25,7 +26,8 @@ const TypeID I = type_id(knot::Type<i32>{});
 BOOST_AUTO_TEST_SUITE(repl)
 
 BOOST_AUTO_TEST_CASE(empty) {
-  auto [future, env] = step_repl(make_seq_executor(), {}, "");
+  Executor ex = make_seq_executor();
+  auto [future, env] = step_repl(ex, {}, "");
   check_any(std::vector<std::string>(), await(std::move(future)));
   BOOST_CHECK(env.bindings().empty());
 }

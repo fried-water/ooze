@@ -7,8 +7,6 @@
 #include "src_map.h"
 
 #include "ooze/core.h"
-#include "ooze/executor/sequential_executor.h"
-#include "ooze/executor/tbb_executor.h"
 
 #include <CLI/CLI.hpp>
 
@@ -89,7 +87,7 @@ auto parse_command(std::string_view line) {
   });
 }
 
-std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const HelpCmd&) {
+std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const HelpCmd&) {
   return std::tuple(
     std::vector<std::string>{{":h - This message"},
                              {":b - List all bindings (* means they are not ready, & means they are borrowed)"},
@@ -99,7 +97,7 @@ std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const HelpCm
     std::move(env));
 }
 
-std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, BindingsCmd) {
+std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, BindingsCmd) {
   const auto bindings = env.bindings();
 
   std::vector<std::string> output;
@@ -125,7 +123,7 @@ constexpr auto convert_errors_futures = [](std::vector<std::string> errors, auto
     knot::Type<std::vector<std::string>>{}, Future(Any(std::move(errors))), std::forward<decltype(ts)>(ts)...);
 };
 
-std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const EvalCmd& eval) {
+std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const EvalCmd& eval) {
   return read_text_file(eval.file)
     .append_state(std::move(env))
     .and_then([](std::string script, Env env) { return std::move(env).parse_scripts(make_sv_array(script)); })
@@ -134,7 +132,7 @@ std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const EvalCm
     .value_and_state();
 }
 
-std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const FunctionsCmd&) {
+std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const FunctionsCmd&) {
   const auto functions = sorted(transform_to_vec(env.globals(), flattened([&](std::string name, Type type) {
                                                    return std::pair(std::move(name), env.pretty_print(type));
                                                  })));
@@ -160,7 +158,7 @@ std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const Functi
   return {std::move(output), std::move(env)};
 }
 
-std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const TypesCmd&) {
+std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const TypesCmd&) {
   const auto types = sorted(transform_to_vec(env.native_types().names, [&](const auto& p) {
     return std::pair(p.first, env.type_check_fn(fmt::format("(x: &{}) -> string = to_string(x)", p.first)).has_value());
   }));
@@ -173,14 +171,14 @@ std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const TypesC
   return {std::move(output), std::move(env)};
 }
 
-std::tuple<std::vector<std::string>, Env> run(ExecutorRef, Env env, const DropCmd& cmd) {
+std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const DropCmd& cmd) {
   return env.drop(cmd.var) ? std::tuple(std::vector<std::string>{}, std::move(env))
                            : std::tuple(make_vector(fmt::format("Binding {} not found", cmd.var)), std::move(env));
 }
 
 } // namespace
 
-std::tuple<Future, Env> step_repl(ExecutorRef executor, Env env, std::string_view line) {
+std::tuple<Future, Env> step_repl(Executor& executor, Env env, std::string_view line) {
   if(line.empty()) {
     return {Future(Any(std::vector<std::string>{})), std::move(env)};
   } else if(line[0] == ':') {
@@ -205,7 +203,7 @@ std::tuple<Future, Env> step_repl(ExecutorRef executor, Env env, std::string_vie
   }
 }
 
-void run_repl_recursive(ExecutorRef executor, Env env) {
+void run_repl_recursive(Executor& executor, Env env) {
   std::string line;
   if(std::getline(std::cin, line)) {
     Future output;
@@ -213,7 +211,7 @@ void run_repl_recursive(ExecutorRef executor, Env env) {
 
     // Move-only fn please
     auto sp = std::make_shared<Env>(std::move(env));
-    return std::move(output).then([executor, sp = std::move(sp)](Any output) mutable {
+    return std::move(output).then([&executor, sp = std::move(sp)](Any output) mutable {
       for(const auto& line : any_cast<std::vector<std::string>>(output)) {
         fmt::print("{}\n", line);
       }
@@ -224,7 +222,7 @@ void run_repl_recursive(ExecutorRef executor, Env env) {
   }
 }
 
-void run_repl(ExecutorRef executor, Env env) {
+void run_repl(Executor& executor, Env env) {
   fmt::print("Welcome to the ooze repl!\n");
   fmt::print("Try :h for help. Use Ctrl^D to exit.\n");
   fmt::print("> ");

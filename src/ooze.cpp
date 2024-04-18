@@ -84,7 +84,7 @@ std::tuple<std::vector<AsyncValue>, Map<ASTID, std::vector<AsyncValue>>> run_fun
   const AST& ast,
   const std::unordered_set<TypeID>& copy_types,
   const Map<ASTID, Inst>& functions,
-  ExecutorRef ex,
+  Executor& ex,
   Program program,
   FunctionGraphData fg_data,
   Map<ASTID, std::vector<AsyncValue>> bindings) {
@@ -252,7 +252,7 @@ EnvData to_str_bindings(
 
 ContextualResult<Binding, EnvData, Map<ASTID, std::vector<AsyncValue>>> run_or_assign(
   Span<std::string_view> srcs,
-  ExecutorRef ex,
+  Executor& ex,
   const AST& ast,
   const SemaData& s,
   EnvData env,
@@ -348,7 +348,7 @@ StringResult<void, EnvData> parse_scripts(EnvData env, Span<std::string_view> fi
     });
 }
 
-StringResult<Binding, EnvData> run(ExecutorRef ex, EnvData env, std::string_view expr) {
+StringResult<Binding, EnvData> run(Executor& ex, EnvData env, std::string_view expr) {
   auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(env.bindings));
   const auto global_imports = global_imports_;
   const auto srcs = make_sv_array(env_src, expr);
@@ -374,7 +374,7 @@ StringResult<Binding, EnvData> run(ExecutorRef ex, EnvData env, std::string_view
     });
 }
 
-StringResult<Future, EnvData> run_to_string(ExecutorRef ex, EnvData env, std::string_view expr) {
+StringResult<Future, EnvData> run_to_string(Executor& ex, EnvData env, std::string_view expr) {
   auto [env_src, ast, bindings, global_imports_] = prepare_ast(env, std::move(env.bindings));
   const auto global_imports = global_imports_;
   const auto srcs = make_sv_array(env_src, expr);
@@ -505,22 +505,22 @@ StringResult<void, Env> Env::parse_scripts(Span<std::string_view> files) && {
   });
 }
 
-StringResult<Binding> Env::run(ExecutorRef ex, std::string_view expr) & {
+StringResult<Binding> Env::run(Executor& ex, std::string_view expr) & {
   return ooze::run(ex, std::move(*_data), expr).map_state([&](EnvData env) { *_data = std::move(env); });
 }
 
-StringResult<Binding, Env> Env::run(ExecutorRef ex, std::string_view expr) && {
+StringResult<Binding, Env> Env::run(Executor& ex, std::string_view expr) && {
   return ooze::run(ex, std::move(*_data), expr).map_state([&](EnvData env) {
     *_data = std::move(env);
     return std::move(*this);
   });
 }
 
-StringResult<Future> Env::run_to_string(ExecutorRef ex, std::string_view expr) & {
+StringResult<Future> Env::run_to_string(Executor& ex, std::string_view expr) & {
   return ooze::run_to_string(ex, std::move(*_data), expr).map_state([&](EnvData env) { *_data = std::move(env); });
 }
 
-StringResult<Future, Env> Env::run_to_string(ExecutorRef ex, std::string_view expr) && {
+StringResult<Future, Env> Env::run_to_string(Executor& ex, std::string_view expr) && {
   return ooze::run_to_string(ex, std::move(*_data), expr).map_state([&](EnvData env) {
     *_data = std::move(env);
     return std::move(*this);

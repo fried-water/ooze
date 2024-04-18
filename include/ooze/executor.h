@@ -1,61 +1,52 @@
 #pragma once
 
-#include <knot/type_traits.h>
+#include <tbb/task_arena.h>
+#include <tbb/task_group.h>
 
-#include <functional>
-#include <memory>
+#include <optional>
 
 namespace ooze {
 
-struct ExecutorModel {
-  virtual ~ExecutorModel() noexcept(false) = default;
-  virtual void run(std::function<void()>) = 0;
-  virtual void wait() = 0;
-};
-
-class ExecutorRef {
-  ExecutorModel* _m;
-
-public:
-  ExecutorRef(ExecutorModel* m) : _m(m) {}
-  void run(std::function<void()> f) { _m->run(std::move(f)); }
-  void wait() { _m->wait(); }
-};
-
 class Executor {
-  template <typename E>
-  struct Concrete final : ExecutorModel {
-    E e;
-    template <typename... Args>
-    Concrete(Args&&... args) : e(std::forward<Args>(args)...) {}
-    void run(std::function<void()> f) override { e.run(std::move(f)); }
-    void wait() override { e.wait(); }
-  };
-
-  std::unique_ptr<ExecutorModel> _e;
-
 public:
-  template <typename E, typename... Args>
-  Executor(knot::Type<E>, Args&&... args) : _e(std::make_unique<Concrete<E>>(std::forward<Args>(args)...)) {}
+  Executor() = default;
 
-  template <typename E>
-  Executor(E e) : _e(std::unique_ptr<Concrete<E>>(std::move(e))) {}
+  Executor(int num_threads) : _tbb{std::in_place_t{}} {
+    _tbb->arena.initialize(num_threads == -1 ? tbb::task_arena::automatic : num_threads);
+  }
 
   Executor(const Executor&) = delete;
   Executor& operator=(const Executor&) = delete;
-
   Executor(Executor&&) = delete;
   Executor& operator=(Executor&&) = delete;
 
-  void wait() { _e->wait(); }
+  ~Executor() { wait(); }
 
-  ExecutorRef ref() { return {_e.get()}; }
-  operator ExecutorRef() { return ref(); }
+  template <typename F>
+  void run(F&& f) {
+    if(_tbb) {
+      _tbb->arena.execute([&]() { _tbb->group.run(std::move(f)); });
+    } else {
+      std::forward<F>(f)();
+    }
+  }
+
+  void wait() {
+    if(_tbb) {
+      _tbb->arena.execute([&]() { _tbb->group.wait(); });
+    }
+  }
+
+private:
+  struct TBBExecutor {
+    tbb::task_arena arena;
+    tbb::task_group group;
+  };
+
+  std::optional<TBBExecutor> _tbb;
 };
 
-template <typename T, typename... Args>
-Executor make_executor(Args&&... args) {
-  return Executor(knot::Type<T>{}, std::forward<Args>(args)...);
-}
+inline Executor make_seq_executor() { return Executor(); }
+inline Executor make_tbb_executor(int num_threads = -1) { return Executor(num_threads); }
 
 } // namespace ooze

@@ -3,7 +3,7 @@
 #include "constructing_graph.h"
 #include "runtime.h"
 
-#include "ooze/executor/tbb_executor.h"
+#include "ooze/executor.h"
 
 #include <chrono>
 #include <thread>

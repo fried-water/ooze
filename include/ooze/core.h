@@ -51,11 +51,11 @@ public:
   StringResult<void> parse_scripts(std::span<const std::string_view>) &;
   StringResult<void, Env> parse_scripts(std::span<const std::string_view>) &&;
 
-  StringResult<Binding> run(ExecutorRef, std::string_view) &;
-  StringResult<Binding, Env> run(ExecutorRef, std::string_view) &&;
+  StringResult<Binding> run(Executor&, std::string_view) &;
+  StringResult<Binding, Env> run(Executor&, std::string_view) &&;
 
-  StringResult<Future> run_to_string(ExecutorRef, std::string_view) &;
-  StringResult<Future, Env> run_to_string(ExecutorRef, std::string_view) &&;
+  StringResult<Future> run_to_string(Executor&, std::string_view) &;
+  StringResult<Future, Env> run_to_string(Executor&, std::string_view) &&;
 
   bool drop(std::string_view);
 

@@ -6,8 +6,8 @@
 
 namespace ooze {
 
-std::tuple<Future, Env> step_repl(ExecutorRef, Env, std::string_view line);
+std::tuple<Future, Env> step_repl(Executor&, Env, std::string_view line);
 
-void run_repl(ExecutorRef, Env);
+void run_repl(Executor&, Env);
 
 } // namespace ooze

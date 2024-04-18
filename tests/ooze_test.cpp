@@ -5,7 +5,7 @@
 #include "runtime_test.h"
 
 #include "ooze/core.h"
-#include "ooze/executor/sequential_executor.h"
+#include "ooze/executor.h"
 
 namespace ooze {
 

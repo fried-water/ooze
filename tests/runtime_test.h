@@ -5,8 +5,7 @@
 #include "runtime.h"
 
 #include "ooze/core.h"
-#include "ooze/executor/sequential_executor.h"
-#include "ooze/executor/tbb_executor.h"
+#include "ooze/executor.h"
 
 namespace ooze {
 
@@ -43,7 +42,7 @@ inline auto await(Binding b) {
 }
 
 inline std::vector<Future> execute(
-  std::shared_ptr<const Program> p, Inst inst, ExecutorRef ex, std::vector<Any> owned, std::vector<Any> borrowed = {}) {
+  std::shared_ptr<const Program> p, Inst inst, Executor& ex, std::vector<Any> owned, std::vector<Any> borrowed = {}) {
   std::vector<Future> results(p->output_counts[inst.get()]);
   execute(std::move(p),
           inst,
@@ -56,12 +55,13 @@ inline std::vector<Future> execute(
 
 inline std::vector<Any>
 execute(std::shared_ptr<const Program> p, Inst inst, std::vector<Any> owned, std::vector<Any> borrowed = {}) {
-  return await(execute(std::move(p), inst, make_seq_executor(), std::move(owned), std::move(borrowed)));
+  Executor ex = make_seq_executor();
+  return await(execute(std::move(p), inst, ex, std::move(owned), std::move(borrowed)));
 }
 
 template <typename... Ts, typename... Bs>
 std::vector<Future>
-execute(std::shared_ptr<const Program> p, Inst inst, ExecutorRef ex, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
+execute(std::shared_ptr<const Program> p, Inst inst, Executor& ex, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
   std::vector<Future> results(p->output_counts[inst.get()]);
   execute(std::move(p), inst, ex, to_futures(std::move(ts)), to_borrowed_futures(std::move(bs)), results);
   return results;
@@ -69,7 +69,8 @@ execute(std::shared_ptr<const Program> p, Inst inst, ExecutorRef ex, std::tuple<
 
 template <typename... Ts, typename... Bs>
 std::vector<Any> execute(std::shared_ptr<const Program> p, Inst inst, std::tuple<Ts...> ts, std::tuple<Bs...> bs) {
-  return await(execute(std::move(p), inst, make_seq_executor(), std::move(ts), std::move(bs)));
+  Executor ex = make_seq_executor();
+  return await(execute(std::move(p), inst, ex, std::move(ts), std::move(bs)));
 }
 
 template <typename... Ts, typename... Bs>
