@@ -37,6 +37,8 @@ public:
     }
   }
 
+  bool parallel() const { return _tbb.has_value(); }
+
 private:
   struct TBBExecutor {
     tbb::task_arena arena;

@@ -43,6 +43,24 @@ ValueForward to_fwd(std::vector<Iterm> terms) {
           int(std::distance(terms.begin(), move_end))};
 }
 
+auto find_borrow_cleanups(std::vector<std::vector<ValueForward>> fwds) {
+  std::vector<BorrowCleanup> cleanups;
+  auto node_borrows = std::vector<std::vector<int>>(fwds.size() - 1);
+
+  knot::preorder(fwds, [&](ValueForward& fwd) {
+    if(fwd.move_end != std::ssize(fwd.terms)) {
+      fwd.cleanup_idx = int(cleanups.size());
+      cleanups.push_back({int(fwd.terms.size()) - fwd.move_end,
+                          fwd.copy_end != fwd.move_end ? std::optional(fwd.terms[fwd.copy_end]) : std::nullopt});
+      for(int i = fwd.move_end; i < std::ssize(fwd.terms); i++) {
+        node_borrows[fwd.terms[i].node_id].push_back(fwd.cleanup_idx);
+      }
+    }
+  });
+
+  return std::tuple(std::move(cleanups), std::move(node_borrows), std::move(fwds));
+}
+
 } // namespace
 
 std::vector<Iterm>& ConstructingGraph::fwd_of(Oterm o) {
@@ -115,13 +133,18 @@ FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs)
 
   add_edges(outputs, pbs);
 
+  auto [borrow_cleanups, node_borrows, final_owned_fwds] =
+    find_borrow_cleanups(knot::map<std::vector<std::vector<ValueForward>>>(std::move(owned_fwds), to_fwd));
+
   return FunctionGraph{
     std::move(input_borrows),
     int(outputs.size()),
-    knot::map<std::vector<std::vector<ValueForward>>>(std::move(owned_fwds), to_fwd),
+    std::move(final_owned_fwds),
     knot::map<std::vector<ValueForward>>(std::move(input_borrowed_fwds), to_fwd),
     std::move(input_counts),
-    std::move(insts)};
+    std::move(insts),
+    std::move(borrow_cleanups),
+    std::move(node_borrows)};
 }
 
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<bool> input_borrows) {

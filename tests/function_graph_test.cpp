@@ -77,14 +77,7 @@ BOOST_AUTO_TEST_CASE(single_value_fwd) {
   const auto id_outputs = cg.add(fn3, inputs, std::array{PassBy::Copy}, 1);
   const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Copy});
 
-  const FunctionGraph exp{
-    {false},
-    1,
-    {{{{{0, 0}}, 1, 1}}, {{{{1, 0}}, 1, 1}}},
-    {},
-    {{1, 0}},
-    {fn3},
-  };
+  const FunctionGraph exp{{false}, 1, {{{{{0, 0}}, 1, 1}}, {{{{1, 0}}, 1, 1}}}, {}, {{1, 0}}, {fn3}, {}, {{}}};
 
   BOOST_CHECK(exp == g);
 }
@@ -93,7 +86,8 @@ BOOST_AUTO_TEST_CASE(single_ref_fwd) {
   auto [cg, inputs] = make_graph({true});
   const auto id_outputs = cg.add(fn4, inputs, std::array{PassBy::Borrow}, 1);
   const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Copy});
-  const FunctionGraph exp{{true}, 1, {{}, {{{{{1, 0}}, 1, 1}}}}, {{{{{0, 0}}, 0, 0}}}, {{0, 1}}, {fn4}};
+  const FunctionGraph exp{{true}, 1, {{}, {{{{{1, 0}}, 1, 1}}}}, {{{{{0, 0}}, 0, 0}}}, {{0, 1}}, {fn4}, {}, {{}}};
+
   BOOST_CHECK(exp == g);
 }
 
@@ -108,7 +102,14 @@ BOOST_AUTO_TEST_CASE(single_value_alternate_fwd) {
   const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Copy});
 
   const FunctionGraph exp{
-    {false}, 1, {{{{{{0, 0}, {0, 1}, {0, 0}, {0, 1}}, 2, 2}}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{2, 2}}, {fn}};
+    {false},
+    1,
+    {{{{{{0, 0}, {0, 1}, {0, 0}, {0, 1}}, 2, 2, 0}}}, {{{{{1, 0}}, 1, 1}}}},
+    {},
+    {{2, 2}},
+    {fn},
+    {{2, std::nullopt}},
+    {{0, 0}}};
 
   BOOST_CHECK(exp == g);
 }
@@ -123,7 +124,7 @@ BOOST_AUTO_TEST_CASE(single_ref_alternate_fwd) {
   const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Copy});
 
   const FunctionGraph exp{
-    {true}, 1, {{}, {{{{{1, 0}}, 1, 1}}}}, {{{{{0, 0}, {0, 1}, {0, 0}, {0, 1}}, 2, 2}}}, {{2, 2}}, {fn3}};
+    {true}, 1, {{}, {{{{{1, 0}}, 1, 1}}}}, {{{{{0, 0}, {0, 1}, {0, 0}, {0, 1}}, 2, 2}}}, {{2, 2}}, {fn3}, {}, {{}}};
 
   BOOST_CHECK(exp == g);
 }
@@ -132,7 +133,9 @@ BOOST_AUTO_TEST_CASE(single_ref_as_value) {
   auto [cg, inputs] = make_graph({false});
   const auto id_outputs = cg.add(fn4, inputs, std::array{PassBy::Borrow}, 1);
   const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Copy});
-  const FunctionGraph exp{{false}, 1, {{{{{0, 0}}, 0, 0}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{0, 1}}, {fn4}};
+  const FunctionGraph exp{
+    {false}, 1, {{{{{0, 0}}, 0, 0, 0}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{0, 1}}, {fn4}, {{1, std::nullopt}}, {{0}}};
+
   BOOST_CHECK(exp == g);
 }
 
@@ -148,6 +151,18 @@ BOOST_AUTO_TEST_CASE(single_graph) {
   BOOST_CHECK(inner_g == g);
 }
 
+BOOST_AUTO_TEST_CASE(fwd_borrow) {
+  auto [cg, inputs] = make_graph({false});
+  const auto borrow_outputs = cg.add(fn3, inputs, std::array{PassBy::Borrow}, 1);
+  const FunctionGraph g =
+    std::move(cg).finalize(std::array{inputs[0], borrow_outputs[0]}, std::array{PassBy::Move, PassBy::Move});
+
+  const FunctionGraph exp{
+    {false}, 2, {{{{{1, 0}, {0, 0}}, 0, 1, 0}}, {{{{{1, 1}}, 0, 1}}}}, {}, {{0, 1}}, {fn3}, {{1, Term{1, 0}}}, {{0}}};
+
+  BOOST_CHECK(exp == g);
+}
+
 BOOST_AUTO_TEST_CASE(single_ref_as_value_graph) {
   auto [inner_cg, inner_inputs] = make_graph({true});
   const auto id_inner_outputs = inner_cg.add(fn4, inner_inputs, std::array{PassBy::Borrow}, 1);
@@ -157,19 +172,8 @@ BOOST_AUTO_TEST_CASE(single_ref_as_value_graph) {
   const auto id_outputs = cg.add(inner_g, inputs);
   const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Copy});
 
-  const FunctionGraph exp{{false}, 1, {{{{{0, 0}}, 0, 0}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{0, 1}}, {fn4}};
-
-  BOOST_CHECK(exp == g);
-}
-
-// TODO detect circular ref/moves
-BOOST_AUTO_TEST_CASE(single_move_only_fwd_ref) {
-  auto [cg, inputs] = make_graph({false});
-  const Inst fn{7};
-  const auto id_outputs = cg.add(fn, std::array{inputs[0], inputs[0]}, std::array{PassBy::Move, PassBy::Borrow}, 1);
-  const FunctionGraph g = std::move(cg).finalize(id_outputs, std::array{PassBy::Move});
-
-  const FunctionGraph exp{{false}, 1, {{{{{{0, 0}, {0, 0}}, 0, 1}}}, {{{{{1, 0}}, 0, 1}}}}, {}, {{1, 1}}, {fn}};
+  const FunctionGraph exp{
+    {false}, 1, {{{{{0, 0}}, 0, 0, 0}}, {{{{{1, 0}}, 1, 1}}}}, {}, {{0, 1}}, {fn4}, {{1, std::nullopt}}, {{0}}};
 
   BOOST_CHECK(exp == g);
 }
@@ -179,7 +183,7 @@ BOOST_AUTO_TEST_CASE(single_void) {
   const Inst fn{7};
   const auto id_outputs = cg.add(fn, {}, {}, 0);
   const FunctionGraph g = std::move(cg).finalize({}, {});
-  const FunctionGraph exp{{}, {}, {{}, {}}, {}, {{0, 0}}, {fn}};
+  const FunctionGraph exp{{}, {}, {{}, {}}, {}, {{0, 0}}, {fn}, {}, {{}}};
 
   BOOST_CHECK(exp == g);
 }

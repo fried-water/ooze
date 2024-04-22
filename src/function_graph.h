@@ -2,6 +2,10 @@
 
 #include "inst.h"
 
+#include <optional>
+#include <utility>
+#include <vector>
+
 namespace ooze {
 
 struct Term {
@@ -14,8 +18,14 @@ struct ValueForward {
   std::vector<Term> terms;
   int copy_end = 0;
   int move_end = 0;
-
+  int cleanup_idx = -1;
   KNOT_ORDERED(ValueForward);
+};
+
+struct BorrowCleanup {
+  int count = 0;
+  std::optional<Term> fwd;
+  KNOT_ORDERED(BorrowCleanup);
 };
 
 struct FunctionGraph {
@@ -27,6 +37,9 @@ struct FunctionGraph {
 
   std::vector<std::pair<int, int>> input_counts;
   std::vector<Inst> insts;
+
+  std::vector<BorrowCleanup> borrow_cleanups;
+  std::vector<std::vector<int>> node_borrows;
 
   KNOT_COMPAREABLE(FunctionGraph);
 };
