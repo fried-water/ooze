@@ -37,9 +37,8 @@ public:
     return tmp;
   }
 
-  KNOT_ORDERED(StrongID);
+  friend auto operator<=>(const StrongID&, const StrongID&) = default;
   friend auto as_tie(const StrongID& s) { return std::tie(s._value); }
-
   friend std::ostream& operator<<(std::ostream& os, StrongID id) { return os << id.get(); }
 };
 

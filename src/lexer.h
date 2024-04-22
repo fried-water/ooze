@@ -21,7 +21,7 @@ struct Token {
   TokenType type = {};
   Slice ref;
 
-  KNOT_COMPAREABLE(Token);
+  friend auto operator<=>(const Token&, const Token&) = default;
 };
 
 // Failure is represented with an empty whitespace token

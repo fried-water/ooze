@@ -15,7 +15,7 @@ struct SrcRef {
   SrcID file;
   Slice slice;
 
-  KNOT_ORDERED(SrcRef);
+  friend auto operator<=>(const SrcRef&, const SrcRef&) = default;
 };
 
 template <typename... Ts>

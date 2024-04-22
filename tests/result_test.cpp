@@ -7,7 +7,7 @@ namespace ooze {
 namespace {
 struct State {
   int data = 0;
-  KNOT_ORDERED(State);
+  friend auto operator<=>(const State&, const State&) = default;
 };
 } // namespace
 

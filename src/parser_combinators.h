@@ -8,7 +8,7 @@ struct ParseLocation {
   int pos = 0;
   int depth = 0;
 
-  KNOT_ORDERED(ParseLocation);
+  friend bool operator<=>(const ParseLocation&, const ParseLocation&) = default;
 };
 
 template <typename Result>
@@ -21,7 +21,7 @@ struct ParseResult {
 
   explicit operator bool() const { return value.has_value(); }
 
-  KNOT_ORDERED(ParseResult);
+  friend bool operator<=>(const ParseResult&, const ParseResult&) = default;
 };
 
 inline auto merge(std::optional<std::pair<std::string, ParseLocation>> x,

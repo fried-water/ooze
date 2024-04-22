@@ -148,7 +148,8 @@ public:
   friend auto as_tie(const Graph& g) {
     return std::tie(g._indices, g._fanout, static_cast<const std::vector<Ts>&>(g)...);
   }
-  KNOT_COMPAREABLE(Graph);
+
+  friend bool operator==(const Graph&, const Graph&) = default;
 };
 
 template <typename ID, typename... Ts, typename F>

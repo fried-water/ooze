@@ -9,7 +9,7 @@ struct ContextualError {
   std::string msg;
   std::vector<std::string> notes;
 
-  KNOT_ORDERED(ContextualError);
+  friend auto operator<=>(const ContextualError&, const ContextualError&) = default;
 };
 
 template <typename T, typename... Ts>

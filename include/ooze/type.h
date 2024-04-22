@@ -18,7 +18,7 @@ struct TypeID {
 
   static constexpr TypeID Invalid() { return TypeID{}; }
 
-  KNOT_ORDERED(TypeID);
+  friend auto operator<=>(const TypeID&, const TypeID&) = default;
 };
 
 template <typename T>

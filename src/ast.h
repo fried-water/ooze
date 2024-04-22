@@ -69,7 +69,7 @@ struct AST {
   TypeGraph tg;
   std::vector<std::pair<ASTID, Literal>> literals;
 
-  KNOT_COMPAREABLE(AST);
+  friend bool operator==(const AST&, const AST&) = default;
 };
 
 inline const Literal& lookup_literal(const AST& ast, ASTID id) {

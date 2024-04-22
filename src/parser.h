@@ -12,7 +12,7 @@ struct ParserResult {
   T parsed;
   std::vector<std::pair<Type, SrcRef>> type_srcs;
 
-  KNOT_COMPAREABLE(ParserResult);
+  friend bool operator==(const ParserResult&, const ParserResult&) = default;
 };
 
 ContextualResult<ParserResult<std::vector<ASTID>>, AST> parse(AST, SrcID, std::string_view);

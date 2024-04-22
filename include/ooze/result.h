@@ -19,7 +19,7 @@ constexpr auto fail(knot::Type<T>, E, Ts...);
 template <typename E>
 struct Failure {
   E value;
-  KNOT_ORDERED(Failure);
+  friend bool operator==(const Failure&, const Failure&) = default;
 };
 
 template <typename E>
@@ -65,7 +65,7 @@ public:
   friend auto as_tie(ResultStorage& r) { return std::tie(r._result, r._state); }
   friend auto as_tie(ResultStorage&& r) { return std::tie(std::move(r._result), std::move(r._state)); }
 
-  KNOT_ORDERED(ResultStorage);
+  friend bool operator==(const ResultStorage&, const ResultStorage&) = default;
 };
 
 template <typename E, typename... Ts>
@@ -99,7 +99,7 @@ public:
   friend auto as_tie(ResultStorage& r) { return std::tie(r._error, r._state); }
   friend auto as_tie(ResultStorage&& r) { return std::tie(std::move(r._error), std::move(r._state)); }
 
-  KNOT_ORDERED(ResultStorage);
+  friend bool operator==(const ResultStorage&, const ResultStorage&) = default;
 };
 
 template <typename T, typename E, typename... Ts>

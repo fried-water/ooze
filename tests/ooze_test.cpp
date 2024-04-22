@@ -159,7 +159,7 @@ struct Point {
   int x;
   int y;
 
-  KNOT_COMPAREABLE(Point);
+  friend bool operator==(const Point&, const Point&) = default;
 };
 
 BOOST_AUTO_TEST_CASE(custom_type) {

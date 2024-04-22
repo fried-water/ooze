@@ -10,14 +10,15 @@ enum class PassBy { Copy, Move, Borrow };
 struct Oterm {
   Term term;
   bool borrow = false;
-  KNOT_ORDERED(Oterm);
+
+  friend auto operator<=>(const Oterm&, const Oterm&) = default;
 };
 
 struct Iterm {
   Term term;
   PassBy pb = PassBy::Copy;
 
-  KNOT_ORDERED(Iterm);
+  friend auto operator<=>(const Iterm&, const Iterm&) = default;
 };
 
 class ConstructingGraph {

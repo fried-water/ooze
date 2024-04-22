@@ -8,7 +8,7 @@ struct Slice {
   int begin = 0;
   int end = 0;
 
-  KNOT_ORDERED(Slice);
+  friend auto operator<=>(const Slice&, const Slice&) = default;
 };
 
 inline constexpr int size(Slice s) { return s.end - s.begin; }

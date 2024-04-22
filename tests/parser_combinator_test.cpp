@@ -125,7 +125,7 @@ BOOST_AUTO_TEST_CASE(test_seq) {
 
 struct CH1 {
   char c;
-  KNOT_COMPAREABLE(CH1);
+  friend bool operator==(const CH1&, const CH1&) = default;
 };
 
 BOOST_AUTO_TEST_CASE(test_choose) {

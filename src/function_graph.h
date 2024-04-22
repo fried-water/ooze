@@ -11,7 +11,8 @@ namespace ooze {
 struct Term {
   int node_id = 0;
   int port = 0;
-  KNOT_ORDERED(Term);
+
+  friend auto operator<=>(const Term&, const Term&) = default;
 };
 
 struct ValueForward {
@@ -19,13 +20,15 @@ struct ValueForward {
   int copy_end = 0;
   int move_end = 0;
   int cleanup_idx = -1;
-  KNOT_ORDERED(ValueForward);
+
+  friend auto operator<=>(const ValueForward&, const ValueForward&) = default;
 };
 
 struct BorrowCleanup {
   int count = 0;
   std::optional<Term> fwd;
-  KNOT_ORDERED(BorrowCleanup);
+
+  friend auto operator<=>(const BorrowCleanup&, const BorrowCleanup&) = default;
 };
 
 struct FunctionGraph {
@@ -41,7 +44,7 @@ struct FunctionGraph {
   std::vector<BorrowCleanup> borrow_cleanups;
   std::vector<std::vector<int>> node_borrows;
 
-  KNOT_COMPAREABLE(FunctionGraph);
+  friend bool operator==(const FunctionGraph&, const FunctionGraph&) = default;
 };
 
 } // namespace ooze
