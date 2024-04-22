@@ -192,12 +192,33 @@ find_offsets(const TypeGraph& tg,
                     }));
 }
 
-Grouping<ASTID, 3> find_shared(Span<ASTID> v1, Span<ASTID> v2) {
+Grouping<ASTID, 3> find_owned_grouping(Span<ASTID> v1, Span<ASTID> v2, Span<ASTID> b1, Span<ASTID> b2) {
+  std::vector<ASTID> values;
+  values.reserve(v1.size() + v2.size()); // reserve so address is stable
+
+  values = filter_to_vec(v1, contained_fn(v2), std::move(values));
+
+  // Promote values owned in one branch and borrowed in the other to entirely owning
+  values = filter_to_vec(b2, contained_fn(v1), std::move(values));
+  values = filter_to_vec(b1, contained_fn(v2), std::move(values));
+
+  const auto shared = std::span(values.begin(), values.end());
+
+  const int shared_count = int(values.size());
+  values = filter_to_vec(v1, std::not_fn(contained_fn(shared)), std::move(values));
+  const int v1_count = int(values.size());
+  values = filter_to_vec(v2, std::not_fn(contained_fn(shared)), std::move(values));
+  return {std::move(values), {shared_count, v1_count}};
+}
+
+Grouping<ASTID, 3> find_shared_grouping(Span<ASTID> v1, Span<ASTID> v2, Span<ASTID> owned) {
+  const auto not_owned = std::not_fn(contained_fn(owned));
+
   std::vector<ASTID> values = filter_to_vec(v1, contained_fn(v2));
   const int shared_count = int(values.size());
-  values = filter_to_vec(v1, std::not_fn(contained_fn(v2)), std::move(values));
+  values = filter_to_vec(v1, and_fn(not_owned, std::not_fn(contained_fn(v2))), std::move(values));
   const int v1_count = int(values.size());
-  values = filter_to_vec(v2, std::not_fn(contained_fn(v1)), std::move(values));
+  values = filter_to_vec(v2, and_fn(not_owned, std::not_fn(contained_fn(v1))), std::move(values));
   return {std::move(values), {shared_count, v1_count}};
 }
 
@@ -271,8 +292,10 @@ add_if_expr(Program p,
       auto [ctx, outer_terms] = std::move(pair);
 
       assert(outer_terms.size() == 1);
-      const Grouping<ASTID, 3> owned_grouping = find_shared(if_graph.captured_values, else_graph.captured_values);
-      const Grouping<ASTID, 3> borrowed_grouping = find_shared(if_graph.captured_borrows, else_graph.captured_borrows);
+      const Grouping<ASTID, 3> owned_grouping = find_owned_grouping(
+        if_graph.captured_values, else_graph.captured_values, if_graph.captured_borrows, else_graph.captured_borrows);
+      const Grouping<ASTID, 3> borrowed_grouping =
+        find_shared_grouping(if_graph.captured_borrows, else_graph.captured_borrows, owned_grouping[0]);
 
       outer_terms = append_binding_terms(ctx.bindings, owned_grouping.vec, std::move(outer_terms));
       outer_terms = append_binding_terms(ctx.bindings, borrowed_grouping.vec, std::move(outer_terms));
@@ -438,9 +461,7 @@ std::vector<ContextualError> find_borrow_move_dependency_errors(
         const int node = stack.back();
         stack.pop_back();
 
-        const bool is_if = node < g.insts.size() && p.inst[g.insts[node].get()] == InstOp::If;
-
-        if(!is_if && stdr::find(ref_nodes, node) != ref_nodes.end()) {
+        if(stdr::find(ref_nodes, node) != ref_nodes.end()) {
           errors.push_back({srcs[oterm_srcs.at(oterm).get()], "Dependency Error"});
           break;
         } else if(node < max_node) {

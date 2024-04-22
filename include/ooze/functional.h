@@ -110,6 +110,11 @@ inline auto nullify() {
   return [](auto&&...) {};
 }
 
+template <typename... Fs>
+auto and_fn(Fs&&... fs) {
+  return [... fs = std::forward<Fs>(fs)](const auto& ele) { return (fs(ele) && ...); };
+}
+
 template <typename Range>
 auto contained_fn(const Range& rng) {
   return [&rng](const auto& ele) { return std::find(rng.begin(), rng.end(), ele) != rng.end(); };

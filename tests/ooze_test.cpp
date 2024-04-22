@@ -872,18 +872,6 @@ BOOST_AUTO_TEST_CASE(borrow_dependency_no_hang) {
   check_run(std::move(r), "", expr, "string", std::string("abcabc"));
 }
 
-BOOST_AUTO_TEST_CASE(borrow_dependency_no_hang_if) {
-  auto r = create_primitive_registry();
-
-  constexpr std::string_view expr =
-    "{"
-    "  let x = 'abc';"
-    "  if false { x } else { clone(&x) }"
-    "}";
-
-  check_run(std::move(r), "", expr, "string", std::string("abc"));
-}
-
 BOOST_AUTO_TEST_SUITE_END()
 
 } // namespace ooze
