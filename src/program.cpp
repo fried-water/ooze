@@ -39,8 +39,6 @@ Inst Program::add(IfInst inst, int output_count) {
   return i;
 }
 
-Inst Program::add(SelectInst, int output_count) { return add_internal(*this, InstOp::Select, output_count); }
-
 Inst Program::curry(Inst curried, Span<Any> s) {
   const Inst i = add_internal(*this, InstOp::Curry, output_counts[curried.get()], i32(currys.size()));
   currys.emplace_back(curried, Slice{i32(values.size()), i32(values.size() + s.size())});

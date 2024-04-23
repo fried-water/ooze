@@ -193,7 +193,6 @@ BOOST_AUTO_TEST_CASE(expr) {
   test_alr(parse_expr, "(1)", {"i32", "(_)"});
   test_alr(parse_expr, "f()", {"fn _ -> _", "()", "_"});
 
-  test_alr(parse_expr, "select x { y } else { z }", {"bool", "_", "_", "_"});
   test_alr(parse_expr, "if x { y } else { z }", {"bool", "_", "_", "_"});
 
   test_alr_error(parse_expr, "1()", {{{SrcID{1}, {0, 1}}, "expected fn _ -> _, given i32"}});
@@ -345,36 +344,6 @@ BOOST_AUTO_TEST_CASE(fn_return) { test_tc(basic_test_env("f: fn() -> i32"), "() 
 BOOST_AUTO_TEST_CASE(fn_arg) { test_tc(basic_test_env(), "(f) -> i32 = f()", "(f : fn() -> i32) -> i32 = f()"); }
 
 BOOST_AUTO_TEST_CASE(fn_call) { test_tc(basic_test_env(), "(f) -> i32 = f()", "(f: fn() -> i32) -> i32 = f()"); }
-
-BOOST_AUTO_TEST_CASE(fn_select_from_return) {
-  test_tc(basic_test_env(),
-          "(a, b, c) -> i32 = select a { b } else { c }",
-          "(a: bool, b: i32, c: i32) -> i32 = select a { b } else { c }");
-}
-
-BOOST_AUTO_TEST_CASE(fn_select_from_arg) {
-  test_tc(basic_test_env(),
-          "(a, b: i32, c) -> _ = select a { b } else { c }",
-          "(a: bool, b: i32, c: i32) -> i32 = select a { b } else { c }");
-}
-
-BOOST_AUTO_TEST_CASE(fn_select_from_constant) {
-  test_tc(basic_test_env(),
-          "(a, b) -> _ = select a { b } else { 1 }",
-          "(a: bool, b: i32) -> i32 = select a { b } else { 1 }");
-}
-
-BOOST_AUTO_TEST_CASE(fn_select_from_cond) {
-  test_tc(basic_test_env(),
-          "(a, b) -> _ = select a { a } else { b }",
-          "(a: bool, b: bool) -> bool = select a { a } else { b }");
-}
-
-BOOST_AUTO_TEST_CASE(fn_select_nested) {
-  test_tc(basic_test_env(),
-          "(a, b, c, d) -> _ = select a { b } else select c { d } else { 0 }",
-          "(a: bool, b: i32, c: bool, d: i32) -> i32 = select a { b } else select c { d } else { 0 }");
-}
 
 BOOST_AUTO_TEST_CASE(fn_if_from_return) {
   test_tc(basic_test_env(),

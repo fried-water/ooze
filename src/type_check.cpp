@@ -450,7 +450,6 @@ void find_returned_borrows(const AST& ast, std::vector<TypeCheckError>& errors, 
         find_returned_borrows(ast, errors, id);
       }
       break;
-    case ASTTag::ExprSelect:
     case ASTTag::ExprIf:
     case ASTTag::ExprWith: {
       // Skip first child for both With (assignment) and Select/If (condition)
@@ -626,7 +625,6 @@ Type language_rule(const TypeCache& tc, AST& ast, ASTID id) {
   case ASTTag::Module: return tc.unit;
 
   case ASTTag::ExprCall:
-  case ASTTag::ExprSelect:
   case ASTTag::ExprIf:
   case ASTTag::PatternWildCard:
   case ASTTag::PatternIdent:
@@ -662,7 +660,6 @@ calculate_propagations(const Graph<ASTID>& ident_graph, const Forest<ASTTag, AST
         break;
       }
       case ASTTag::ExprBorrow: add_pair(id, *forest.first_child(id), BorrowProp{}); break;
-      case ASTTag::ExprSelect:
       case ASTTag::ExprIf: {
         const auto [_, if_expr, else_expr] = forest.child_ids(id).take<3>();
         add_pair(if_expr, else_expr, DirectProp{});
@@ -781,7 +778,7 @@ apply_language_rules(const TypeCache& tc, const TypeNames& type_names, AST ast, 
       if(const auto parent = ast.forest.parent(id); parent && ast.forest.first_child(*parent) == id) {
         if(const ASTTag tag = ast.forest[*parent]; tag == ASTTag::ExprCall) {
           apply_type(id, tc.fn_floating);
-        } else if(tag == ASTTag::ExprSelect || tag == ASTTag::ExprIf) {
+        } else if(tag == ASTTag::ExprIf) {
           apply_type(id, tc.boolean);
         }
       }

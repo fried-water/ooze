@@ -111,50 +111,6 @@ add_expr(Program,
          const Map<ASTID, ASTID>& overloads,
          ASTID);
 
-ContextualResult<std::pair<GraphContext, std::vector<Oterm>>, Program> add_select_expr(
-  Program p,
-  GraphContext ctx,
-  const AST& ast,
-  const std::unordered_set<TypeID>& copy_types,
-  const Map<ASTID, ASTID>& overloads,
-  ASTID id) {
-  const auto [cond_id, if_id, else_id] = ast.forest.child_ids(id).take<3>();
-
-  return add_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, cond_id)
-    .and_then(flattened([&](GraphContext ctx, std::vector<Oterm> cond_terms, Program p) {
-      return add_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, if_id)
-        .map(flattened([&](GraphContext ctx, std::vector<Oterm> if_terms, Program p) {
-          return std::tuple(std::tuple(std::move(ctx), std::move(cond_terms), std::move(if_terms)), std::move(p));
-        }));
-    }))
-    .and_then(flattened([&](GraphContext ctx, std::vector<Oterm> cond_terms, std::vector<Oterm> if_terms, Program p) {
-      return add_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, else_id)
-        .map(flattened([&](GraphContext ctx, std::vector<Oterm> else_terms, Program p) {
-          return std::tuple(
-            std::tuple(std::move(ctx), std::move(cond_terms), std::move(if_terms), std::move(else_terms)),
-            std::move(p));
-        }));
-    }))
-    .map(flattened([&](GraphContext ctx, auto cond_terms, auto if_terms, auto else_terms, Program p) {
-      assert(cond_terms.size() == 1);
-      assert(if_terms.size() == else_terms.size());
-
-      std::vector<PassBy> pass_bys;
-      pass_bys.reserve(cond_terms.size() + if_terms.size() + else_terms.size());
-      pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[cond_id.get()], std::move(pass_bys));
-      pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[if_id.get()], std::move(pass_bys));
-      pass_bys = pass_bys_of(copy_types, ast.tg, ast.types[else_id.get()], std::move(pass_bys));
-
-      const int output_count = size_of(ast.tg, ast.types[id.get()]);
-      std::vector<Oterm> terms =
-        ctx.cg.add(p.add(SelectInst{}, output_count),
-                   flatten(std::move(cond_terms), std::move(if_terms), std::move(else_terms)),
-                   pass_bys,
-                   output_count);
-      return std::tuple(std::pair(std::move(ctx), std::move(terms)), std::move(p));
-    }));
-}
-
 template <typename T, size_t Count>
 struct Grouping {
   std::vector<T> vec;
@@ -400,7 +356,6 @@ add_expr(Program p,
     return {std::pair(std::move(ctx), std::move(terms)), std::move(p)};
   }
   case ASTTag::ExprCall: return add_call_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, id);
-  case ASTTag::ExprSelect: return add_select_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, id);
   case ASTTag::ExprIf: return add_if_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, id);
   case ASTTag::ExprBorrow:
     return add_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, *ast.forest.first_child(id));

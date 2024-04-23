@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(expr) {
 
   test(parse_expr, "(1, abc)", "(1, abc)");
 
-  test(parse_expr, "select x { y } else { z }", "select x { y } else { z }");
+  test(parse_expr, "if x { y } else { z }", "if x { y } else { z }");
 
   test(parse_expr, "f(1)", "f(1)");
 }

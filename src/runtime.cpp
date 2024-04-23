@@ -263,17 +263,6 @@ void execute_if(const IfInst& inst,
   execute(p, parallel, cond ? inst.if_inst : inst.else_inst, inputs, borrowed_inputs, outputs);
 }
 
-void execute_select(std::span<Any> inputs, std::span<Any> outputs) {
-  assert(holds_alternative<bool>(inputs[0]));
-  const bool cond = any_cast<bool>(inputs[0]);
-  inputs = inputs.subspan(1);
-
-  const auto begin = cond ? inputs.begin() : inputs.begin() + i64(inputs.size() / 2);
-  const auto end = cond ? inputs.begin() + i64(inputs.size() / 2) : inputs.end();
-
-  std::move(begin, end, outputs.begin());
-}
-
 void execute_curry(const std::pair<Inst, Slice>& curry,
                    const Program& p,
                    bool parallel,
@@ -304,7 +293,6 @@ void execute(const Program& p,
   case InstOp::Functional:
     return execute(p, parallel, any_cast<Inst>(inputs[0]), inputs.subspan(1), borrowed_inputs, outputs);
   case InstOp::If: return execute_if(p.ifs[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
-  case InstOp::Select: return execute_select(inputs, outputs);
   case InstOp::Curry:
     return execute_curry(p.currys[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
   case InstOp::Placeholder: assert(false); return;

@@ -355,36 +355,6 @@ BOOST_AUTO_TEST_CASE(expr_call_ufcs_chain) {
   check_pass(parse_expr, ast, {}, src);
 }
 
-BOOST_AUTO_TEST_CASE(expr_select) {
-  const std::string_view src = "select x { y } else { z }";
-  auto f = ast_forest({{ASTTag::ExprSelect, ASTTag::ExprIdent}});
-  f.append_child(ASTID{0}, ASTTag::ExprIdent);
-  f.append_child(ASTID{0}, ASTTag::ExprIdent);
-  const AST ast = {std::move(f), slices(src, {"x", "y", "z", src}), types(4)};
-  check_pass(parse_expr, ast, {}, src);
-}
-
-BOOST_AUTO_TEST_CASE(expr_select_nested) {
-  const std::string_view src = "select a { b } else select c { d } else { e }";
-  auto f = ast_forest({{ASTTag::ExprSelect, ASTTag::ExprIdent}});
-  f.append_child(ASTID{0}, ASTTag::ExprIdent);
-  const ASTID nested_id = f.append_child(ASTID{0}, ASTTag::ExprSelect);
-  f.append_child(nested_id, ASTTag::ExprIdent);
-  f.append_child(nested_id, ASTTag::ExprIdent);
-  f.append_child(nested_id, ASTTag::ExprIdent);
-  const AST ast = {
-    std::move(f),
-    as_invalid_refs({{7, 8},   // a
-                     {11, 12}, // b
-                     {27, 28}, // c
-                     {31, 32}, // d
-                     {42, 43}, // e
-                     {20, 45},
-                     {0, 45}}),
-    types(7)};
-  check_pass(parse_expr, ast, {}, src);
-}
-
 BOOST_AUTO_TEST_CASE(expr_if) {
   const std::string_view src = "if x { y } else { z }";
   auto f = ast_forest({{ASTTag::ExprIf, ASTTag::ExprIdent}});
@@ -683,10 +653,6 @@ BOOST_AUTO_TEST_CASE(bad_fn_name) {
 }
 
 BOOST_AUTO_TEST_CASE(no_fn_keyword) { check_single_error(parse, {{{}, {0, 1}}, "expected 'fn'"}, "f() -> T { 1 }"); }
-
-BOOST_AUTO_TEST_CASE(select_no_scope) {
-  check_single_error(parse_expr, {{{}, {9, 10}}, "expected '{'"}, "select a 1 else 1");
-}
 
 BOOST_AUTO_TEST_CASE(no_scope) { check_single_error(parse, {{{}, {11, 11}}, "expected '='"}, "fn f() -> T"); }
 

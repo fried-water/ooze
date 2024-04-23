@@ -415,22 +415,6 @@ BOOST_AUTO_TEST_CASE(curry_fn) {
   compare(7, execute_tbb(share(p), seven, {}, {}));
 }
 
-BOOST_AUTO_TEST_CASE(select) {
-  Program p;
-  const Inst sel0 = p.add(SelectInst{}, 0);
-  const Inst sel1 = p.add(SelectInst{}, 1);
-  const Inst sel2 = p.add(SelectInst{}, 2);
-
-  compare(std::tuple(), execute_tbb(share(p), sel0, std::tuple(true), {}));
-  compare(std::tuple(), execute_tbb(share(p), sel0, std::tuple(false), {}));
-
-  compare(1, execute_tbb(share(p), sel1, std::tuple(true, 1, 2), {}));
-  compare(2, execute_tbb(share(p), sel1, std::tuple(false, 1, 2), {}));
-
-  compare(std::tuple(1, 2), execute_tbb(share(p), sel2, std::tuple(true, 1, 2, 3, 4), {}));
-  compare(std::tuple(3, 4), execute_tbb(share(p), sel2, std::tuple(false, 1, 2, 3, 4), {}));
-}
-
 BOOST_AUTO_TEST_CASE(if_) {
   Program p;
 
@@ -493,14 +477,6 @@ BOOST_AUTO_TEST_CASE(functional) {
   for(int i = 0; i < NUM_EXECUTIONS; i++) {
     const Inst fn = p.add_fn([i](int x, const int& y) { return x + y + i; });
     compare(i + 12, execute_tbb(share(p), functional, std::tuple(fn, 5), std::tuple(7)));
-  }
-}
-
-BOOST_AUTO_TEST_CASE(select) {
-  Program p;
-  const Inst select = p.add(SelectInst{}, 1);
-  for(int i = 0; i < NUM_EXECUTIONS; i++) {
-    compare(i % 2, execute_tbb(share(p), select, std::tuple(i % 2 == 0, 0, 1), {}));
   }
 }
 

@@ -224,12 +224,6 @@ BOOST_AUTO_TEST_CASE(scope) {
             std::tuple(1, std::string("abc"), 2, 1));
 }
 
-BOOST_AUTO_TEST_CASE(select) {
-  constexpr std::string_view script = "fn f(b: bool) -> i32  = select b { 1 } else { 2 }";
-  check_run(create_primitive_registry(), script, "f(true)", "i32", std::tuple(1));
-  check_run(create_primitive_registry(), script, "f(false)", "i32", std::tuple(2));
-}
-
 BOOST_AUTO_TEST_CASE(if_) {
   constexpr std::string_view script = "fn f(b: bool) -> i32  = if b { 1 } else { 2 }";
   check_run(create_primitive_registry(), script, "f(true)", "i32", std::tuple(1));

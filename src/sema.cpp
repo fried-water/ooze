@@ -117,7 +117,6 @@ void calculate_ident_graph(
   case ASTTag::PatternTuple:
   case ASTTag::ExprLiteral:
   case ASTTag::ExprCall:
-  case ASTTag::ExprSelect:
   case ASTTag::ExprIf:
   case ASTTag::ExprBorrow:
   case ASTTag::ExprTuple:

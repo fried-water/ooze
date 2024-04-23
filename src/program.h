@@ -14,10 +14,10 @@ namespace ooze {
 
 using Inst = StrongID<struct InstSpace, i32>;
 
-enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Select, Curry, Placeholder };
+enum class InstOp : u8 { Value, Fn, Graph, Functional, If, Curry, Placeholder };
 
 constexpr auto names(knot::Type<InstOp>) {
-  return knot::Names("InstOp", {"Value", "Fn", "Graph", "Functional", "If", "Select", "Curry", "Placeholder"});
+  return knot::Names("InstOp", {"Value", "Fn", "Graph", "Functional", "If", "Curry", "Placeholder"});
 }
 
 struct AnyFnInst {
@@ -35,8 +35,6 @@ struct IfInst {
   std::array<i32, 2> value_offsets = {};
   std::array<i32, 2> borrow_offsets = {};
 };
-
-struct SelectInst {};
 
 struct Program {
   std::vector<InstOp> inst;
@@ -56,7 +54,6 @@ struct Program {
   Inst add(FunctionGraph);
   Inst add(FunctionalInst, int output_count);
   Inst add(IfInst, int output_count);
-  Inst add(SelectInst, int output_count);
 
   Inst curry(Inst, Span<Any>);
 

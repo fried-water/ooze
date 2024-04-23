@@ -86,14 +86,6 @@ void pretty_print(std::ostream& os,
   case ASTTag::ExprBorrow:
     pretty_print(os << "&", srcs, ast, type_names, *ast.forest.first_child(id), indentation);
     return;
-  case ASTTag::ExprSelect: {
-    const auto [cond, if_expr, else_expr] = ast.forest.child_ids(id).take<3>();
-    pretty_print(os << "select ", srcs, ast, type_names, cond, indentation);
-    pretty_print(os << " { ", srcs, ast, type_names, if_expr, indentation);
-    pretty_print(os << " } else { ", srcs, ast, type_names, else_expr, indentation);
-    os << " }";
-    return;
-  }
   case ASTTag::ExprIf: {
     const auto [cond, if_expr, else_expr] = ast.forest.child_ids(id).take<3>();
     pretty_print(os << "if ", srcs, ast, type_names, cond, indentation);
