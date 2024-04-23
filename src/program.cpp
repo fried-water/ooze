@@ -20,8 +20,8 @@ Inst Program::add(Any a) {
   return add_internal(*this, InstOp::Value, 1, i32(values.size() - 1));
 }
 
-Inst Program::add(AnyFn fn, std::vector<bool> input_borrows, int output_count) {
-  fns.push_back({std::move(fn), std::move(input_borrows)});
+Inst Program::add(AnyFn fn, int output_count) {
+  fns.push_back(std::move(fn));
   return add_internal(*this, InstOp::Fn, output_count, i32(fns.size() - 1));
 }
 

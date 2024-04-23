@@ -212,28 +212,6 @@ void execute_graph(const FunctionGraph& g,
   std::move(ctx.inputs.back().begin(), ctx.inputs.back().end(), outputs.begin());
 }
 
-void execute_fn(
-  const AnyFnInst& inst, std::span<Any> inputs, std::span<const Any*> borrowed_inputs, std::span<Any> outputs) {
-  constexpr std::size_t SSO_SIZE = 10;
-  const std::size_t input_count = inputs.size() + borrowed_inputs.size();
-
-  auto input_buffer = SSOBuffer<Any, SSO_SIZE>(input_count);
-  auto ptr_buffer = SSOBuffer<Any*, SSO_SIZE>(input_count);
-
-  int owned_offset = 0;
-  int borrowed_offset = 0;
-  for(size_t i = 0; i < inst.input_borrows.size(); i++) {
-    if(inst.input_borrows[i]) {
-      ptr_buffer[i] = const_cast<Any*>(borrowed_inputs[borrowed_offset++]);
-    } else {
-      input_buffer[i] = std::move(inputs[owned_offset++]);
-      ptr_buffer[i] = &input_buffer[i];
-    }
-  }
-
-  inst.fn(ptr_buffer, outputs.data());
-}
-
 void execute_if(const IfInst& inst,
                 const Program& p,
                 bool parallel,
@@ -287,7 +265,7 @@ void execute(const Program& p,
 
   switch(p.inst[inst.get()]) {
   case InstOp::Value: outputs[0] = p.values[p.inst_data[inst.get()]]; return;
-  case InstOp::Fn: return execute_fn(p.fns[p.inst_data[inst.get()]], inputs, borrowed_inputs, outputs);
+  case InstOp::Fn: return p.fns[p.inst_data[inst.get()]](inputs, borrowed_inputs, outputs.data());
   case InstOp::Graph:
     return execute_graph(p.graphs[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
   case InstOp::Functional:

@@ -20,11 +20,6 @@ constexpr auto names(knot::Type<InstOp>) {
   return knot::Names("InstOp", {"Value", "Fn", "Graph", "Functional", "If", "Curry", "Placeholder"});
 }
 
-struct AnyFnInst {
-  AnyFn fn;
-  std::vector<bool> input_borrows;
-};
-
 struct FunctionalInst {};
 
 struct IfInst {
@@ -42,7 +37,7 @@ struct Program {
   std::vector<i32> inst_data;
 
   std::vector<Any> values;
-  std::vector<AnyFnInst> fns;
+  std::vector<AnyFn> fns;
   std::vector<FunctionGraph> graphs;
   std::vector<IfInst> ifs;
 
@@ -50,7 +45,7 @@ struct Program {
   std::vector<std::pair<Inst, Slice>> currys;
 
   Inst add(Any);
-  Inst add(AnyFn, std::vector<bool> input_borrows, int output_count);
+  Inst add(AnyFn, int output_count);
   Inst add(FunctionGraph);
   Inst add(FunctionalInst, int output_count);
   Inst add(IfInst, int output_count);
@@ -64,11 +59,7 @@ struct Program {
 
   template <typename F>
   Inst add_fn(F&& f) {
-    constexpr auto f_type = decay(knot::Type<F>{});
-    std::vector<bool> input_borrows;
-    input_borrows.reserve(size(args(f_type)));
-    visit(args(f_type), [&](auto type) { input_borrows.push_back(is_const_ref(type)); });
-    return add(create_any_fn(std::forward<F>(f)), std::move(input_borrows), int(size(return_types(f_type))));
+    return add(create_any_fn(std::forward<F>(f)), int(size(return_types(decay(knot::Type<F>{})))));
   }
 };
 

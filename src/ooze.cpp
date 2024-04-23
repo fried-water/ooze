@@ -443,9 +443,7 @@ EnvData create_env_data(NativeRegistry r) {
   roots.reserve(r.fns.size());
 
   for(NativeFn& fn : r.fns) {
-    const Inst fn_inst = d.program.add(std::move(fn.fn),
-                                       borrows_of(d.ast.tg, d.ast.tg.fanout(fn.type)[0]),
-                                       size_of(d.ast.tg, d.ast.tg.fanout(fn.type)[1]));
+    const Inst fn_inst = d.program.add(std::move(fn.fn), size_of(d.ast.tg, d.ast.tg.fanout(fn.type)[1]));
     const SrcRef ref = {SrcID{0}, append_src(d.src, fn.name)};
     std::tie(d.ast, d.fns, roots) =
       add_global(std::move(d.ast), std::move(d.fns), std::move(roots), fn_inst, ref, fn.type, d.type_cache.unit);

@@ -10,26 +10,52 @@
 namespace ooze {
 namespace details {
 
-template <typename... Ts, typename F, std::size_t... Is>
-void call_with_anys(knot::TypeList<Ts...>, F& f, std::span<Any*> inputs, Any* outputs, std::index_sequence<Is...>) {
-  assert(inputs.size() == sizeof...(Ts));
-  assert(((type_id(decay(knot::Type<Ts>{})) == inputs[Is]->type()) && ...));
+template <typename T, size_t I, bool Owned>
+struct ArgOrd {};
+
+template <typename... Ts, std::size_t... Is, bool... Os, typename F>
+void call_with_anys(
+  knot::TypeList<ArgOrd<Ts, Is, Os>...>, F& f, std::span<Any> inputs, std::span<const Any*> borrows, Any* outputs) {
+  assert(inputs.size() + borrows.size() == sizeof...(Ts));
+
+  const auto get_arg = [&]<typename T, size_t I, bool Owned>(ArgOrd<T, I, Owned>) -> T&& {
+    if constexpr(Owned) {
+      return std::move(any_cast<T>(inputs[I]));
+    } else {
+      return std::move(any_cast<T>(*const_cast<Any*>(borrows[I])));
+    }
+  };
 
   if constexpr(knot::Type<void>{} == return_type(decay(knot::Type<F>({})))) {
-    std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+    f(get_arg(ArgOrd<Ts, Is, Os>{})...);
   } else {
-    auto&& result = std::forward<F>(f)(std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+    auto&& result = f(get_arg(ArgOrd<Ts, Is, Os>{})...);
     if constexpr(is_tuple(decay(knot::Type<decltype(result)>{}))) {
-      return std::apply([=](auto&&... e) mutable { ((*outputs++ = Any(std::move(e))), ...); }, std::move(result));
+      std::apply([=](auto&&... e) mutable { ((*outputs++ = Any(std::move(e))), ...); }, std::move(result));
     } else {
       *outputs = Any(std::move(result));
     }
   }
 }
 
+template <size_t ValueIdx = 0, size_t BorrowIdx = 0, typename... Ts>
+constexpr auto create_arg_ordering(knot::TypeList<Ts...> ts) {
+  constexpr auto cons = []<typename U, typename... Us>(U, knot::TypeList<Us...>) { return knot::TypeList<U, Us...>{}; };
+
+  if constexpr(sizeof...(Ts) == 0) {
+    return knot::TypeList<>{};
+  } else if constexpr(is_const_ref(head(ts))) {
+    using T = knot::type_t<decltype(decay(head(ts)))>;
+    return cons(ArgOrd<T, BorrowIdx, false>{}, create_arg_ordering<ValueIdx, BorrowIdx + 1>(tail(ts)));
+  } else {
+    using T = knot::type_t<decltype(decay(head(ts)))>;
+    return cons(ArgOrd<T, ValueIdx, true>{}, create_arg_ordering<ValueIdx + 1, BorrowIdx>(tail(ts)));
+  }
+}
+
 } // namespace details
 
-using AnyFn = std::function<void(std::span<Any*>, Any*)>;
+using AnyFn = std::function<void(std::span<Any>, std::span<const Any*>, Any*)>;
 
 template <typename F>
 AnyFn create_any_fn(F&& f) {
@@ -44,8 +70,8 @@ AnyFn create_any_fn(F&& f) {
                                 all(fn_ret, [](auto t) { return t == decay(t) || is_rref(t); });
 
   if constexpr(legal_args && legal_return && is_const_function(fn_type)) {
-    return [f = std::forward<F>(f), fn_args](std::span<Any*> inputs, Any* results) {
-      details::call_with_anys(fn_args, f, inputs, results, knot::idx_seq(fn_args));
+    return [f = std::forward<F>(f), fn_args](std::span<Any> inputs, std::span<const Any*> borrows, Any* outputs) {
+      details::call_with_anys(details::create_arg_ordering(fn_args), f, inputs, borrows, outputs);
     };
   } else {
     static_assert(is_const_function(fn_type), "No mutable lambdas and non-const operator().");
@@ -55,7 +81,7 @@ AnyFn create_any_fn(F&& f) {
     static_assert(legal_return,
                   "Function return type must be void, a value or tuple of "
                   "values (no refs or pointers).");
-    return [](std::span<Any*>, Any*) {};
+    return [](std::span<Any>, std::span<const Any*>, Any*) {};
   }
 }
 

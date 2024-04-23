@@ -103,22 +103,6 @@ Type add_fn_type(TypeGraph& g, knot::Type<F> f) {
   }
 }
 
-inline std::vector<bool> borrows_of(const TypeGraph& g, Type t, std::vector<bool> borrows = {}) {
-  preorder(g, t, [&](Type t) {
-    switch(g.get<TypeTag>(t)) {
-    case TypeTag::Leaf:
-    case TypeTag::Fn: borrows.push_back(false); return false;
-    case TypeTag::Borrow: borrows.push_back(true); return false;
-    case TypeTag::Floating: assert(false);
-    case TypeTag::Tuple: return true;
-    }
-    assert(false);
-    return false;
-  });
-
-  return borrows;
-}
-
 inline int size_of(const TypeGraph& tg, Type t) {
   switch(tg.get<TypeTag>(t)) {
   case TypeTag::Leaf:
