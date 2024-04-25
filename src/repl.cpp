@@ -10,6 +10,8 @@
 
 #include <CLI/CLI.hpp>
 
+#include <thread>
+
 namespace ooze {
 
 namespace {
@@ -23,7 +25,12 @@ struct CLIState {
   std::vector<std::string> scripts;
   std::vector<std::string> run_args;
 
+  int num_threads = int(std::thread::hardware_concurrency());
+
   CLIState() : app{"", "ooze"} {
+    app.add_option("-t,--threads", num_threads, "Number of threads (0 for seq)")
+      ->check(CLI::Range(0, int(std::thread::hardware_concurrency())));
+
     run_cmd = app.add_subcommand("run", "");
     run_cmd->add_option("script", scripts, "")->required()->expected(1, -1);
     run_cmd->add_option("--args", run_args, "arguments to main()");
@@ -253,7 +260,7 @@ int repl_main(int argc, const char** argv, Env env) {
   int ret = 0;
 
   {
-    Executor executor = make_tbb_executor(4);
+    Executor executor = cli.num_threads == 0 ? make_seq_executor() : make_tbb_executor(cli.num_threads);
 
     if(cli.run_cmd->parsed()) {
       const auto extract_return = [&ret](Binding b, Env env) {
