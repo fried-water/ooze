@@ -40,6 +40,12 @@ public:
   SSOBuffer& operator=(SSOBuffer&&) = delete;
 };
 
+struct TailCall {
+  Inst inst;
+  std::vector<Any> inputs;
+  std::vector<const Any*> borrowed_inputs;
+};
+
 struct InvocationBlock {
   std::shared_ptr<const Program> p;
   Inst inst;
@@ -159,16 +165,17 @@ void propagate(ExecutionCtx& ctx,
   }
 }
 
-void execute_graph(const FunctionGraph& g,
-                   const Program& p,
-                   bool parallel,
-                   std::span<Any> inputs,
-                   std::span<const Any*> borrowed_inputs,
-                   std::span<Any> outputs) {
+std::optional<TailCall>
+execute_graph(const FunctionGraph& g,
+              const Program& p,
+              bool parallel,
+              std::span<Any> inputs,
+              std::span<const Any*> borrowed_inputs,
+              std::span<Any> outputs) {
   ExecutionCtx ctx = {
-    std::vector<std::vector<Any>>(g.input_counts.size() + 1),
+    std::vector<std::vector<Any>>(g.input_counts.size() + (g.tailcall ? 0 : 1)),
     std::vector<std::vector<const Any*>>(g.input_counts.size()),
-    std::vector<std::atomic<int>>(g.input_counts.size() + 1),
+    std::vector<std::atomic<int>>(g.input_counts.size() + (g.tailcall ? 0 : 1)),
     std::vector<std::pair<std::atomic<int>, Any>>(g.borrow_cleanups.size()),
   };
 
@@ -188,16 +195,19 @@ void execute_graph(const FunctionGraph& g,
     ctx.borrow_cleanups[i].first = g.borrow_cleanups[i].count;
   }
 
-  ctx.inputs.back() = std::vector<Any>(g.output_count);
-  // can't return borrowed_inputs
-
-  // Ensure output never executes
-  ctx.ref_counts.back() = g.output_count + 1;
+  if(g.tailcall) {
+    // Ensure tailcall never executes
+    ctx.ref_counts[*g.tailcall]++;
+  } else {
+    // Ensure output never executes
+    ctx.ref_counts.back() = g.output_count + 1;
+    ctx.inputs.back() = std::vector<Any>(g.output_count);
+  }
 
   // Start 0 input tasks
   for(int i = 0; i < std::ssize(g.input_counts); i++) {
     const auto [owned, borrowed] = g.input_counts[i];
-    if(owned + borrowed == 0) {
+    if(owned + borrowed == 0 && g.tailcall != i) {
       execute_node(ctx, g, p, i);
     }
   }
@@ -209,74 +219,92 @@ void execute_graph(const FunctionGraph& g,
     ctx.tg->wait();
   }
 
-  std::move(ctx.inputs.back().begin(), ctx.inputs.back().end(), outputs.begin());
+  if(g.tailcall) {
+    return TailCall{
+      g.insts[*g.tailcall], std::move(ctx.inputs[*g.tailcall]), std::move(ctx.borrowed_inputs[*g.tailcall])};
+  } else {
+    std::move(ctx.inputs.back().begin(), ctx.inputs.back().end(), outputs.begin());
+    return std::nullopt;
+  }
 }
 
-void execute_if(const IfInst& inst,
-                const Program& p,
-                bool parallel,
-                std::span<Any> inputs,
-                std::span<const Any*> borrowed_inputs,
-                std::span<Any> outputs) {
+TailCall execute_if(const IfInst& inst, std::span<Any> inputs, std::span<const Any*> borrowed_inputs) {
   assert(holds_alternative<bool>(inputs[0]));
   const bool cond = any_cast<bool>(inputs[0]);
   inputs = inputs.subspan(1);
 
   if(cond) {
-    inputs = inputs.first(inst.value_offsets[1]);
-    borrowed_inputs = borrowed_inputs.first(inst.borrow_offsets[1]);
+    return TailCall{inst.if_inst,
+                    std::vector<Any>(std::make_move_iterator(inputs.begin()),
+                                     std::make_move_iterator(inputs.begin() + inst.value_offsets[1])),
+                    std::vector<const Any*>(borrowed_inputs.begin(), borrowed_inputs.begin() + inst.borrow_offsets[1])};
   } else {
     const auto input_it =
-      std::rotate(inputs.begin() + inst.value_offsets[0], inputs.begin() + inst.value_offsets[1], inputs.end());
+      std::move(inputs.begin() + inst.value_offsets[1], inputs.end(), inputs.begin() + inst.value_offsets[0]);
 
     const auto borrow_it =
-      std::rotate(borrowed_inputs.begin() + inst.borrow_offsets[0],
-                  borrowed_inputs.begin() + inst.borrow_offsets[1],
-                  borrowed_inputs.end());
+      std::move(borrowed_inputs.begin() + inst.borrow_offsets[1],
+                borrowed_inputs.end(),
+                borrowed_inputs.begin() + inst.borrow_offsets[0]);
 
-    inputs = std::span(inputs.begin(), input_it);
-    borrowed_inputs = std::span(borrowed_inputs.begin(), borrow_it);
+    return TailCall{inst.else_inst,
+                    std::vector<Any>(std::make_move_iterator(inputs.begin()), std::make_move_iterator(input_it)),
+                    std::vector<const Any*>(borrowed_inputs.begin(), borrow_it)};
   }
-
-  execute(p, parallel, cond ? inst.if_inst : inst.else_inst, inputs, borrowed_inputs, outputs);
 }
 
-void execute_curry(const std::pair<Inst, Slice>& curry,
-                   const Program& p,
-                   bool parallel,
-                   std::span<Any> inputs,
-                   std::span<const Any*> borrowed_inputs,
-                   std::span<Any> outputs) {
+TailCall execute_curry(
+  const std::pair<Inst, Slice>& curry, const Program& p, std::span<Any> inputs, std::span<const Any*> borrowed_inputs) {
   const auto [curry_inst, slice] = curry;
-  auto curried_inputs = SSOBuffer<Any, 10>(inputs.size() + size(slice));
-  std::move(inputs.begin(), inputs.end(), curried_inputs.begin());
-  std::copy(p.values.begin() + slice.begin, p.values.begin() + slice.end, curried_inputs.begin() + inputs.size());
-  return execute(p, parallel, curry_inst, curried_inputs, borrowed_inputs, outputs);
+
+  std::vector<Any> curried_inputs;
+  curried_inputs.reserve(inputs.size() + size(slice));
+
+  std::move(inputs.begin(), inputs.end(), std::back_inserter(curried_inputs));
+  std::copy(p.values.begin() + slice.begin, p.values.begin() + slice.end, std::back_inserter(curried_inputs));
+
+  return TailCall{
+    curry_inst, std::move(curried_inputs), std::vector<const Any*>(borrowed_inputs.begin(), borrowed_inputs.end())};
 }
 
 // TODO expose synchronous api?
+std::optional<TailCall> execute_tailcall(
+  const Program& p,
+  bool parallel,
+  Inst inst,
+  std::span<Any> inputs,
+  std::span<const Any*> borrowed_inputs,
+  std::span<Any> outputs) {
+  assert(outputs.size() == p.output_counts[inst.get()]);
+
+  switch(p.inst[inst.get()]) {
+  case InstOp::Value: outputs[0] = p.values[p.inst_data[inst.get()]]; return std::nullopt;
+  case InstOp::Fn: p.fns[p.inst_data[inst.get()]](inputs, borrowed_inputs, outputs.data()); return std::nullopt;
+  case InstOp::Graph:
+    return execute_graph(p.graphs[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
+  case InstOp::Functional:
+    return execute_tailcall(p, parallel, any_cast<Inst>(inputs[0]), inputs.subspan(1), borrowed_inputs, outputs);
+  case InstOp::If: return execute_if(p.ifs[p.inst_data[inst.get()]], inputs, borrowed_inputs);
+  case InstOp::Curry: return execute_curry(p.currys[p.inst_data[inst.get()]], p, inputs, borrowed_inputs);
+  case InstOp::Placeholder: assert(false); return std::nullopt;
+  }
+
+  assert(false);
+  return std::nullopt;
+}
+
 void execute(const Program& p,
              bool parallel,
              Inst inst,
              std::span<Any> inputs,
              std::span<const Any*> borrowed_inputs,
              std::span<Any> outputs) {
-  assert(outputs.size() == p.output_counts[inst.get()]);
 
-  switch(p.inst[inst.get()]) {
-  case InstOp::Value: outputs[0] = p.values[p.inst_data[inst.get()]]; return;
-  case InstOp::Fn: return p.fns[p.inst_data[inst.get()]](inputs, borrowed_inputs, outputs.data());
-  case InstOp::Graph:
-    return execute_graph(p.graphs[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
-  case InstOp::Functional:
-    return execute(p, parallel, any_cast<Inst>(inputs[0]), inputs.subspan(1), borrowed_inputs, outputs);
-  case InstOp::If: return execute_if(p.ifs[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
-  case InstOp::Curry:
-    return execute_curry(p.currys[p.inst_data[inst.get()]], p, parallel, inputs, borrowed_inputs, outputs);
-  case InstOp::Placeholder: assert(false); return;
+  std::optional<TailCall> tailcall = execute_tailcall(p, parallel, inst, inputs, borrowed_inputs, outputs);
+
+  while(tailcall) {
+    tailcall = execute_tailcall(p, parallel, tailcall->inst, tailcall->inputs, tailcall->borrowed_inputs, outputs);
   }
-
-  assert(false);
 }
 
 } // namespace

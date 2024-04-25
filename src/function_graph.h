@@ -44,6 +44,8 @@ struct FunctionGraph {
   std::vector<BorrowCleanup> borrow_cleanups;
   std::vector<std::vector<int>> node_borrows;
 
+  std::optional<int> tailcall;
+
   friend bool operator==(const FunctionGraph&, const FunctionGraph&) = default;
 };
 

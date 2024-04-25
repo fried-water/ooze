@@ -128,6 +128,35 @@ std::vector<Oterm> ConstructingGraph::add(const FunctionGraph& g, Span<Oterm> in
   return outputs;
 }
 
+std::optional<int> find_tailcall(const std::vector<std::vector<ValueForward>>& fwds, int output_count) {
+  std::vector<bool> takes_ref(fwds.size(), false);
+
+  const int output_node = int(fwds.size() - 1);
+
+  const auto is_tailcall = [&](const std::vector<ValueForward>& fwds) {
+    for(int i = 0; i < fwds.size(); i++) {
+      if(!stdr::equal(fwds[i].terms, std::array{Term{output_node, i}})) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for(int i = 0; i < fwds.size(); i++) {
+    for(const ValueForward& fwd : fwds[i]) {
+      for(int u = fwd.move_end; u < std::ssize(fwd.terms); u++) {
+        takes_ref[fwd.terms[u].node_id] = true;
+      }
+    }
+
+    if(output_count == std::ssize(fwds[i]) && is_tailcall(fwds[i])) {
+      return i > 0 && !takes_ref[i - 1] ? std::optional(i - 1) : std::nullopt;
+    }
+  }
+
+  return std::nullopt;
+}
+
 FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs) && {
   assert(!owned_fwds.empty());
 
@@ -135,6 +164,8 @@ FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs)
 
   auto [borrow_cleanups, node_borrows, final_owned_fwds] =
     find_borrow_cleanups(knot::map<std::vector<std::vector<ValueForward>>>(std::move(owned_fwds), to_fwd));
+
+  const auto tailcall = find_tailcall(final_owned_fwds, int(outputs.size()));
 
   return FunctionGraph{
     std::move(input_borrows),
@@ -144,7 +175,8 @@ FunctionGraph ConstructingGraph::finalize(Span<Oterm> outputs, Span<PassBy> pbs)
     std::move(input_counts),
     std::move(insts),
     std::move(borrow_cleanups),
-    std::move(node_borrows)};
+    std::move(node_borrows),
+    tailcall};
 }
 
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<bool> input_borrows) {

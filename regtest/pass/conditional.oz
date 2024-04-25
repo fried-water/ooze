@@ -1,5 +1,5 @@
-fn cond(cond: bool, x: i32, y: i32) -> i32 {
-  if cond { x } else { y }
+fn cond(c: bool, x: i32, y: i32) -> i32 {
+  if c { x } else { y }
 }
 
 fn main() -> i32 {
