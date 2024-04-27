@@ -473,7 +473,6 @@ NativeRegistry create_primitive_registry() {
     .add_type<std::string>("string")
     .add_type<std::vector<std::string>>("string_vector")
     .add_type<std::vector<std::byte>>("byte_vector")
-    .add_type<bool>("bool")
     .add_fn("to_string", [](const bool& x) { return fmt::format("{}", x); })
     .add_fn("to_string", [](const i8& x) { return fmt::format("{}", x); })
     .add_fn("to_string", [](const i16& x) { return fmt::format("{}", x); })
