@@ -257,7 +257,7 @@ ContextualError generate_error(Span<std::string_view> srcs,
           ref, fmt::format("unused binding '{}'", sv(srcs, ref)), {"prefix with an _ to silence this error"}};
       },
       [&](const OverusedBinding& b) {
-        return ContextualError{ref, fmt::format("binding '{}' used more than once", sv(srcs, ref), b.count)};
+        return ContextualError{ref, fmt::format("binding '{}' used more than once", sv(srcs, ref))};
       }},
     error.type);
 }
@@ -518,7 +518,12 @@ std::vector<TypeCheckError> find_returned_borrows(const AST& ast, Roots roots) {
 bool has_conditional_overuse(const Forest<ASTTag, ASTID>& forest, Span<ASTID> usages) {
   std::vector<std::tuple<ASTID, int, int>> usage;
 
-  for(const ASTID expr : usages) {
+  const auto borrowed = [&](ASTID id) {
+    const auto parent = forest.parent(id);
+    return parent && forest[*parent] != ASTTag::ExprBorrow;
+  };
+
+  for(const ASTID expr : usages | stdv::filter(borrowed)) {
     ASTID child = expr;
     for(const ASTID id : forest.ancestor_ids(expr)) {
       auto it = std::find_if(usage.begin(), usage.end(), [&](auto tup) { return std::get<0>(tup) == id; });
@@ -569,11 +574,6 @@ std::vector<TypeCheckError> find_binding_usage_errors(
     return false;
   };
 
-  const auto not_borrowed = [&](ASTID id) {
-    const auto parent = ast.forest.parent(id);
-    return !parent || ast.forest[*parent] != ASTTag::ExprBorrow;
-  };
-
   std::vector<TypeCheckError> errors;
 
   for(const ASTID root : roots) {
@@ -584,8 +584,7 @@ std::vector<TypeCheckError> find_binding_usage_errors(
           if(sv(srcs, ast.srcs[id.get()])[0] != '_' && ident_graph.num_fanout(id) == 0) {
             return is_global_pattern(ast.forest, id) ? std::nullopt
                                                      : std::optional(TypeCheckError{UnusedBinding{}, id});
-          } else if(stdr::count_if(ident_graph.fanout(id), not_borrowed) > 1 &&
-                    has_non_copy_type(has_non_copy_type, ast.types[id.get()]) &&
+          } else if(has_non_copy_type(has_non_copy_type, ast.types[id.get()]) &&
                     has_conditional_overuse(ast.forest, ident_graph.fanout(id))) {
             return TypeCheckError{OverusedBinding{ident_graph.num_fanout(id)}, id};
           }

@@ -26,6 +26,7 @@
 namespace ooze {
 
 namespace stdr = std::ranges;
+namespace stdv = std::views;
 
 template <typename T>
 using Span = std::span<const T>;

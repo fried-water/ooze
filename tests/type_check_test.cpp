@@ -687,13 +687,18 @@ BOOST_AUTO_TEST_CASE(binding_reuse_floating) {
 
 BOOST_AUTO_TEST_CASE(binding_reuse_if) {
   // Env with non-copyable bool
-  const TestEnv env = create_test_env({{{"bool", type_id(knot::Type<bool>{})}}});
+  const TestEnv env =
+    create_test_env({{{"bool", type_id(knot::Type<bool>{})}}}, make_sv_array("clone: fn(&bool) -> bool"));
   test_tc_error(
     env, "(x: bool) -> bool  = if x { x } else { true }", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
   test_tc_error(
     env, "(x: bool) -> bool  = if x { x } else { false }", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
   test_tc_error(
     env, "(x: bool) -> bool  = if x { x } else { x }", {{{SrcID{1}, {1, 2}}, "binding 'x' used more than once"}});
+
+  test_tc(env, "(x: bool) -> bool = if true { x } else { x }", "(x: bool) -> bool = if true { x } else { x }");
+  test_tc(
+    env, "(x: bool) -> bool = if clone(&x) { x } else { x }", "(x: bool) -> bool = if clone(&x) { x } else { x }");
 }
 
 BOOST_AUTO_TEST_CASE(binding_reuse_both) {
