@@ -355,6 +355,16 @@ BOOST_AUTO_TEST_CASE(expr_call_ufcs_chain) {
   check_pass(parse_expr, ast, {}, src);
 }
 
+BOOST_AUTO_TEST_CASE(expr_call_ufcs_borrow) {
+  // TODO: should this be (&x).f()?
+  const std::string_view src = "&x.f()";
+  const AST ast = {ast_forest({{ASTTag::ExprBorrow, ASTTag::ExprCall, ASTTag::ExprIdent},
+                               {ASTTag::ExprBorrow, ASTTag::ExprCall, ASTTag::ExprTuple, ASTTag::ExprIdent}}),
+                   slices(src, {"x", "f", "()", "x.f()", src}),
+                   types(5)};
+  check_pass(parse_expr, ast, {}, src);
+}
+
 BOOST_AUTO_TEST_CASE(expr_if) {
   const std::string_view src = "if x { y } else { z }";
   auto f = ast_forest({{ASTTag::ExprIf, ASTTag::ExprIdent}});

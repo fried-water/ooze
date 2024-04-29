@@ -16,12 +16,13 @@ inline void dump(Span<std::string_view> srcs, const AST& ast, const TypeNames& t
   fmt::print("AST {}\n", ast.forest.size());
 
   for(const ASTID id : ast.forest.post_order_ids()) {
+    const Type type = ast.types[id.get()];
     const auto module = owning_module(ast.forest, id);
     fmt::print("  {:3} {:20} {:3} {:20} {}\n",
                id.get(),
                knot::debug(ast.forest[id]),
                module ? knot::debug(module->get()) : "",
-               pretty_print(ast.tg, type_names, ast.types[id.get()]),
+               type.is_valid() ? pretty_print(ast.tg, type_names, type) : "_",
                sv(srcs, ast.srcs[id.get()]));
   }
 }

@@ -206,6 +206,7 @@ pretty_print(Span<std::string_view> srcs, const AST& ast, const TypeNames& type_
 }
 
 std::string pretty_print(const TypeGraph& g, const TypeNames& type_names, Type t) {
+  assert(t.is_valid());
   std::ostringstream os;
   pretty_print(os, g, type_names, t);
   return std::move(os).str();
