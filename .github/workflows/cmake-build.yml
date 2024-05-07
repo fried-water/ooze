@@ -31,7 +31,7 @@ jobs:
         CC: ${{ matrix.cc }}
         CXX: ${{ matrix.cxx }}
         CXXFLAGS: ${{ matrix.cxx_flags }}
-      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOZE_BUILD_REGTESTS=On -DOOZE_BUILD_TESTS=On
+      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOZE_BUILD_REGTESTS=On -DOOZE_BUILD_TESTS=On -DOOZE_BUILD_EXAMPLES=On
     - name: Build
       run: cmake --build build
     - name: Unit Tests
