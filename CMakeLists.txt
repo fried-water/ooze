@@ -86,3 +86,8 @@ option(OOZE_BUILD_REGTESTS "Build regtests" OFF)
 if(OOZE_BUILD_REGTESTS)
   add_subdirectory(regtest)
 endif()
+
+option(OOZE_BUILD_EXAMPLES "Build examples" OFF)
+if(OOZE_BUILD_EXAMPLES)
+  add_subdirectory(examples/raytracer)
+endif()
