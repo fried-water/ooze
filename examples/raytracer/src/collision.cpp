@@ -1,5 +1,7 @@
 #include "collision.h"
 
+#include <fmt/core.h>
+
 namespace rt {
 
 namespace {
@@ -25,9 +27,8 @@ std::optional<Contact> intersect(const Sphere& s, const Ray& r) {
 }
 
 std::optional<Contact> intersect(const Plane& p, const Ray& r) {
-  const float d = dot(p.normal, r.dir);
-  if(d < 0.0f) {
-    const float t = dot(p.normal * p.d - r.origin, p.normal) / -d;
+  if(const float d = dot(p.normal, r.dir); d < 0.0f) {
+    const float t = dot(p.normal * p.d - r.origin, p.normal) / d;
     return t >= 0.0f ? std::optional(Contact{r(t), p.normal, t}) : std::nullopt;
   }
 

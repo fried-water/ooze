@@ -122,12 +122,8 @@ Color raytrace_pixel(std::mt19937& rng,
 
 } // namespace
 
-void raytrace_row_serial(const Camera& camera,
-                         const ViewPort& view,
-                         const Scene& scene,
-                         int row,
-                         std::span<Color> image_row,
-                         Tracker tracker) {
+void raytrace_row_serial(
+  const Camera& camera, const ViewPort& view, const Scene& scene, int row, std::span<Color> image_row) {
   const Window window = calculate_window(camera, view);
 
   assert(view.size[0] == img.size());
@@ -136,33 +132,27 @@ void raytrace_row_serial(const Camera& camera,
 
   for(int col = 0; col < view.size[0]; col++) {
     image_row[col] = raytrace_pixel(rng, camera, view, window, scene, {col, row});
-    if(tracker) tracker->second++;
   }
 }
 
-void raytrace_row_parallel(const Camera& camera,
-                           const ViewPort& view,
-                           const Scene& scene,
-                           int row,
-                           std::span<Color> image_row,
-                           Tracker tracker) {
+void raytrace_row_parallel(
+  const Camera& camera, const ViewPort& view, const Scene& scene, int row, std::span<Color> image_row) {
   const Window window = calculate_window(camera, view);
   assert(view.size[0] == img.size());
   tbb::parallel_for(tbb::blocked_range<int>(0, view.size[0], 10), [&](auto r) {
     for(int col = r.begin(); col < r.end(); col++) {
       auto rng = std::mt19937{unsigned(view.size[0] * row + col)};
       image_row[col] = raytrace_pixel(rng, camera, view, window, scene, {col, row});
-      if(tracker) tracker->second++;
     }
   });
 }
 
-void raytrace(const Camera& camera, const ViewPort& view, const Scene& scene, std::span<Color> image, Tracker tracker) {
+void raytrace(const Camera& camera, const ViewPort& view, const Scene& scene, std::span<Color> image) {
   assert(product(view.size) == img.size());
 
   tbb::parallel_for(tbb::blocked_range<int>(0, view.size[1]), [&](auto r) {
     for(int row = r.begin(); row < r.end(); row++) {
-      raytrace_row_serial(camera, view, scene, row, image.subspan(view.size[0] * row, view.size[0]), tracker);
+      raytrace_row_serial(camera, view, scene, row, image.subspan(view.size[0] * row, view.size[0]));
     }
   });
 }

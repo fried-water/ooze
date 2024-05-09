@@ -9,22 +9,6 @@
 
 namespace rt {
 
-Material light(Colorf c) { return {Vec3{}, c}; }
-
-Material diffuse(Colorf c) { return {c, Vec3{}}; }
-
-Material metal(Colorf c) { return {c, Vec3{}, 1.0f}; }
-
-Scene add_skybox(Scene s, Colorf c = {0.5f, 0.7f, 1.0f}, float distance = 1000.0f) {
-  s.push_back({Plane{Vec3{1.0f, 0.0f, 0.0f}, distance}, light(c)});
-  s.push_back({Plane{Vec3{-1.0f, 0.0f, 0.0f}, distance}, light(c)});
-  s.push_back({Plane{{0.0f, -1.0f, 0.0f}, distance}, light(c)});
-  s.push_back({Plane{{0.0f, 1.0f, 0.0f}, distance}, light(c)});
-  s.push_back({Plane{Vec3{0.0f, 0.0f, 1.0f}, distance}, light(c)});
-  s.push_back({Plane{Vec3{0.0f, 0.0f, -1.0f}, distance}, light(c)});
-  return s;
-}
-
 Scene create_scene(int size, int seed = 0) {
   std::mt19937 rng = std::mt19937(seed);
 
@@ -47,20 +31,9 @@ Scene create_scene(int size, int seed = 0) {
   }
 
   // Earth
-  scene.push_back({Sphere{{0.0f, -1000.f, 0.0f}, 1000.0f}, diffuse({0.5f, 0.5f, 0.5f})});
+  scene.push_back({Sphere{{0.0f, -1000.f, 0.0f}, 1000.0f}, {{0.5f, 0.5f, 0.5f}}});
 
-  return add_skybox(std::move(scene));
-}
-
-bool raytrace_image(const Camera& camera, const ViewPort& view, const Scene& scene, const char* name) {
-  Image img = create_empty_image(view.size);
-  raytrace(camera, view, scene, img.span());
-  if(write_png(img, name) == 0) {
-    fmt::print("Failed to write image\n");
-    return false;
-  }
-
-  return true;
+  return scene;
 }
 
 // TODO should probably make this an enum....
@@ -69,6 +42,8 @@ constexpr std::optional<bool> COPY_TYPE = std::optional(true);
 ooze::NativeRegistry add_basic_fns(ooze::NativeRegistry r) {
   return std::move(r)
     .add_fn("add", [](int x, int y) { return x + y; })
+    .add_fn("add", [](float x, float y) { return x + y; })
+    .add_fn("sub", [](float x, float y) { return x - y; })
     .add_fn("modulo", [](int x, int y) { return x % y; })
     .add_fn("eq", [](int x, int y) { return x == y; });
 }
@@ -88,8 +63,6 @@ ooze::NativeRegistry add_vec_entries(ooze::NativeRegistry r) {
   r.add_fn(fmt::format("vec{}{}", N, suffix), []() { return V{}; });
   r.add_fn(fmt::format("vec{}{}", N, suffix), constructor(std::make_index_sequence<N>()));
 
-  r.add_fn("x", [](V a) { return a[0]; });
-  r.add_fn("y", [](V a) { return a[1]; });
   r.add_fn("add", [](V a, V b) { return a + b; });
   r.add_fn("sub", [](V a, V b) { return a - b; });
   r.add_fn("mul", [](V a, V b) { return a * b; });
@@ -98,13 +71,42 @@ ooze::NativeRegistry add_vec_entries(ooze::NativeRegistry r) {
   r.add_fn("div", [](V a, T b) { return a / b; });
   r.add_fn("to_string", [](const V& v) { return knot::debug(v); });
 
-  if constexpr(std::is_same_v<T, float>) {
-    r.add_fn("normalized", [](V a) { return normalized(a); });
-    r.add_fn("dot", [](V a, V b) { return dot(a, b); });
-    r.add_fn("length", [](V a) { return length(a); });
+  r.add_fn("x", [](V a) { return a[0]; });
+  r.add_fn("y", [](V a) { return a[1]; });
+  if constexpr(N >= 3) {
+    r.add_fn("z", [](V a) { return a[2]; });
   }
 
   return r;
+}
+
+ooze::NativeRegistry add_scene_entries(ooze::NativeRegistry r) {
+  return std::move(r)
+    .add_type<Material>("Material", COPY_TYPE)
+    .add_type<Shape>("Shape", COPY_TYPE)
+    .add_type<Scene>("Scene")
+    .add_fn("empty_scene", []() { return Scene{}; })
+    .add_fn("append",
+            [](Scene scene, Shape shape, Material mat) {
+              scene.emplace_back(shape, mat);
+              return scene;
+            })
+    .add_fn("concat",
+            [](Scene s1, Scene s2) {
+              s1.insert(s1.end(), s2.begin(), s2.end());
+              return s1;
+            })
+    .add_fn("material",
+            [](Vec3 c, Vec3 r, float a) {
+              return Material{c, r, a};
+            })
+    .add_fn("sphere",
+            [](Vec3 pos, float radius) {
+              return Shape{Sphere{pos, radius}};
+            })
+    .add_fn("plane", [](Vec3 normal, float d) {
+      return Shape{Plane{normal, d}};
+    });
 }
 
 ooze::NativeRegistry add_view_entries(ooze::NativeRegistry r) {
@@ -114,22 +116,22 @@ ooze::NativeRegistry add_view_entries(ooze::NativeRegistry r) {
             [](Vec2i dims) {
               return ViewPort{dims, 3.1415f / 9.0f, 0.0f, 50};
             })
-    .add_fn("with_fov",
+    .add_fn("fov",
             [](ViewPort p, float fov) {
               p.vertical_fov = fov;
               return p;
             })
-    .add_fn("with_samples_per_pixel",
+    .add_fn("samples_per_pixel",
             [](ViewPort p, int s) {
               p.samples_per_pixel = s;
               return p;
             })
-    .add_fn("with_defocus_angle",
+    .add_fn("defocus_angle",
             [](ViewPort p, float a) {
               p.defocus_angle = a;
               return p;
             })
-    .add_fn("with_max_depth",
+    .add_fn("max_depth",
             [](ViewPort p, int d) {
               p.max_depth = d;
               return p;
@@ -137,43 +139,23 @@ ooze::NativeRegistry add_view_entries(ooze::NativeRegistry r) {
     .add_fn("size", [](ViewPort v) { return v.size; });
 }
 
-ooze::NativeRegistry add_tracker_entries(ooze::NativeRegistry r) {
-  return std::move(r)
-    .add_type<Tracker>("Tracker", COPY_TYPE)
-    .add_fn("create_tracker", [](Vec2i v) { return create_tracker(v); })
-    .add_fn("reset",
-            [](Tracker t) {
-              t->second = {};
-              return t;
-            })
-    .add_fn("to_string", [](const Tracker& t) { return progress(t); });
-}
-
 ooze::NativeRegistry create_registry() {
   auto r = add_basic_fns(ooze::create_primitive_registry());
   r = add_vec_entries<int, 2>(std::move(r));
-  r = add_vec_entries<int, 3>(std::move(r));
-  r = add_vec_entries<float, 2>(std::move(r));
   r = add_vec_entries<float, 3>(std::move(r));
 
   r = add_view_entries(std::move(r));
-  r = add_tracker_entries(std::move(r));
+  r = add_scene_entries(std::move(r));
 
   return std::move(r)
     .add_type<Camera>("Camera", COPY_TYPE)
-    .add_type<Material>("Material", COPY_TYPE)
-    .add_type<Sphere>("Sphere", COPY_TYPE)
-    .add_type<Plane>("Plane", COPY_TYPE)
-    .add_type<Shape>("Shape", COPY_TYPE)
-    .add_type<Object>("Object", COPY_TYPE)
-    .add_type<Scene>("Scene")
     .add_type<Image>("Image")
     .add_fn("look_at",
             [](Vec3 pos, Vec3 target) {
               return Camera{pos, target};
             })
-    .add_fn("create_scene", [](int size, int seed) { return create_scene(size, seed); })
-    .add_fn("create_empty_image", [](Vec2i s) { return create_empty_image(s); })
+    .add_fn("create_scene", create_scene)
+    .add_fn("create_empty_image", create_empty_image)
     .add_fn("raytrace_native",
             [](Camera camera, ViewPort view, const Scene& scene) {
               Image img = create_empty_image(view.size);
@@ -181,8 +163,8 @@ ooze::NativeRegistry create_registry() {
               return img;
             })
     .add_fn("raytrace_row_parallel",
-            [](Camera camera, ViewPort view, const Scene& scene, Image img, Tracker t, int row) {
-              raytrace_row_parallel(camera, view, scene, row, img.span().subspan(view.size[0] * row, view.size[0]), t);
+            [](Camera camera, ViewPort view, const Scene& scene, Image img, int row) {
+              raytrace_row_parallel(camera, view, scene, row, img.span().subspan(view.size[0] * row, view.size[0]));
               return img;
             })
     .add_fn("write_png", [](const Image& img, const std::string& str) { return write_png(img, str.c_str()); });
