@@ -399,6 +399,7 @@ add_expr(Program p,
                   }));
                 });
   case ASTTag::ExprQualified:
+    return add_expr(std::move(p), std::move(ctx), ast, copy_types, overloads, *ast.forest.last_child(id));
   case ASTTag::ExprIdent: {
     const auto it = overloads.find(id);
     assert(it != overloads.end());

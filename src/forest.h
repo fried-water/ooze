@@ -177,6 +177,21 @@ public:
   std::optional<ID> next_sibling(ID id) const { return opt(_connectivity[as_integral(id)].next_sibling); }
   std::optional<ID> first_child(ID id) const { return opt(_connectivity[as_integral(id)].first_child); }
 
+  std::optional<ID> last_child(ID id) const {
+    id = _connectivity[as_integral(id)].first_child;
+
+    if(id != INVALID) {
+      ID next = _connectivity[as_integral(id)].next_sibling;
+      while(next != INVALID) {
+        id = next;
+        next = _connectivity[as_integral(id)].next_sibling;
+      }
+      return opt(id);
+    } else {
+      return std::nullopt;
+    }
+  }
+
   ID root(ID id) const {
     ID parent = _connectivity[as_integral(id)].parent;
     while(parent != INVALID) {
