@@ -126,7 +126,7 @@ void raytrace_row_serial(
   const Camera& camera, const ViewPort& view, const Scene& scene, int row, std::span<Color> image_row) {
   const Window window = calculate_window(camera, view);
 
-  assert(view.size[0] == img.size());
+  assert(view.size[0] == image_row.size());
 
   auto rng = std::mt19937{unsigned(row)};
 
@@ -138,7 +138,7 @@ void raytrace_row_serial(
 void raytrace_row_parallel(
   const Camera& camera, const ViewPort& view, const Scene& scene, int row, std::span<Color> image_row) {
   const Window window = calculate_window(camera, view);
-  assert(view.size[0] == img.size());
+  assert(view.size[0] == image_row.size());
   tbb::parallel_for(tbb::blocked_range<int>(0, view.size[0], 10), [&](auto r) {
     for(int col = r.begin(); col < r.end(); col++) {
       auto rng = std::mt19937{unsigned(view.size[0] * row + col)};
@@ -148,7 +148,7 @@ void raytrace_row_parallel(
 }
 
 void raytrace(const Camera& camera, const ViewPort& view, const Scene& scene, std::span<Color> image) {
-  assert(product(view.size) == img.size());
+  assert(product(view.size) == image.size());
 
   tbb::parallel_for(tbb::blocked_range<int>(0, view.size[1]), [&](auto r) {
     for(int row = r.begin(); row < r.end(); row++) {
