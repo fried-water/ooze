@@ -19,7 +19,7 @@ ContextualResult<ParserResult<std::vector<ASTID>>, AST> parse(AST, SrcID, std::s
 
 ContextualResult<ParserResult<ASTID>, AST> parse_repl(AST, SrcID, std::string_view);
 ContextualResult<ParserResult<ASTID>, AST> parse_expr(AST, SrcID, std::string_view);
-ContextualResult<ParserResult<ASTID>, AST> parse_fn(AST, SrcID, std::string_view);
+ContextualResult<ParserResult<ASTID>, AST> parse_fn_expr(AST, SrcID, std::string_view);
 ContextualResult<ParserResult<ASTID>, AST> parse_binding(AST, SrcID, std::string_view);
 ContextualResult<ParserResult<ASTID>, AST> parse_assignment(AST, SrcID, std::string_view);
 ContextualResult<ParserResult<ASTID>, AST> parse_pattern(AST, SrcID, std::string_view);

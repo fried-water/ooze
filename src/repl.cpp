@@ -167,7 +167,8 @@ std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const Function
 
 std::tuple<std::vector<std::string>, Env> run(Executor&, Env env, const TypesCmd&) {
   const auto types = sorted(transform_to_vec(env.native_types().names, [&](const auto& p) {
-    return std::pair(p.first, env.type_check_fn(fmt::format("(x: &{}) -> string = to_string(x)", p.first)).has_value());
+    return std::pair(p.first,
+                     env.type_check_fn(fmt::format("(x: &{}) -> string => to_string(x)", p.first)).has_value());
   }));
 
   std::vector<std::string> output{fmt::format("{} type(s)", types.size())};

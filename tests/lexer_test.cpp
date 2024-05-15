@@ -36,6 +36,7 @@ BOOST_AUTO_TEST_CASE(symbols) {
   BOOST_CHECK((std::pair{TokenType::Symbol, 1}) == lex_one("="));
   BOOST_CHECK((std::pair{TokenType::Symbol, 1}) == lex_one("&"));
   BOOST_CHECK((std::pair{TokenType::Symbol, 2}) == lex_one("->"));
+  BOOST_CHECK((std::pair{TokenType::Symbol, 2}) == lex_one("=>"));
 }
 
 BOOST_AUTO_TEST_CASE(whitespace) {

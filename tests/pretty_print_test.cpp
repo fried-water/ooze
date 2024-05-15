@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE(native_fn) {
   const ASTID fn_id = append_root(ast, ASTTag::EnvValue, ref, fn_t);
   const ASTID global = append_root(ast, ASTTag::Assignment, SrcRef{}, unit, std::array{ident_id, fn_id});
 
-  BOOST_CHECK_EQUAL("let f: fn(T) -> T = <env_value>",
+  BOOST_CHECK_EQUAL("let f: fn(T) -> T = <env_value>;",
                     pretty_print(make_sv_array(src), ast, {{"T", TypeID{1}}}, global));
 }
 
@@ -93,10 +93,10 @@ BOOST_AUTO_TEST_CASE(expr) {
 }
 
 BOOST_AUTO_TEST_CASE(assignment) {
-  test(parse_assignment, "let x = y", "let x = y");
-  test(parse_assignment, "let x = y", "let x : _ = y");
-  test(parse_assignment, "let x: T = y", "let x: T = y");
-  test(parse_assignment, "let (x, y): (T, _) = (1, 2)", "let (x, y): (T, _) = (1, 2)");
+  test(parse_assignment, "let x = y;", "let x = y;");
+  test(parse_assignment, "let x = y;", "let x : _ = y;");
+  test(parse_assignment, "let x: T = y;", "let x: T = y;");
+  test(parse_assignment, "let (x, y): (T, _) = (1, 2);", "let (x, y): (T, _) = (1, 2);");
 }
 
 BOOST_AUTO_TEST_CASE(scope) {
@@ -108,16 +108,16 @@ BOOST_AUTO_TEST_CASE(scope) {
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
-  test(parse_fn, "() -> T = x", "() -> T = x");
-  test(parse_fn, "(x) -> T = x", "(x) -> T = x");
-  test(parse_fn, "(x: T) -> T = x", "(x: T) -> T = x");
-  test(parse_fn, "(x: T, _) -> T = x", "(x: T, _) -> T = x");
-  test(parse_fn, "() -> _ {\n  let x = y;\n  x\n}", "() -> _ { let x = y; x }");
+  test(parse_fn_expr, "fn() -> T => x", "() -> T => x");
+  test(parse_fn_expr, "fn(x) -> T => x", "(x) -> T => x");
+  test(parse_fn_expr, "fn(x: T) -> T => x", "(x: T) -> T => x");
+  test(parse_fn_expr, "fn(x: T, _) -> T => x", "(x: T, _) -> T => x");
+  test(parse_fn_expr, "fn() => {\n  let x = y;\n  x\n}", "() => { let x = y; x }");
 }
 
 BOOST_AUTO_TEST_CASE(ast) {
-  test(parse, "fn f() -> T = x", "fn f() -> T = x");
-  test(parse, "fn f() -> T = x\n\nfn g() -> T = x", "fn f() -> T = x fn g() -> T = x");
+  test(parse, "let f = fn() -> T => x;", "fn f() -> T { x }");
+  test(parse, "let f = fn() -> T => x;\n\nlet g = fn() -> T => x;", "fn f() -> T { x } fn g() -> T { x }");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

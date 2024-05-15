@@ -96,13 +96,9 @@ void pretty_print(std::ostream& os,
   }
   case ASTTag::Assignment: {
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
-    if(ast.forest.is_root(id) && ast.forest[expr] == ASTTag::Fn) {
-      pretty_print(os << "fn ", srcs, ast, type_names, pattern, indentation);
-      pretty_print(os, srcs, ast, type_names, expr, indentation);
-    } else {
-      print_binding(os << "let ", pattern);
-      pretty_print(os << " = ", srcs, ast, type_names, expr, indentation);
-    }
+    print_binding(os << "let ", pattern);
+    pretty_print(os << " = ", srcs, ast, type_names, expr, indentation);
+    os << ';';
     return;
   }
   case ASTTag::ExprWith:
@@ -111,7 +107,7 @@ void pretty_print(std::ostream& os,
       const auto [assignment, expr] = ast.forest.child_ids(id).take<2>();
       for(int i = 0; i < indentation + 1; i++) os << "  ";
       pretty_print(os, srcs, ast, type_names, assignment, indentation + 1);
-      os << ";\n";
+      os << "\n";
       id = expr;
     }
     for(int i = 0; i < indentation + 1; i++) os << "  ";
@@ -122,7 +118,7 @@ void pretty_print(std::ostream& os,
     return;
   case ASTTag::Fn: {
     const auto [pattern, expr] = ast.forest.child_ids(id).take<2>();
-    os << '(';
+    os << "fn(";
     if(!ast.forest.is_leaf(pattern)) {
       const auto [pattern_first, pattern_rest] = ast.forest.child_ids(pattern).match();
       print_binding(os, pattern_first);
@@ -132,17 +128,11 @@ void pretty_print(std::ostream& os,
     }
     os << ')';
 
-    if(const Type t = ast.types[expr.get()]; t.is_valid()) {
+    if(const Type t = ast.types[expr.get()]; t.is_valid() && ast.tg.get<TypeTag>(t) != TypeTag::Floating) {
       pretty_print(os << " -> ", ast.tg, type_names, t);
-    } else {
-      os << " -> _";
     }
 
-    if(ast.forest[expr] != ASTTag::ExprWith) {
-      os << " =";
-    }
-
-    pretty_print(os << " ", srcs, ast, type_names, expr, indentation);
+    pretty_print(os << " => ", srcs, ast, type_names, expr, indentation);
 
     return;
   }

@@ -558,7 +558,7 @@ StringResult<void> Env::type_check(std::string_view expr, std::string_view hint)
 
 StringResult<void> Env::type_check_fn(std::string_view fn) const {
   const auto srcs = make_sv_array(_data->src, fn);
-  return frontend(parse_fn, srcs, _data->native_types, _data->ast, std::array{_data->native_module})
+  return frontend(parse_fn_expr, srcs, _data->native_types, _data->ast, std::array{_data->native_module})
     .map_state(nullify())
     .map(nullify())
     .map_error([&](std::vector<ContextualError> errors) { return contextualize(srcs, std::move(errors)); });

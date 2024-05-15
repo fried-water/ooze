@@ -1,6 +1,6 @@
-fn light(c: Vec3) -> Material = material(vec3(), c, 0.0f)
-fn diffuse(c: Vec3) -> Material = material(c, vec3(), 0.0f)
-fn metal(c: Vec3) -> Material = material(c, vec3(), 1.0f)
+fn light(c: Vec3) -> Material { material(vec3(), c, 0.0f) }
+fn diffuse(c: Vec3) -> Material { material(c, vec3(), 0.0f) }
+fn metal(c: Vec3) -> Material { material(c, vec3(), 1.0f) }
 
 fn skybox() -> Scene {
   let sky = light(vec3(0.5f, 0.7f, 1.0f));

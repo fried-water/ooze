@@ -1,6 +1,6 @@
-fn pack(x, y) -> (_, _) = (x, y)
+fn pack(x, y) -> (_, _) { (x, y) }
 
-fn unpack((x): (_)) -> _ = x
+fn unpack((x): (_)) { x }
 
 fn main() -> i32 {
   let tuple = ((1), 2, pack(3, 4));

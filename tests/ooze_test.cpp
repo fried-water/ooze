@@ -94,22 +94,22 @@ BOOST_AUTO_TEST_SUITE(ooze)
 BOOST_AUTO_TEST_CASE(basic) {
   auto r = NativeRegistry{}.add_type<i32>("i32").add_fn("sum", [](int x, int y) { return x + y; });
 
-  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 = sum(sum(x, y), y)";
+  constexpr std::string_view script = "fn f(x: i32, y: i32) -> i32 { sum(sum(x, y), y) }";
   check_run(std::move(r), script, "f(5, 6)", "i32", std::tuple(17));
 }
 
 BOOST_AUTO_TEST_CASE(no_args) {
-  constexpr std::string_view script = "fn f() -> i32 = 17";
+  constexpr std::string_view script = "fn f() -> i32 { 17 }";
   check_run(NativeRegistry{}.add_type<i32>("i32"), script, "f()", "i32", std::tuple(17));
 }
 
 BOOST_AUTO_TEST_CASE(identity) {
-  constexpr std::string_view script = "fn f(x: i32) -> i32 = x";
+  constexpr std::string_view script = "fn f(x: i32) -> i32 { x }";
   check_run(NativeRegistry{}.add_type<i32>("i32"), script, "f(5)", "i32", std::tuple(5));
 }
 
 BOOST_AUTO_TEST_CASE(borrow_param) {
-  constexpr std::string_view script = "fn f(x: &i32) -> string = to_string(x)";
+  constexpr std::string_view script = "fn f(x: &i32) -> string { to_string(x) }";
   check_run(create_primitive_registry(), script, "f(&1)", "string", std::string("1"));
 }
 
@@ -123,35 +123,35 @@ BOOST_AUTO_TEST_CASE(tuple) {
 }
 
 BOOST_AUTO_TEST_CASE(tuple_fn) {
-  constexpr std::string_view script = "fn f((w, x) : (i32, i32), (y, z): (i32, i32)) -> _ = ((z, x), (y, w))";
+  constexpr std::string_view script = "fn f((w, x) : (i32, i32), (y, z): (i32, i32)) { ((z, x), (y, w)) }";
   check_run(
     create_primitive_registry(), script, "f((1, 2), (3, 4))", "((i32, i32), (i32, i32))", std::tuple(4, 2, 3, 1));
 }
 
 BOOST_AUTO_TEST_CASE(tuple_parameter) {
-  constexpr std::string_view script = "fn f(x : (i32, i32)) -> _ { let (y, z) = x; (z, y) }";
+  constexpr std::string_view script = "fn f(x : (i32, i32)){ let (y, z) = x; (z, y) }";
   check_run(create_primitive_registry(), script, "f((1, 2))", "(i32, i32)", std::tuple(2, 1));
 }
 
 BOOST_AUTO_TEST_CASE(tuple_assignment) {
-  constexpr std::string_view script = "fn f() -> _ { let x = (1, 2); let (y, z) = x; (z, y) }";
+  constexpr std::string_view script = "fn f() { let x = (1, 2); let (y, z) = x; (z, y) }";
   check_run(create_primitive_registry(), script, "f()", "(i32, i32)", std::tuple(2, 1));
 }
 
 BOOST_AUTO_TEST_CASE(fn_parameter) {
   constexpr std::string_view script =
-    "fn one() -> i32 = 1\n"
-    "fn f(g: fn() -> i32) -> i32 = g()\n";
+    "fn one() -> i32 { 1 }\n"
+    "fn f(g: fn() -> i32) -> i32 { g() }\n";
   check_run(create_primitive_registry(), script, "f(one)", "i32", std::tuple(1));
 }
 
 BOOST_AUTO_TEST_CASE(wildcard_parameter) {
-  constexpr std::string_view script = "fn f(_ : i32, x : i32) -> _ = x";
+  constexpr std::string_view script = "fn f(_ : i32, x : i32) { x }";
   check_run(create_primitive_registry(), script, "f(1, 2)", "i32", std::tuple(2));
 }
 
 BOOST_AUTO_TEST_CASE(wildcard_assignment) {
-  constexpr std::string_view script = "fn f() -> _ { let (_, x) = (1, 2); x }";
+  constexpr std::string_view script = "fn f() { let (_, x) = (1, 2); x }";
   check_run(create_primitive_registry(), script, "f()", "i32", std::tuple(2));
 }
 
@@ -163,7 +163,7 @@ struct Point {
 };
 
 BOOST_AUTO_TEST_CASE(custom_type) {
-  constexpr std::string_view script = "fn f(x: Point, y: Point) -> Point = sum(sum(x, y), y)";
+  constexpr std::string_view script = "fn f(x: Point, y: Point) -> Point { sum(sum(x, y), y) }";
 
   auto r =
     create_primitive_registry()
@@ -180,7 +180,7 @@ BOOST_AUTO_TEST_CASE(custom_type) {
 }
 
 BOOST_AUTO_TEST_CASE(already_move) {
-  constexpr std::string_view script = "fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)";
+  constexpr std::string_view script = "fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }";
 
   auto r =
     create_primitive_registry().add_type<std::unique_ptr<int>>("unique_int").add_fn("make_unique_int", [](int x) {
@@ -188,7 +188,7 @@ BOOST_AUTO_TEST_CASE(already_move) {
     });
 
   const std::vector<std::string> expected{"1:5 error: binding 'x' used more than once",
-                                          " | fn f(x: unique_int) -> (unique_int, unique_int) = (x, x)",
+                                          " | fn f(x: unique_int) -> (unique_int, unique_int) { (x, x) }",
                                           " |      ^"};
 
   check_range(expected, check_error(run(std::move(r), script, "f(make_unique_int(0))")));
@@ -225,7 +225,7 @@ BOOST_AUTO_TEST_CASE(scope) {
 }
 
 BOOST_AUTO_TEST_CASE(if_) {
-  constexpr std::string_view script = "fn f(b: bool) -> i32  = if b { 1 } else { 2 }";
+  constexpr std::string_view script = "fn f(b: bool) -> i32 { if b { 1 } else { 2 } }";
   check_run(create_primitive_registry(), script, "f(true)", "i32", std::tuple(1));
   check_run(create_primitive_registry(), script, "f(false)", "i32", std::tuple(2));
 }
@@ -237,15 +237,15 @@ BOOST_AUTO_TEST_CASE(if_not_taken) {
   });
 
   constexpr std::string_view script =
-    "fn f(b: bool) -> i32  = if b { 1 } else { never() }\n"
-    "fn g(b: bool) -> i32  = if b { never() } else { 2 }\n";
+    "fn f(b: bool) -> i32 { if b { 1 } else { never() } }\n"
+    "fn g(b: bool) -> i32 { if b { never() } else { 2 } }\n";
   check_run(r, script, "f(true)", "i32", std::tuple(1));
   check_run(r, script, "g(false)", "i32", std::tuple(2));
 }
 
 BOOST_AUTO_TEST_CASE(if_capture_value) {
   constexpr std::string_view script =
-    "fn f(b: bool) -> _ = {\n"
+    "fn f(b: bool) {\n"
     "  let common_tuple = ('a', 'b');\n"
     "  let common = 'c';\n"
     "  let left_tuple = ('l1', 'l2');\n"
@@ -267,14 +267,14 @@ BOOST_AUTO_TEST_CASE(if_capture_value) {
 }
 
 BOOST_AUTO_TEST_CASE(if_value_borrow) {
-  constexpr std::string_view script = "fn f(b: bool, x: string) -> string = if b { x } else { clone(&x) }";
+  constexpr std::string_view script = "fn f(b: bool, x: string) -> string { if b { x } else { clone(&x) } }";
   check_run(create_primitive_registry(), script, "f(true, 'abc')", "string", std::tuple(std::string("abc")));
   check_run(create_primitive_registry(), script, "f(false, 'abc')", "string", std::tuple(std::string("abc")));
 }
 
 BOOST_AUTO_TEST_CASE(if_nested) {
   constexpr std::string_view script =
-    "fn f(b1: bool, b2: bool) -> string = {\n"
+    "fn f(b1: bool, b2: bool) -> string {\n"
     "  let x = 'x';\n"
     "  let y = 'y';\n"
     "  let z = 'z';\n"
@@ -293,7 +293,7 @@ BOOST_AUTO_TEST_CASE(if_capture_reorder_common) {
     NativeRegistry{}.add_type<bool>("bool").add_type<i32>("i32").add_fn("sub", [](i32 x, i32 y) { return x - y; });
 
   constexpr std::string_view script =
-    "fn f(b: bool, x: i32, y: i32) -> i32 = {\n"
+    "fn f(b: bool, x: i32, y: i32) -> i32 {\n"
     "  if b { sub(x, y) } else { sub(y, x) }\n"
     "}";
 
@@ -305,7 +305,7 @@ BOOST_AUTO_TEST_CASE(if_capture_unordered) {
   auto r = NativeRegistry{}.add_type<bool>("bool").add_type<i32>("i32");
 
   constexpr std::string_view script =
-    "fn f(b: bool, x: i32, y: i32, z: i32) -> (i32, i32) = {\n"
+    "fn f(b: bool, x: i32, y: i32, z: i32) -> (i32, i32) {\n"
     "  if b { (x, z) } else { (y, z) }\n"
     "}";
 
@@ -317,7 +317,7 @@ BOOST_AUTO_TEST_CASE(if_capture_borrow) {
   auto r = NativeRegistry{}.add_type<bool>("bool").add_type<std::string>("string");
 
   constexpr std::string_view script =
-    "fn f(b: bool, x: &string, y: &string) -> string = {\n"
+    "fn f(b: bool, x: &string, y: &string) -> string {\n"
     "  if b { clone(x) } else { clone(y) }\n"
     "}";
 
@@ -330,7 +330,7 @@ BOOST_AUTO_TEST_CASE(if_capture_borrow_unordered) {
     "f", [](const std::string& x, const std::string& y) { return x + y; });
 
   constexpr std::string_view script =
-    "fn f(b: bool, x, y, z) -> string = {\n"
+    "fn f(b: bool, x, y, z) -> string {\n"
     "  if b { f(x, z) } else { f(y, z) }\n"
     "}";
 
@@ -340,7 +340,7 @@ BOOST_AUTO_TEST_CASE(if_capture_borrow_unordered) {
 
 BOOST_AUTO_TEST_CASE(if_nested_capture) {
   constexpr std::string_view script =
-    "fn f(b1: bool, b2: bool) -> (string, string) = {\n"
+    "fn f(b1: bool, b2: bool) -> (string, string) {\n"
     "  let a = 'a';\n"
     "  let x = 'x';\n"
     "  let y = 'y';\n"
@@ -376,7 +376,7 @@ BOOST_AUTO_TEST_CASE(if_capture_tuple_borrow) {
     "f", [](const std::string& x, const std::string& y) { return x + y; });
 
   constexpr std::string_view script =
-    "fn f(b: bool, x: &string, y: &string) -> string = {\n"
+    "fn f(b: bool, x: &string, y: &string) -> string {\n"
     "  let t = (x, y);"
     "  if b { let (a, b) = t; f(a, b) } else { let (a, b) = t; f(b, a) }\n"
     "}";
@@ -390,7 +390,7 @@ BOOST_AUTO_TEST_CASE(if_capture_tuple_mixed) {
     "f", [](const std::string& x, std::string y) { return x + y; });
 
   constexpr std::string_view script =
-    "fn f(b: bool, x: string, y: string) -> string = {\n"
+    "fn f(b: bool, x: string, y: string) -> string {\n"
     "  let t: (&string, string) = (&x, y);"
     "  if b { let (a, b) = t; f(a, b) } else { let (a, b) = t; f(a, b) }\n"
     "}";
@@ -401,8 +401,8 @@ BOOST_AUTO_TEST_CASE(if_capture_tuple_mixed) {
 
 BOOST_AUTO_TEST_CASE(out_of_order) {
   constexpr std::string_view script =
-    "fn f() -> _ = g()\n"
-    "fn g() -> i32 = 1\n";
+    "fn f() { g() }\n"
+    "fn g() -> i32 { 1 }\n";
 
   check_run(NativeRegistry{}.add_type<i32>("i32"), script, "f()", "i32", std::tuple(1));
 }
@@ -450,9 +450,9 @@ BOOST_AUTO_TEST_CASE(fibonacci) {
 
 BOOST_AUTO_TEST_CASE(generic_script) {
   constexpr std::string_view script =
-    "fn f(x : &_) -> string = to_string(x)\n"
-    "fn g(x: i32) -> string = f(&x)\n"
-    "fn h(x: f64) -> string = f(&x)\n";
+    "fn f(x : &_) -> string { to_string(x) }\n"
+    "fn g(x: i32) -> string { f(&x) }\n"
+    "fn h(x: f64) -> string { f(&x) }\n";
 
   auto r = NativeRegistry{}
              .add_type<std::string>("string")
@@ -466,7 +466,7 @@ BOOST_AUTO_TEST_CASE(generic_script) {
 }
 
 BOOST_AUTO_TEST_CASE(generic) {
-  constexpr std::string_view script = "fn f(x : &_) -> string = to_string(x)\n";
+  constexpr std::string_view script = "fn f(x : &_) -> string { to_string(x) }\n";
 
   auto r = NativeRegistry{}
              .add_type<std::string>("string")
@@ -480,37 +480,37 @@ BOOST_AUTO_TEST_CASE(generic) {
 }
 
 BOOST_AUTO_TEST_CASE(generic_assign) {
-  constexpr std::string_view script = "fn f(x : &_) -> string = to_string(x)\n";
+  constexpr std::string_view script = "fn f(x : &_) -> string { to_string(x) }\n";
 
   auto r = NativeRegistry{}.add_type<std::string>("string").add_type<i32>("i32").add_fn("to_string", [](const i32& x) {
     return fmt::format("{}", x);
   });
 
-  const auto [m, e] = check_result(assign(std::move(r), script, "let x = f(&3)"));
+  const auto [m, e] = check_result(assign(std::move(r), script, "let x = f(&3);"));
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_binding(e, check_element("x", m), "string", std::string("3"));
 }
 
 BOOST_AUTO_TEST_CASE(assign_empty) {
-  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let () = ()"));
+  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let () = ();"));
   BOOST_REQUIRE(m.empty());
 }
 
 BOOST_AUTO_TEST_CASE(assign_basic) {
-  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let x = 1"));
+  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let x = 1;"));
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_binding(e, check_element("x", m), "i32", 1);
 }
 
 BOOST_AUTO_TEST_CASE(assign_tuple_destructure) {
-  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let (x, y) = (1, 2)"));
+  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let (x, y) = (1, 2);"));
   BOOST_REQUIRE_EQUAL(2, m.size());
   check_binding(e, check_element("x", m), "i32", 1);
   check_binding(e, check_element("y", m), "i32", 2);
 }
 
 BOOST_AUTO_TEST_CASE(assign_tuple_nested_destructure) {
-  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let (x, (y, z)) = (1, (2, 3))"));
+  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let (x, (y, z)) = (1, (2, 3));"));
   BOOST_REQUIRE_EQUAL(3, m.size());
   check_binding(e, check_element("x", m), "i32", 1);
   check_binding(e, check_element("y", m), "i32", 2);
@@ -518,14 +518,14 @@ BOOST_AUTO_TEST_CASE(assign_tuple_nested_destructure) {
 }
 
 BOOST_AUTO_TEST_CASE(assign_tuple_wildcard) {
-  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let (_, x, _, y) = (1, 2, 3, 4)"));
+  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let (_, x, _, y) = (1, 2, 3, 4);"));
   BOOST_REQUIRE_EQUAL(2, m.size());
   check_binding(e, check_element("x", m), "i32", 2);
   check_binding(e, check_element("y", m), "i32", 4);
 }
 
 BOOST_AUTO_TEST_CASE(assign_tuple) {
-  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let x = (1, 2)"));
+  const auto [m, e] = check_result(assign(create_primitive_registry(), "", "let x = (1, 2);"));
 
   BOOST_REQUIRE_EQUAL(1, m.size());
   check_binding(e, check_element("x", m), "(i32, i32)", std::tuple(1, 2));
@@ -545,15 +545,15 @@ BOOST_AUTO_TEST_CASE(unnamed_type) {
 BOOST_AUTO_TEST_CASE(assign_deduce_overloads) {
   auto r = create_primitive_registry().add_fn("f", []() { return 5; }).add_fn("f", []() { return 3.0f; });
 
-  const auto [m, e] = check_result(assign(std::move(r), "", "let (x, y) : (i32, f32) = (f(), f())"));
+  const auto [m, e] = check_result(assign(std::move(r), "", "let (x, y) : (i32, f32) = (f(), f());"));
   BOOST_REQUIRE_EQUAL(2, m.size());
   check_binding(e, check_element("x", m), "i32", 5);
   check_binding(e, check_element("y", m), "f32", 3.0f);
 }
 
 BOOST_AUTO_TEST_CASE(assign_wrong_type) {
-  const std::vector<std::string> expected{"1:4 error: expected f32, given i32", " | let x: f32 = 1", " |     ^"};
-  check_range(expected, check_error(run(create_primitive_registry(), "", "let x: f32 = 1")));
+  const std::vector<std::string> expected{"1:4 error: expected f32, given i32", " | let x: f32 = 1;", " |     ^"};
+  check_range(expected, check_error(run(create_primitive_registry(), "", "let x: f32 = 1;")));
 }
 
 BOOST_AUTO_TEST_CASE(run_borrow) {
@@ -563,8 +563,8 @@ BOOST_AUTO_TEST_CASE(run_borrow) {
 
 BOOST_AUTO_TEST_CASE(assign_borrow) {
   const std::vector<std::string> expected{
-    "1:8 error: cannot return a borrowed value", " | let x = &1", " |         ^~"};
-  check_range(expected, check_error(run(create_primitive_registry(), "", "let x = &1")));
+    "1:8 error: cannot return a borrowed value", " | let x = &1;", " |         ^~"};
+  check_range(expected, check_error(run(create_primitive_registry(), "", "let x = &1;")));
 }
 
 BOOST_AUTO_TEST_CASE(undeclared_function) {
@@ -578,8 +578,8 @@ BOOST_AUTO_TEST_CASE(undeclared_binding) {
 }
 
 BOOST_AUTO_TEST_CASE(bad_pattern) {
-  const std::vector<std::string> expected{"1:4 error: expected (_), given ()", " | let (x) = ()", " |     ^~~"};
-  check_range(expected, check_error(run(create_primitive_registry(), "", "let (x) = ()")));
+  const std::vector<std::string> expected{"1:4 error: expected (_), given ()", " | let (x) = ();", " |     ^~~"};
+  check_range(expected, check_error(run(create_primitive_registry(), "", "let (x) = ();")));
 }
 
 BOOST_AUTO_TEST_CASE(expr_or_error) {
@@ -610,7 +610,7 @@ BOOST_AUTO_TEST_CASE(copy_binding) {
   Env e = Env(create_primitive_registry());
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3;"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
 
   std::tie(result, e) = check_result(std::move(e).run(executor, "x"));
@@ -626,7 +626,7 @@ BOOST_AUTO_TEST_CASE(extract_binding) {
   Env e = Env(create_primitive_registry());
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 'abc'"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 'abc';"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
 
   std::tie(result, e) = check_result(std::move(e).run(executor, "x"));
@@ -643,7 +643,7 @@ BOOST_AUTO_TEST_CASE(assign_env_fn) {
 
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let f2 = f"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let f2 = f;"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
 
   std::tie(result, e) = check_result(std::move(e).run(executor, "f2()"));
@@ -653,11 +653,11 @@ BOOST_AUTO_TEST_CASE(assign_env_fn) {
 BOOST_AUTO_TEST_CASE(assign_script_fn) {
   auto executor = make_seq_executor();
 
-  Env e = check_result(Env(create_primitive_registry()).parse_scripts(make_sv_array("fn f() -> i32 = 3")));
+  Env e = check_result(Env(create_primitive_registry()).parse_scripts(make_sv_array("fn f() -> i32 { 3 }")));
 
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let f2 = f"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let f2 = f;"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
 
   std::tie(result, e) = check_result(std::move(e).run(executor, "f2()"));
@@ -671,7 +671,7 @@ BOOST_AUTO_TEST_CASE(reuse_borrowed_binding) {
 
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3;"));
   check_binding(e, await(std::move(result)), "()", std::tuple());
 
   std::tie(result, e) = check_result(std::move(e).run(executor, "clone(&x)"));
@@ -688,7 +688,7 @@ BOOST_AUTO_TEST_CASE(reuse_to_string_binding) {
 
   Future result;
 
-  std::tie(result, e) = check_result(std::move(e).run_to_string(executor, "let x = 1"));
+  std::tie(result, e) = check_result(std::move(e).run_to_string(executor, "let x = 1;"));
   std::move(result).then([](Any a) { check_any(std::string(), a); });
 
   std::tie(result, e) = check_result(std::move(e).run_to_string(executor, "x"));
@@ -705,9 +705,9 @@ BOOST_AUTO_TEST_CASE(reuse_assign_binding_indirect) {
 
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 1"));
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let y = clone(&x)"));
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let z = clone(&x)"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 1;"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let y = clone(&x);"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let z = clone(&x);"));
   std::tie(result, e) = check_result(std::move(e).run(executor, "(x, y, z)"));
   check_binding(e, await(std::move(result)), "(i32, i32, i32)", std::tuple(1, 1, 1));
 }
@@ -718,10 +718,10 @@ BOOST_AUTO_TEST_CASE(tuple_untuple) {
   Env e = Env(create_primitive_registry());
 
   Binding result;
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3"));
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let y = 'abc'"));
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let z = (x, y)"));
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let (a, b) = z"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3;"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let y = 'abc';"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let z = (x, y);"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let (a, b) = z;"));
   std::tie(result, e) = check_result(std::move(e).run(executor, "(a, b)"));
   check_binding(e, await(std::move(result)), "(i32, string)", std::tuple(3, std::string("abc")));
 }
@@ -733,7 +733,7 @@ BOOST_AUTO_TEST_CASE(overload_fn_binding) {
 
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let f = 1"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let f = 1;"));
 
   const std::vector<std::string> expected{
     "1:0 error: ambiguous overload", " | f", " | ^", "deduced _ [2 candidate(s)]", "  fn() -> i32", "  i32"};
@@ -748,8 +748,8 @@ BOOST_AUTO_TEST_CASE(overwrite_binding) {
 
   Binding result;
 
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3"));
-  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 4"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 3;"));
+  std::tie(result, e) = check_result(std::move(e).run(executor, "let x = 4;"));
   std::tie(result, e) = check_result(std::move(e).run(executor, "x"));
   check_binding(e, await(std::move(result)), "i32", 4);
 }
@@ -779,31 +779,31 @@ BOOST_AUTO_TEST_CASE(native_clone_fn) {
 
 BOOST_AUTO_TEST_CASE(script_constant_fn) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
-  check_result(e.parse_scripts(make_sv_array("fn f() -> i32 = 3")));
+  check_result(e.parse_scripts(make_sv_array("fn f() -> i32 { 3 }")));
   check_any(3, execute1(std::move(e), "f()"));
 }
 
 BOOST_AUTO_TEST_CASE(script_identity_fn) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
-  check_result(e.parse_scripts(make_sv_array("fn f(x: i32) -> i32 = x")));
+  check_result(e.parse_scripts(make_sv_array("fn f(x: i32) -> i32 { x }")));
   check_any(7, execute1(std::move(e), "f(7)"));
 }
 
 BOOST_AUTO_TEST_CASE(script_call_native) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32").add_fn("c", [](const i32& x) { return x; }));
-  check_result(e.parse_scripts(make_sv_array("fn f(x: &i32) -> i32 = c(x)")));
+  check_result(e.parse_scripts(make_sv_array("fn f(x: &i32) -> i32 { c(x) }")));
   check_any(7, execute1(std::move(e), "f(&7)"));
 }
 
 BOOST_AUTO_TEST_CASE(script_call_script) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
-  check_result(e.parse_scripts(make_sv_array("fn f(x: i32) -> i32 = x", "fn g(x: i32) -> i32 = f(x)")));
+  check_result(e.parse_scripts(make_sv_array("fn f(x: i32) -> i32 { x }", "fn g(x: i32) -> i32 { f(x) }")));
   check_any(7, execute1(std::move(e), "g(7)"));
 }
 
 BOOST_AUTO_TEST_CASE(script_parse_error_env_preserved) {
   Env e = Env(NativeRegistry{}.add_type<i32>("i32"));
-  check_result(e.parse_scripts(make_sv_array("fn f() -> i32 = 1")));
+  check_result(e.parse_scripts(make_sv_array("fn f() -> i32 { 1 }")));
   check_error_state(e.parse_scripts(make_sv_array("fn f() -> i32 = ")));
 
   const auto globals = e.globals();

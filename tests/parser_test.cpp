@@ -431,16 +431,16 @@ BOOST_AUTO_TEST_CASE(binding_tuple_arg) {
 }
 
 BOOST_AUTO_TEST_CASE(assignment) {
-  const std::string_view src = "let x: T = y";
+  const std::string_view src = "let x: T = y;";
   const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent}, {ASTTag::Assignment, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", "let x: T = y"}),
+                   slices(src, {"x", "y", src}),
                    {Type{0}, Type{-1}, Type{-1}},
                    make_tg({TypeTag::Leaf})};
   check_pass(parse_assignment, ast, type_refs(src, {{0, "T"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(assignment_no_type) {
-  const std::string_view src = "let x = y";
+  const std::string_view src = "let x = y;";
   const AST ast = {ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent}, {ASTTag::Assignment, ASTTag::ExprIdent}}),
                    slices(src, {"x", "y", src}),
                    types(3)};
@@ -458,7 +458,7 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign) {
   const AST ast = {ast_forest({{ASTTag::ExprWith, ASTTag::Assignment, ASTTag::PatternIdent},
                                {ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                                {ASTTag::ExprWith, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", "let x = y", "z", "let x = y; z"}),
+                   slices(src, {"x", "y", "let x = y;", "z", "let x = y; z"}),
                    types(5)};
   check_pass(parse_expr, ast, {}, src);
 }
@@ -468,7 +468,7 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign_type) {
   const AST ast = {ast_forest({{ASTTag::ExprWith, ASTTag::Assignment, ASTTag::PatternIdent},
                                {ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                                {ASTTag::ExprWith, ASTTag::ExprIdent}}),
-                   slices(src, {"x", "y", "let x: T = y", "z", "let x: T = y; z"}),
+                   slices(src, {"x", "y", "let x: T = y;", "z", "let x: T = y; z"}),
                    {Type{0}, Type{-1}, Type{-1}, Type{-1}, Type{-1}},
                    make_tg({TypeTag::Leaf})};
   check_pass(parse_expr, ast, type_refs(src, {{0, "T"}}), src);
@@ -482,37 +482,45 @@ BOOST_AUTO_TEST_CASE(expr_scope_assign2) {
                 {ASTTag::ExprWith, ASTTag::ExprWith, ASTTag::Assignment, ASTTag::PatternIdent},
                 {ASTTag::ExprWith, ASTTag::ExprWith, ASTTag::Assignment, ASTTag::ExprIdent},
                 {ASTTag::ExprWith, ASTTag::ExprWith, ASTTag::ExprIdent}}),
-    slices(src, {"v", "w", "let v = w", "x", "y", "let x = y", "z", "let x = y; z", "let v = w; let x = y; z"}),
+    slices(src, {"v", "w", "let v = w;", "x", "y", "let x = y;", "z", "let x = y; z", "let v = w; let x = y; z"}),
     types(9)};
   check_pass(parse_expr, ast, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(fn) {
-  const std::string_view src = "() -> T = x";
+  const std::string_view src = "() -> T => x";
   const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
-                   slices(src, {"()", "x", "() -> T = x"}),
+                   slices(src, {"()", "x", src}),
                    {Type{-1}, Type{0}, Type{-1}},
                    make_tg({TypeTag::Leaf})};
-  check_pass(parse_fn, ast, type_refs(src, {{0, "T"}}), src);
+  check_pass(parse_fn_expr, ast, type_refs(src, {{0, "T"}}), src);
+}
+
+BOOST_AUTO_TEST_CASE(fn_no_return_type) {
+  const std::string_view src = "() => x";
+  const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
+                   slices(src, {"()", "x", src}),
+                   types(3)};
+  check_pass(parse_fn_expr, ast, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(fn_one_arg) {
-  const std::string_view src = "(x: T1) -> T2 = y";
+  const std::string_view src = "(x: T1) -> T2 => y";
   const AST ast = {
     ast_forest({{ASTTag::Fn, ASTTag::PatternTuple, ASTTag::PatternIdent}, {ASTTag::Fn, ASTTag::ExprIdent}}),
-    slices(src, {"x", "(x: T1)", "y", "(x: T1) -> T2 = y"}),
+    slices(src, {"x", "(x: T1)", "y", src}),
     {Type{0}, Type{-1}, Type{1}, Type{-1}},
     make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}})};
-  check_pass(parse_fn, ast, type_refs(src, {{0, "T1"}, {1, "T2"}}), src);
+  check_pass(parse_fn_expr, ast, type_refs(src, {{0, "T1"}, {1, "T2"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(fn_return_fn) {
-  const std::string_view src = "() -> fn() -> T = x";
+  const std::string_view src = "() -> fn() -> T => x";
   const AST ast = {ast_forest({{ASTTag::Fn, ASTTag::PatternTuple}, {ASTTag::Fn, ASTTag::ExprIdent}}),
-                   as_invalid_refs({{0, 2}, {18, 19}, {0, 19}}),
+                   as_invalid_refs({{0, 2}, {19, 20}, {0, 20}}),
                    {Type{-1}, Type{2}, Type{-1}},
                    make_tg({TypeTag::Tuple, TypeTag::Leaf, TypeTag::Fn}, {{}, {}, {0, 1}})};
-  check_pass(parse_fn, ast, type_refs(src, {{1, "T"}}), src);
+  check_pass(parse_fn_expr, ast, type_refs(src, {{1, "T"}}), src);
 }
 
 BOOST_AUTO_TEST_CASE(mod_empty) {
@@ -528,24 +536,24 @@ BOOST_AUTO_TEST_CASE(mod_nested) {
 }
 
 BOOST_AUTO_TEST_CASE(mod_fn) {
-  const std::string_view src = "mod x { fn f() -> () = () }";
+  const std::string_view src = "mod x { fn f() -> () { () } }";
   const AST ast = {ast_forest({{ASTTag::Module, ASTTag::Assignment, ASTTag::PatternIdent},
                                {ASTTag::Module, ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
                                {ASTTag::Module, ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprTuple}}),
-                   as_invalid_refs({{11, 12}, {12, 14}, {23, 25}, {12, 25}, {8, 25}, {4, 5}}),
+                   as_invalid_refs({{11, 12}, {12, 14}, {23, 25}, {12, 27}, {8, 27}, {4, 5}}),
                    {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}},
                    make_tg({TypeTag::Tuple}, {{}})};
   check_pass_roots(parse, ast, {}, src);
 }
 
 BOOST_AUTO_TEST_CASE(mod_fn_adj) {
-  const std::string_view src = "fn f() -> () = () mod x {}";
+  const std::string_view src = "fn f() -> () { () } mod x {}";
   const AST ast = {
     ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
                 {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
                 {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprTuple},
                 {ASTTag::Module}}),
-    as_invalid_refs({{3, 4}, {4, 6}, {15, 17}, {4, 17}, {0, 17}, {22, 23}}),
+    as_invalid_refs({{3, 4}, {4, 6}, {15, 17}, {4, 19}, {0, 19}, {24, 25}}),
     {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}},
     make_tg({TypeTag::Tuple}, {{}})};
   check_pass_roots(parse, ast, {}, src);
@@ -557,12 +565,27 @@ BOOST_AUTO_TEST_CASE(ast_empty) {
 }
 
 BOOST_AUTO_TEST_CASE(ast_fn) {
-  const std::string_view src = "fn f() -> T = x";
+  const std::string_view src = "fn f() -> T { x }";
   const AST exp_ast = {
     ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
                 {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
                 {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}}),
-    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}}),
+    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 17}, {0, 17}}),
+    {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}},
+    make_tg({TypeTag::Leaf})};
+  const auto [pr, act_ast] = check_result(parse({}, {}, src));
+  check_eq("ast", exp_ast, act_ast);
+  check_eq("type_srcs", type_refs(src, {{0, "T"}}), pr.type_srcs);
+  check_range(act_ast.forest.root_ids(), pr.parsed);
+}
+
+BOOST_AUTO_TEST_CASE(ast_let_fn) {
+  const std::string_view src = "let f = fn() -> T => x;";
+  const AST exp_ast = {
+    ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
+                {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
+                {ASTTag::Assignment, ASTTag::Fn, ASTTag::ExprIdent}}),
+    as_invalid_refs({{4, 5}, {10, 12}, {21, 22}, {10, 22}, {0, 23}}),
     {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}},
     make_tg({TypeTag::Leaf})};
   const auto [pr, act_ast] = check_result(parse({}, {}, src));
@@ -572,7 +595,7 @@ BOOST_AUTO_TEST_CASE(ast_fn) {
 }
 
 BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
-  const std::string_view src = "fn f() -> T = x fn g() -> T = x";
+  const std::string_view src = "fn f() -> T { x } fn g() -> T { x }";
   Forest<ASTTag, ASTID> f =
     ast_forest({{ASTTag::Assignment, ASTTag::PatternIdent},
                 {ASTTag::Assignment, ASTTag::Fn, ASTTag::PatternTuple},
@@ -584,12 +607,12 @@ BOOST_AUTO_TEST_CASE(ast_multiple_fn) {
   f.merge_path(f2, std::array{ASTTag::Fn, ASTTag::ExprIdent});
   const AST exp_ast = {
     std::move(f),
-    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 15}, {0, 15}, {19, 20}, {20, 22}, {30, 31}, {20, 31}, {16, 31}}),
+    as_invalid_refs({{3, 4}, {4, 6}, {14, 15}, {4, 17}, {0, 17}, {21, 22}, {22, 24}, {32, 33}, {22, 35}, {18, 35}}),
     {Type{-1}, Type{-1}, Type{0}, Type{-1}, Type{-1}, Type{-1}, Type{-1}, Type{1}, Type{-1}, Type{-1}},
     make_tg({TypeTag::Leaf, TypeTag::Leaf}, {{}, {}})};
 
   const std::vector<std::pair<Type, SrcRef>> exp_type_srcs = {
-    {Type{0}, SrcRef{SrcID{}, {10, 11}}}, {Type{1}, SrcRef{SrcID{}, {26, 27}}}};
+    {Type{0}, SrcRef{SrcID{}, {10, 11}}}, {Type{1}, SrcRef{SrcID{}, {28, 29}}}};
 
   const auto [pr, act_ast] = check_result(parse({}, {}, src));
   check_eq("ast", exp_ast, act_ast);
@@ -608,7 +631,7 @@ BOOST_AUTO_TEST_CASE(repl_expr) {
 }
 
 BOOST_AUTO_TEST_CASE(repl_assignment) {
-  const std::string_view src = "let x: T = y";
+  const std::string_view src = "let x: T = y;";
 
   const auto [expr_pr, exp_ast] = check_result(parse_assignment({}, {}, src));
   const auto [act_pr, act_ast] = check_result(parse_repl({}, {}, src));
@@ -621,10 +644,10 @@ BOOST_AUTO_TEST_CASE(parse_consecutive) {
   AST ast;
   ParserResult<std::vector<ASTID>> pr1;
   ParserResult<std::vector<ASTID>> pr2;
-  std::tie(pr1, ast) = check_result(parse({}, SrcID{0}, "fn f() -> T = x"));
-  std::tie(pr2, ast) = check_result(parse(std::move(ast), SrcID{0}, "fn g() -> T = y"));
+  std::tie(pr1, ast) = check_result(parse({}, SrcID{0}, "fn f() -> T { x }"));
+  std::tie(pr2, ast) = check_result(parse(std::move(ast), SrcID{0}, "fn g() -> T { y }"));
 
-  auto [exp_pd, exp_ast] = check_result(parse({}, SrcID{0}, "fn f() -> T = x fn g() -> T = y"));
+  auto [exp_pd, exp_ast] = check_result(parse({}, SrcID{0}, "fn f() -> T { x } fn g() -> T  { y }"));
 
   BOOST_CHECK_EQUAL(1, pr1.parsed.size());
   BOOST_CHECK_EQUAL(1, pr2.parsed.size());
@@ -634,21 +657,19 @@ BOOST_AUTO_TEST_CASE(parse_consecutive) {
   check_eq("tg", exp_ast.tg, ast.tg);
 }
 
-BOOST_AUTO_TEST_CASE(no_fn) { check_single_error(parse, {{{}, {0, 1}}, "expected 'fn'"}, "f"); }
-BOOST_AUTO_TEST_CASE(no_fn2) { check_single_error(parse, {{{}, {0, 1}}, "expected 'fn'"}, "a"); }
-BOOST_AUTO_TEST_CASE(no_fn3) { check_single_error(parse, {{{}, {0, 1}}, "expected 'fn'"}, ")"); }
+BOOST_AUTO_TEST_CASE(no_fn) { check_single_error(parse, {{{}, {0, 1}}, "expected 'mod'" /* ? */}, "f"); }
+BOOST_AUTO_TEST_CASE(no_fn2) { check_single_error(parse, {{{}, {0, 1}}, "expected 'mod'" /* ? */}, "a"); }
+BOOST_AUTO_TEST_CASE(no_fn3) { check_single_error(parse, {{{}, {0, 1}}, "expected 'mod'" /* ? */}, ")"); }
 
 BOOST_AUTO_TEST_CASE(bad_paren) { check_single_error(parse, {{{}, {2, 3}}, "expected token" /* ? */}, "fn)"); }
 
 BOOST_AUTO_TEST_CASE(no_expr) { check_single_error(parse_expr, {{{}, {1, 2}}, "expected 'let'" /* ? */}, "{}"); }
 
 BOOST_AUTO_TEST_CASE(no_return_type) {
-  check_single_error(parse_fn, {{{}, {6, 7}}, "expected '&'" /* ? */}, "() -> { 1 }");
+  check_single_error(parse_fn_expr, {{{}, {6, 8}}, "expected '&'" /* ? */}, "() -> => 1");
 }
 
 BOOST_AUTO_TEST_CASE(fn_no_tupl) { check_single_error(parse_type, {{{}, {3, 4}}, "expected '('"}, "fn T -> T"); }
-
-BOOST_AUTO_TEST_CASE(no_return) { check_single_error(parse, {{{}, {7, 8}}, "expected '->'" /* ? */}, "fn f() { 1 }"); }
 
 BOOST_AUTO_TEST_CASE(no_params) {
   check_single_error(parse, {{{}, {5, 7}}, "expected '('" /* ? */}, "fn f -> T { 1 }");
@@ -662,9 +683,11 @@ BOOST_AUTO_TEST_CASE(bad_fn_name) {
   check_single_error(parse, {{{}, {3, 4}}, "expected token" /* ? */}, "fn 1() -> T { 1 }");
 }
 
-BOOST_AUTO_TEST_CASE(no_fn_keyword) { check_single_error(parse, {{{}, {0, 1}}, "expected 'fn'"}, "f() -> T { 1 }"); }
+BOOST_AUTO_TEST_CASE(no_fn_keyword) {
+  check_single_error(parse, {{{}, {0, 1}}, "expected 'mod'" /* ? */}, "f() -> T { 1 }");
+}
 
-BOOST_AUTO_TEST_CASE(no_scope) { check_single_error(parse, {{{}, {11, 11}}, "expected '='"}, "fn f() -> T"); }
+BOOST_AUTO_TEST_CASE(no_scope) { check_single_error(parse, {{{}, {11, 11}}, "expected '{'"}, "fn f() -> T"); }
 
 BOOST_AUTO_TEST_CASE(unclosed_paren) { check_single_error(parse, {{{}, {6, 8}}, "expected ')'"}, "fn f( -> T { 1 }"); }
 

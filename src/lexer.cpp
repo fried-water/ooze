@@ -13,7 +13,7 @@ constexpr auto comment_re = ctll::fixed_string{"^//[^\\n]*"};
 constexpr auto keyword_re = ctll::fixed_string{"^let|^fn|^if|^else|^mod"};
 constexpr auto underscore_re = ctll::fixed_string{"^_"};
 constexpr auto ident_re = ctll::fixed_string{"^[a-zA-Z_][a-zA-Z0-9_]*"};
-constexpr auto symbol_re = ctll::fixed_string{R"(^\(|^\)|^\{|^\}|^,|^\.|^::|^:|^=|^&|^->|^;)"};
+constexpr auto symbol_re = ctll::fixed_string{R"(^\(|^\)|^\{|^\}|^,|^\.|^::|^:|^&|^->|^=>|^=|^;)"};
 
 constexpr auto int_re = ctll::fixed_string{"^-?\\d+(i8|i16|i32|i64|u8|u16|u32|u64)?"};
 constexpr auto float_re = ctll::fixed_string{R"(^-?\d+?\.\d+f?)"};

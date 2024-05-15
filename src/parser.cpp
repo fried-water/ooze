@@ -206,7 +206,7 @@ ParseResult<ASTID> scope_cond_expr(State&, Span<Token>, ParseLocation);
 ParseResult<ASTID> non_call_expr(State&, Span<Token>, ParseLocation);
 
 auto assignment() {
-  return transform(seq(keyword("let"), binding(), symbol("="), expr),
+  return transform(seq(keyword("let"), binding(), symbol("="), expr, symbol(";")),
                    [](State& s, Span<Token> tokens, Slice ref, ASTID pattern, ASTID expr) {
                      return ASTAppender{ASTTag::Assignment}(s, tokens, ref, std::array{pattern, expr});
                    });
@@ -238,7 +238,7 @@ ParseResult<ASTID> call_expr(State& s, Span<Token> tokens, ParseLocation loc) {
 
 auto scope() {
   return transform(
-    seq(symbol("{"), n(seq(assignment(), symbol(";"))), expr, symbol("}")),
+    seq(symbol("{"), n(seq(assignment())), expr, symbol("}")),
     [](State& s, std::vector<ASTID> assignments, ASTID expr) {
       return std::accumulate(assignments.rbegin(), assignments.rend(), expr, [&](ASTID acc, ASTID assign) {
         return ASTAppender{ASTTag::ExprWith}(
@@ -261,22 +261,42 @@ ParseResult<ASTID> non_call_expr(State& s, Span<Token> tokens, ParseLocation loc
                 scope_cond_expr)(s, tokens, loc);
 }
 
-auto fn() {
+auto fn_expr() {
   return transform(seq(transform(tuple(binding()), ASTAppender{ASTTag::PatternTuple}),
-                       symbol("->"),
-                       type,
-                       choose(scope(), seq(symbol("="), expr))),
-                   [](State& s, Span<Token> tokens, Slice ref, ASTID pattern, Type type, ASTID expr) {
-                     s.ast.types[expr.get()] = type;
+                       maybe(seq(symbol("->"), type)),
+                       symbol("=>"),
+                       expr),
+                   [](State& s, Span<Token> tokens, Slice ref, ASTID pattern, std::optional<Type> type, ASTID expr) {
+                     if(type) {
+                       s.ast.types[expr.get()] = *type;
+                     }
                      return ASTAppender{ASTTag::Fn}(s, tokens, ref, pattern, expr);
                    });
 }
 
+auto fn_definition() {
+  return choose(
+    // TODO: generalize this to use assignment() once global values and local closures are supported
+    transform(seq(keyword("let"), binding(), symbol("="), keyword("fn"), fn_expr(), symbol(";")),
+              ASTAppender{ASTTag::Assignment}),
+    transform(
+      seq(
+        keyword("fn"),
+        ident(),
+        transform(
+          seq(transform(tuple(binding()), ASTAppender{ASTTag::PatternTuple}), maybe(seq(symbol("->"), type)), scope()),
+          [](State& s, Span<Token> tokens, Slice ref, ASTID pattern, std::optional<Type> type, ASTID expr) {
+            if(type) {
+              s.ast.types[expr.get()] = *type;
+            }
+            return ASTAppender{ASTTag::Fn}(s, tokens, ref, pattern, expr);
+          })),
+      ASTAppender{ASTTag::Assignment}));
+}
+
 ParseResult<ASTID> module(State&, Span<Token>, ParseLocation);
 
-auto root_element() {
-  return choose(transform(seq(keyword("fn"), ident(), fn()), ASTAppender{ASTTag::Assignment}), module);
-}
+auto root_element() { return choose(fn_definition(), module); }
 
 ParseResult<ASTID> module(State& s, Span<Token> tokens, ParseLocation loc) {
   return transform(seq(keyword("mod"), token_parser(TokenType::Ident), symbol("{"), n(root_element()), symbol("}")),
@@ -325,8 +345,8 @@ ContextualResult<ParserResult<ASTID>, AST> parse_expr(AST ast, SrcID id, std::st
   return parse_ast(expr, std::move(ast), id, src);
 }
 
-ContextualResult<ParserResult<ASTID>, AST> parse_fn(AST ast, SrcID id, std::string_view src) {
-  return parse_ast(fn(), std::move(ast), id, src);
+ContextualResult<ParserResult<ASTID>, AST> parse_fn_expr(AST ast, SrcID id, std::string_view src) {
+  return parse_ast(fn_expr(), std::move(ast), id, src);
 }
 
 ContextualResult<ParserResult<ASTID>, AST> parse_binding(AST ast, SrcID id, std::string_view src) {
